@@ -28,10 +28,22 @@ export function ChatHeader({ session, wireState, onOpenSettings }: ChatHeaderPro
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", minWidth: 0 }}>
-        <strong className="display">{basename(session.cwd)}</strong>
-        <Mono muted>{session.cwd}</Mono>
+        <strong
+          className="display"
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
+          {basename(session.cwd)}
+        </strong>
+        {/* Truncate the cwd so a long path can't overrun and overprint the right-side status
+            group at narrow widths (390px). The parent column is already a `min-width:0` flex
+            child, which is what lets the ellipsis actually clip instead of forcing overflow. */}
+        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Mono muted>{session.cwd}</Mono>
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
+      {/* `flex: none` so the status/settings group keeps its intrinsic width and is never
+          squeezed or overlapped by the path column. */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", flex: "none" }}>
         <LiveWire state={wireState} aria-label={`Session ${basename(session.cwd)} — ${wireState}`} />
         {onOpenSettings && (
           <Button variant="ghost" onClick={onOpenSettings} aria-label="Session settings">

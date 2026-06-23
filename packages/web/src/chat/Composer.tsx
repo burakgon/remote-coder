@@ -86,6 +86,7 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
 
   return (
     <div
+      className="rc-composer"
       style={{
         borderTop: "1px solid var(--border)",
         padding: "var(--sp-3)",
@@ -94,6 +95,13 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
         gap: "var(--sp-2)",
       }}
     >
+      {/* On mobile the "Sessions" FAB floats over the bottom-right corner. Reserve clearance below
+          the controls so the Image/File/Send row is never covered by it (and clears the safe-area
+          inset). Removed on desktop, where the FAB is hidden. */}
+      <style>{`
+        .rc-composer { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tap-min) + var(--sp-4)); }
+        @media (min-width: 768px) { .rc-composer { padding-bottom: var(--sp-3); } }
+      `}</style>
       {error && (
         <div role="alert" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>
           {error}

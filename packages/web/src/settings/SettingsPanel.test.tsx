@@ -6,7 +6,7 @@ import type { SessionMeta } from "../types/server";
 import type { SessionDefaults } from "./defaults";
 
 const session: SessionMeta = { id: "s1", cwd: "/p", model: "opus", effort: "high", dangerouslySkip: false, status: "running", createdAt: 1 };
-const defaults: SessionDefaults = { effort: "medium", permissionMode: "default", dangerouslySkip: false };
+const defaults: SessionDefaults = { effort: "medium", dangerouslySkip: false };
 
 describe("SettingsPanel", () => {
   it("shows the active session's fixed settings read-only", () => {
@@ -39,5 +39,33 @@ describe("SettingsPanel", () => {
     await userEvent.click(screen.getByLabelText(/dangerously skip permissions/i));
     expect(window.confirm).toHaveBeenCalled();
     vi.restoreAllMocks();
+  });
+
+  it("is a trapping modal: aria-modal, focus moves in, and Tab cycles within the dialog", async () => {
+    render(<SettingsPanel session={session} defaults={defaults} onSaveDefaults={vi.fn()} onStopSession={vi.fn()} onClose={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    // On mount focus is pulled into the dialog (first focusable element).
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    // Tab repeatedly and assert focus never escapes the dialog.
+    for (let i = 0; i < 12; i++) {
+      await userEvent.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+    // Shift+Tab also stays inside.
+    await userEvent.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it("closes on Escape", async () => {
+    const onClose = vi.fn();
+    render(<SettingsPanel session={undefined} defaults={defaults} onSaveDefaults={vi.fn()} onClose={onClose} />);
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("no longer renders the dead permission-mode control", () => {
+    render(<SettingsPanel session={undefined} defaults={defaults} onSaveDefaults={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText(/permission mode/i)).not.toBeInTheDocument();
   });
 });

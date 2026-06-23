@@ -12,9 +12,19 @@ describe("LoginScreen", () => {
     expect(onAuth).toHaveBeenCalledWith("my-token");
   });
 
-  it("shows an initial error (e.g. a prior 401)", () => {
+  it("shows an initial error (e.g. a prior 401) as an assertively-announced alert", () => {
     render(<LoginScreen onAuthenticated={vi.fn()} initialError="Invalid token (401)" />);
-    expect(screen.getByText(/invalid token \(401\)/i)).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/invalid token \(401\)/i);
+    // Announced on first render even though it isn't a live change (assertive politeness).
+    expect(alert).toHaveAttribute("aria-live", "assertive");
+  });
+
+  it("gives the token input an id+name for autofill/tooling", () => {
+    render(<LoginScreen onAuthenticated={vi.fn()} />);
+    const input = screen.getByLabelText(/access token/i);
+    expect(input).toHaveAttribute("id", "token");
+    expect(input).toHaveAttribute("name", "token");
   });
 
   it("offers a tokenless local-dev connect", async () => {

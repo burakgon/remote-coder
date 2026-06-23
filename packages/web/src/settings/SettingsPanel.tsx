@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Surface } from "../ui/Surface";
 import { Button } from "../ui/Button";
 import { Mono } from "../ui/Mono";
-import { EFFORTS, PERMISSION_MODES } from "./defaults";
+import { useFocusTrap } from "../ui/useFocusTrap";
+import { EFFORTS } from "./defaults";
 import type { SessionDefaults } from "./defaults";
 import type { SessionMeta } from "../types/server";
 
@@ -27,6 +28,21 @@ const fieldStyle: CSSProperties = {
 
 export function SettingsPanel({ session, defaults, onSaveDefaults, onStopSession, onClose }: SettingsPanelProps) {
   const [draft, setDraft] = useState<SessionDefaults>(defaults);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Real modal semantics: trap Tab within the dialog and restore focus to the trigger on close.
+  // This is a destructive surface (Stop session / dangerously-skip-permissions), so keyboard
+  // focus must not escape to the inert background behind it.
+  useFocusTrap(dialogRef);
+
+  // Escape closes the dialog, matching DirectoryPicker / NewSessionWizard.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   function toggleDanger(checked: boolean) {
     if (
@@ -42,7 +58,9 @@ export function SettingsPanel({ session, defaults, onSaveDefaults, onStopSession
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
+      aria-modal="true"
       aria-label="Settings"
       style={{
         position: "fixed",
@@ -124,20 +142,6 @@ export function SettingsPanel({ session, defaults, onSaveDefaults, onStopSession
                 placeholder="default"
                 style={{ ...fieldStyle, fontFamily: "var(--font-mono)" }}
               />
-            </label>
-            <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-              <span style={{ fontSize: "var(--fs-sm)" }}>Default permission mode</span>
-              <select
-                value={draft.permissionMode}
-                onChange={(e) => setDraft((d) => ({ ...d, permissionMode: e.target.value }))}
-                style={fieldStyle}
-              >
-                {PERMISSION_MODES.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
             </label>
             <label
               style={{

@@ -85,7 +85,12 @@ export function App() {
         setSessionsOpen(false);
       }}
       onNew={() => setWizardOpen(true)}
-      viewWireState={(id) => wireStateForSession(sessions.find((s) => s.id === id) ?? { id, cwd: "", dangerouslySkip: false, status: "running", createdAt: 0 }, views[id])}
+      viewWireState={(id) => {
+        // The list only renders ids that are in `sessions`, so a miss is unreachable; fall back to
+        // "idle" rather than fabricating a fake SessionMeta to satisfy wireStateForSession.
+        const meta = sessions.find((s) => s.id === id);
+        return meta ? wireStateForSession(meta, views[id]) : "idle";
+      }}
     />
   );
 

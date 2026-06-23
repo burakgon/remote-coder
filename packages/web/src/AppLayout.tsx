@@ -113,7 +113,10 @@ export function AppLayout({ children, sessionList, onShowSessions, onHideSession
         }
         @keyframes rc-fade { from { opacity: 0; } to { opacity: 1; } }
         .rc-sessions-fab {
-          position: fixed; left: 50%; transform: translateX(-50%);
+          /* Anchored to the bottom-RIGHT corner (not dead-center) so it never sits on top of the
+             composer's Image/File/Send row. The composer also reserves bottom clearance (see
+             Composer.tsx), so the controls stay fully tappable with the FAB visible at 390px. */
+          position: fixed; right: var(--sp-4);
           bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sp-4));
           z-index: 38; min-height: var(--tap-min); padding: 0 var(--sp-5);
           background: var(--accent); color: var(--on-accent); border: none;

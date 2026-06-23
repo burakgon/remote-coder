@@ -24,11 +24,13 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
             Enter the access token from your server to connect.
           </p>
           {initialError && (
-            <div role="alert" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>{initialError}</div>
+            <div role="alert" aria-live="assertive" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>{initialError}</div>
           )}
           <label style={{ display: "grid", gap: "var(--sp-2)" }}>
             <span style={{ fontSize: "var(--fs-sm)" }}>Access token</span>
             <input
+              id="token"
+              name="token"
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}

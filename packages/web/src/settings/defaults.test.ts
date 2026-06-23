@@ -5,11 +5,11 @@ afterEach(() => localStorage.clear());
 
 describe("session defaults", () => {
   it("returns safe fallbacks when nothing is stored", () => {
-    expect(loadDefaults()).toEqual({ effort: "medium", permissionMode: "default", dangerouslySkip: false });
+    expect(loadDefaults()).toEqual({ effort: "medium", dangerouslySkip: false });
   });
   it("round-trips saved defaults", () => {
-    saveDefaults({ effort: "high", model: "opus", permissionMode: "acceptEdits", dangerouslySkip: true });
-    expect(loadDefaults()).toEqual({ effort: "high", model: "opus", permissionMode: "acceptEdits", dangerouslySkip: true });
+    saveDefaults({ effort: "high", model: "opus", dangerouslySkip: true });
+    expect(loadDefaults()).toEqual({ effort: "high", model: "opus", dangerouslySkip: true });
   });
   it("ignores corrupt storage and falls back", () => {
     localStorage.setItem("remote-coder.defaults", "not json");
