@@ -7,6 +7,8 @@ import { useStore } from "./store/store";
 import { AppLayout } from "./AppLayout";
 import { SessionList } from "./session/SessionList";
 import { wireStateForSession } from "./session/status";
+import { NewSessionWizard } from "./session/NewSessionWizard";
+import { loadRecentDirs } from "./picker/recents";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -15,6 +17,8 @@ export function App() {
   const [phase, setPhase] = useState<Phase>(token === undefined ? "login" : "validating");
   const [loginError, setLoginError] = useState<string | undefined>();
   const { sessions, setSessions, setToken, activeSessionId, setActive, views } = useStore();
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
 
   const api = useMemo(
     () => createApiClient({ baseUrl: API_BASE_URL, getToken: () => (token === "" ? undefined : token) }),
@@ -71,17 +75,40 @@ export function App() {
     <SessionList
       sessions={sessions}
       activeId={activeSessionId}
-      onSelect={(id) => setActive(id)}
-      onNew={() => { /* Task 5 opens the new-session wizard */ }}
+      onSelect={(id) => {
+        setActive(id);
+        setSessionsOpen(false);
+      }}
+      onNew={() => setWizardOpen(true)}
       viewWireState={(id) => wireStateForSession(sessions.find((s) => s.id === id) ?? { id, cwd: "", dangerouslySkip: false, status: "running", createdAt: 0 }, views[id])}
     />
   );
 
   return (
-    <AppLayout sessionList={list}>
-      <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)" }}>
-        {activeSessionId ? "Chat view lands in Task 6." : "Select or start a session."}
-      </div>
-    </AppLayout>
+    <>
+      <AppLayout
+        sessionList={list}
+        sessionsOpen={sessionsOpen}
+        onShowSessions={() => setSessionsOpen(true)}
+        onHideSessions={() => setSessionsOpen(false)}
+      >
+        <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)" }}>
+          {activeSessionId ? "Chat view lands in Task 6." : "Select or start a session."}
+        </div>
+      </AppLayout>
+      {wizardOpen && (
+        <NewSessionWizard
+          api={api}
+          recents={loadRecentDirs()}
+          onClose={() => setWizardOpen(false)}
+          onCreated={(session) => {
+            setSessions([...sessions, session]);
+            setActive(session.id);
+            setWizardOpen(false);
+            setSessionsOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }

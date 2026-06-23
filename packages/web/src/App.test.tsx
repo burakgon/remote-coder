@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { saveToken, loadToken } from "./auth/token-store";
@@ -59,5 +60,34 @@ describe("App token validation on load", () => {
     render(<App />);
     expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("App ready-state controls", () => {
+  async function renderReady() {
+    saveToken("good-token");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ sessions: [] }));
+    render(<App />);
+    // The always-visible mobile sessions toggle proves we reached the ready state.
+    await screen.findByRole("button", { name: /show sessions/i });
+  }
+
+  it("opens the mobile sessions sheet from the sessions toggle", async () => {
+    await renderReady();
+    // The rail is closed on mobile until toggled.
+    expect(screen.getByTestId("sessions-rail")).toHaveAttribute("data-open", "false");
+    await userEvent.click(screen.getByRole("button", { name: /show sessions/i }));
+    // After toggling, the sessions rail is marked open.
+    expect(screen.getByTestId("sessions-rail")).toHaveAttribute("data-open", "true");
+  });
+
+  it("opens the new-session wizard (directory picker) from the New session button", async () => {
+    await renderReady();
+    // Open the sessions sheet to reach its New session button.
+    await userEvent.click(screen.getByRole("button", { name: /show sessions/i }));
+    // Listing the start directory once the picker mounts.
+    fetchMock.mockResolvedValueOnce(jsonResponse({ path: "/home/u", entries: [] }));
+    await userEvent.click(screen.getByRole("button", { name: /new session/i }));
+    expect(await screen.findByRole("dialog", { name: /pick a directory/i })).toBeInTheDocument();
   });
 });
