@@ -73,8 +73,6 @@ describe("vite build PWA artifacts", () => {
     expect(m.theme_color).toBe("#0E1116");
     expect(m.background_color).toBe("#0E1116");
     expect(m.display).toBe("standalone");
-    expect(m.icons.map((i) => i.src)).toEqual(
-      expect.arrayContaining(["icon-192.svg", "icon-512.svg"]),
-    );
+    expect(m.icons.map((i) => i.src)).toEqual(expect.arrayContaining(["icon-192.svg", "icon-512.svg"]));
   });
 });

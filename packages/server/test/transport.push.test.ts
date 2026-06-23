@@ -4,12 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { createServer, SessionManager, openPushStore, PushDispatcher, HistoryService } from "../src/index.js";
-import type {
-  CreateServerResult,
-  ServerRuntimeConfig,
-  PushStore,
-  PushSubscriptionRecord,
-} from "../src/index.js";
+import type { CreateServerResult, ServerRuntimeConfig, PushStore, PushSubscriptionRecord } from "../src/index.js";
 
 const MOCK = fileURLToPath(new URL("./helpers/mock-claude-interactive.mjs", import.meta.url));
 

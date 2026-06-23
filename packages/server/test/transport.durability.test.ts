@@ -22,12 +22,20 @@ afterEach(async () => {
 
 function configFor(): ServerRuntimeConfig {
   return {
-    port: 0, bindAddress: "127.0.0.1", accessToken: TOKEN, fsRoot: process.cwd(),
-    maxUploadBytes: 26214400, dataDir: dir, claude: { claudeBin: process.execPath },
+    port: 0,
+    bindAddress: "127.0.0.1",
+    accessToken: TOKEN,
+    fsRoot: process.cwd(),
+    maxUploadBytes: 26214400,
+    dataDir: dir,
+    claude: { claudeBin: process.execPath },
   };
 }
 function managerFor() {
-  return new SessionManager({ claudeBin: process.execPath }, { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 });
+  return new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
 }
 
 test("Idempotency-Key dedupes POST /sessions", async () => {
@@ -56,7 +64,11 @@ test("concurrent same-key POST /sessions yields exactly ONE session (no double-s
   ]);
   expect(a.json().session.id).toBe(b.json().session.id);
   // Exactly one live session was spawned.
-  const list = await current.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` } });
+  const list = await current.app.inject({
+    method: "GET",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
   expect(list.json().sessions).toHaveLength(1);
 });
 
@@ -66,7 +78,12 @@ test("a session created in one server is DORMANT after a restart (rehydrated fro
   {
     const store = openSessionStore({ dbPath });
     current = createServer(configFor(), managerFor(), { store, history: new HistoryService() });
-    const created = await current.app.inject({ method: "POST", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` }, payload: { cwd: process.cwd() } });
+    const created = await current.app.inject({
+      method: "POST",
+      url: "/sessions",
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: { cwd: process.cwd() },
+    });
     expect(created.statusCode).toBe(201);
     await current.app.close();
     store.close();
@@ -75,7 +92,11 @@ test("a session created in one server is DORMANT after a restart (rehydrated fro
   // Server 2: same db -> the session reappears as dormant (no live process).
   const store2 = openSessionStore({ dbPath });
   current = createServer(configFor(), managerFor(), { store: store2, history: new HistoryService() });
-  const list = await current.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` } });
+  const list = await current.app.inject({
+    method: "GET",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
   const sessions = list.json().sessions as { id: string; status: string }[];
   expect(sessions).toHaveLength(1);
   expect(sessions[0]?.status).toBe("dormant");
@@ -96,7 +117,12 @@ test("GET /sessions/:id reads jsonl history for a dormant session after a restar
   {
     const store = openSessionStore({ dbPath });
     current = createServer(configFor(), managerFor(), { store, history: new HistoryService({ claudeHome }) });
-    const created = await current.app.inject({ method: "POST", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` }, payload: { cwd: sessionCwd } });
+    const created = await current.app.inject({
+      method: "POST",
+      url: "/sessions",
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: { cwd: sessionCwd },
+    });
     id = created.json().session.id as string;
     await current.app.close();
     store.close();
@@ -110,7 +136,10 @@ test("GET /sessions/:id reads jsonl history for a dormant session after a restar
     join(projDir, `${id}.jsonl`),
     JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "earlier question" }] } }) +
       "\n" +
-      JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "earlier answer" }] } }) +
+      JSON.stringify({
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: "earlier answer" }] },
+      }) +
       "\n",
     "utf8",
   );
@@ -118,7 +147,11 @@ test("GET /sessions/:id reads jsonl history for a dormant session after a restar
   // Server 2: same db -> dormant session; GET /sessions/:id must project the jsonl into history frames.
   const store2 = openSessionStore({ dbPath });
   current = createServer(configFor(), managerFor(), { store: store2, history: new HistoryService({ claudeHome }) });
-  const res = await current.app.inject({ method: "GET", url: `/sessions/${id}`, headers: { authorization: `Bearer ${TOKEN}` } });
+  const res = await current.app.inject({
+    method: "GET",
+    url: `/sessions/${id}`,
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
   expect(res.statusCode).toBe(200);
   const history = res.json().history as { kind: string; payload: { type: string } }[];
   expect(history).toHaveLength(2);

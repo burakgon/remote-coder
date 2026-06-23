@@ -23,16 +23,36 @@ afterEach(async () => {
 });
 
 function configFor(): ServerRuntimeConfig {
-  return { port: 0, bindAddress: "127.0.0.1", accessToken: TOKEN, fsRoot: process.cwd(), maxUploadBytes: 26214400, dataDir: dir, claude: { claudeBin: process.execPath } };
+  return {
+    port: 0,
+    bindAddress: "127.0.0.1",
+    accessToken: TOKEN,
+    fsRoot: process.cwd(),
+    maxUploadBytes: 26214400,
+    dataDir: dir,
+    claude: { claudeBin: process.execPath },
+  };
 }
 
 test("question over WS: create -> ask -> answer frame -> result reflects the choice", async () => {
-  const manager = new SessionManager({ claudeBin: process.execPath }, { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000 });
-  current = createServer(configFor(), manager, { store: openSessionStore({ dbPath: join(dir, "s.db") }), idempotency: openIdempotencyStore({ dbPath: join(dir, "i.db") }), history: new HistoryService() });
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000 },
+  );
+  current = createServer(configFor(), manager, {
+    store: openSessionStore({ dbPath: join(dir, "s.db") }),
+    idempotency: openIdempotencyStore({ dbPath: join(dir, "i.db") }),
+    history: new HistoryService(),
+  });
   const httpUrl = await current.app.listen({ port: 0, host: "127.0.0.1" });
   const wsBase = httpUrl.replace(/^http/, "ws");
 
-  const created = await current.app.inject({ method: "POST", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` }, payload: { cwd: process.cwd() } });
+  const created = await current.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+    payload: { cwd: process.cwd() },
+  });
   const id = created.json().session.id;
 
   await new Promise<void>((resolve, reject) => {
@@ -40,14 +60,25 @@ test("question over WS: create -> ask -> answer frame -> result reflects the cho
     const ws = new WebSocket(`${wsBase}/sessions/${id}/ws?token=${TOKEN}`);
     ws.on("message", (raw: Buffer) => {
       const frame: ServerFrame = JSON.parse(raw.toString());
-      if (!sent) { sent = true; ws.send(JSON.stringify({ type: "user", content: "ask" })); }
+      if (!sent) {
+        sent = true;
+        ws.send(JSON.stringify({ type: "user", content: "ask" }));
+      }
       if (frame.kind === "question") {
         const p = frame.payload as { requestId: string; toolInput: unknown };
-        ws.send(JSON.stringify({ type: "answer", requestId: p.requestId, toolInput: p.toolInput, answers: { "Which language?": "Python" } }));
+        ws.send(
+          JSON.stringify({
+            type: "answer",
+            requestId: p.requestId,
+            toolInput: p.toolInput,
+            answers: { "Which language?": "Python" },
+          }),
+        );
       }
       if (frame.kind === "result") {
         expect((frame.payload as { result?: string }).result).toContain("Python");
-        ws.close(); resolve();
+        ws.close();
+        resolve();
       }
     });
     ws.on("error", reject);
@@ -81,12 +112,20 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
   {
     const store = openSessionStore({ dbPath });
     const idempotency = openIdempotencyStore({ dbPath: idemPath });
-    const manager = new SessionManager({ claudeBin: process.execPath }, { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000 });
+    const manager = new SessionManager(
+      { claudeBin: process.execPath },
+      { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000 },
+    );
     current = createServer(configFor(), manager, { store, idempotency, history: new HistoryService({ claudeHome }) });
     const httpUrl = await current.app.listen({ port: 0, host: "127.0.0.1" });
     const wsBase = httpUrl.replace(/^http/, "ws");
 
-    const created = await current.app.inject({ method: "POST", url: "/sessions", headers: idemHeaders, payload: { cwd: sessionCwd } });
+    const created = await current.app.inject({
+      method: "POST",
+      url: "/sessions",
+      headers: idemHeaders,
+      payload: { cwd: sessionCwd },
+    });
     expect(created.statusCode).toBe(201);
     id = created.json().session.id as string;
 
@@ -96,10 +135,20 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
       const ws = new WebSocket(`${wsBase}/sessions/${id}/ws?token=${TOKEN}`);
       ws.on("message", (raw: Buffer) => {
         const frame: ServerFrame = JSON.parse(raw.toString());
-        if (!sent) { sent = true; ws.send(JSON.stringify({ type: "user", content: "ask" })); }
+        if (!sent) {
+          sent = true;
+          ws.send(JSON.stringify({ type: "user", content: "ask" }));
+        }
         if (frame.kind === "question") {
           const p = frame.payload as { requestId: string; toolInput: unknown };
-          ws.send(JSON.stringify({ type: "answer", requestId: p.requestId, toolInput: p.toolInput, answers: { "Which language?": "Python" } }));
+          ws.send(
+            JSON.stringify({
+              type: "answer",
+              requestId: p.requestId,
+              toolInput: p.toolInput,
+              answers: { "Which language?": "Python" },
+            }),
+          );
         }
         if (frame.kind === "result") {
           expect((frame.payload as { result?: string }).result).toContain("Python");
@@ -116,7 +165,11 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
     // The live setting mirrored into the in-memory meta (applySettings persists it too).
     // Give the async settings frame a moment to apply before reading.
     await new Promise((r) => setTimeout(r, 50));
-    const meta = await current.app.inject({ method: "GET", url: `/sessions/${id}`, headers: { authorization: `Bearer ${TOKEN}` } });
+    const meta = await current.app.inject({
+      method: "GET",
+      url: `/sessions/${id}`,
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
     expect(meta.json().session.model).toBe("claude-live-x");
 
     await current.app.close();
@@ -130,22 +183,38 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
   await mkdir(projDir, { recursive: true });
   await writeFile(
     join(projDir, `${id}.jsonl`),
-    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "ask" }] } }) + "\n" +
-      JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "You picked Python" }] } }) + "\n",
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "ask" }] } }) +
+      "\n" +
+      JSON.stringify({
+        type: "assistant",
+        message: { role: "assistant", content: [{ type: "text", text: "You picked Python" }] },
+      }) +
+      "\n",
     "utf8",
   );
 
   // ---- Server 2 (RESTART): SAME db + idem db + claudeHome. Resume mode for the dormant warm-up. ----
   const store2 = openSessionStore({ dbPath });
   const idempotency2 = openIdempotencyStore({ dbPath: idemPath });
-  const manager2 = new SessionManager({ claudeBin: process.execPath }, { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "resume" }, startTimeoutMs: 5000 });
-  current = createServer(configFor(), manager2, { store: store2, idempotency: idempotency2, history: new HistoryService({ claudeHome }) });
+  const manager2 = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "resume" }, startTimeoutMs: 5000 },
+  );
+  current = createServer(configFor(), manager2, {
+    store: store2,
+    idempotency: idempotency2,
+    history: new HistoryService({ claudeHome }),
+  });
   const url2 = await current.app.listen({ port: 0, host: "127.0.0.1" });
   const wsBase2 = url2.replace(/^http/, "ws");
 
   // The rehydrated session is DORMANT (no live process), and its persisted live-setting survived.
   {
-    const list = await current.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` } });
+    const list = await current.app.inject({
+      method: "GET",
+      url: "/sessions",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
     const sessions = list.json().sessions as { id: string; status: string; model?: string }[];
     expect(sessions).toHaveLength(1);
     const restored = sessions.find((s) => s.id === id);
@@ -157,10 +226,16 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
   await new Promise<void>((resolve, reject) => {
     let sent = false;
     const ws = new WebSocket(`${wsBase2}/sessions/${id}/ws?token=${TOKEN}`);
-    ws.on("open", () => { sent = true; ws.send(JSON.stringify({ type: "user", content: "continue please" })); });
+    ws.on("open", () => {
+      sent = true;
+      ws.send(JSON.stringify({ type: "user", content: "continue please" }));
+    });
     ws.on("message", (raw: Buffer) => {
       const frame: ServerFrame = JSON.parse(raw.toString());
-      if (frame.kind === "result") { ws.close(); resolve(); }
+      if (frame.kind === "result") {
+        ws.close();
+        resolve();
+      }
     });
     ws.on("error", reject);
     setTimeout(() => reject(new Error(sent ? "loop: resume no result" : "loop: resume ws never opened")), 12000);
@@ -168,7 +243,11 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
 
   // The resume flipped the meta to running.
   {
-    const list = await current.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` } });
+    const list = await current.app.inject({
+      method: "GET",
+      url: "/sessions",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
     const sessions = list.json().sessions as { id: string; status: string }[];
     expect(sessions.find((s) => s.id === id)?.status).toBe("running");
   }
@@ -182,7 +261,12 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
   expect(turns.map((t) => t.type)).toEqual(["user", "assistant"]);
 
   // An idempotent create with the SAME key returns the SAME session (200, not a new 201).
-  const repeat = await current.app.inject({ method: "POST", url: "/sessions", headers: idemHeaders, payload: { cwd: sessionCwd } });
+  const repeat = await current.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: idemHeaders,
+    payload: { cwd: sessionCwd },
+  });
   expect(repeat.statusCode).toBe(200);
   expect(repeat.json().session.id).toBe(id);
 
@@ -194,7 +278,12 @@ test("full durability+interactivity loop: create -> ask/answer -> live setting -
 }, 40000);
 
 test("startServer generates + prints a token on a fresh data dir", async () => {
-  const env = { BIND_ADDRESS: "127.0.0.1", PORT: "0", REMOTE_CODER_DATA_DIR: dir, CLAUDE_BIN: process.execPath } as NodeJS.ProcessEnv;
+  const env = {
+    BIND_ADDRESS: "127.0.0.1",
+    PORT: "0",
+    REMOTE_CODER_DATA_DIR: dir,
+    CLAUDE_BIN: process.execPath,
+  } as NodeJS.ProcessEnv;
   const { startServer } = await import("../src/index.js");
   const started = await startServer(env);
   try {
@@ -215,7 +304,13 @@ test("startServer generates + prints a token on a fresh data dir", async () => {
 });
 
 test("startServer with NO_TOKEN=1 on loopback boots tokenless (no token required)", async () => {
-  const env = { BIND_ADDRESS: "127.0.0.1", PORT: "0", REMOTE_CODER_DATA_DIR: dir, NO_TOKEN: "1", CLAUDE_BIN: process.execPath } as NodeJS.ProcessEnv;
+  const env = {
+    BIND_ADDRESS: "127.0.0.1",
+    PORT: "0",
+    REMOTE_CODER_DATA_DIR: dir,
+    NO_TOKEN: "1",
+    CLAUDE_BIN: process.execPath,
+  } as NodeJS.ProcessEnv;
   const { startServer } = await import("../src/index.js");
   const started = await startServer(env);
   try {

@@ -1,4 +1,6 @@
-export interface ReplayOptions { delayMs?: number; }
+export interface ReplayOptions {
+  delayMs?: number;
+}
 
 export async function replayFixture(
   fixture: string,

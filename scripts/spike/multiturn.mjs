@@ -52,13 +52,17 @@ delete childEnv.ANTHROPIC_API_KEY;
 const child = spawn(
   "claude",
   [
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",
-    "--permission-mode", "default",
-    "--session-id", randomUUID(),
+    "--permission-mode",
+    "default",
+    "--session-id",
+    randomUUID(),
   ],
   { cwd: process.cwd(), env: childEnv, stdio: ["pipe", "pipe", "pipe"] },
 );
@@ -108,9 +112,17 @@ function finish(why) {
   banner(`\n>>> FINISH (${why}); closing stdin\n`);
   clearTimeout(killTimer);
   if (turn2Timer) clearTimeout(turn2Timer);
-  try { child.stdin.end(); } catch { /* already closed */ }
+  try {
+    child.stdin.end();
+  } catch {
+    /* already closed */
+  }
   // If the child doesn't exit on its own shortly, force it.
-  setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, 5000);
+  setTimeout(() => {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  }, 5000);
 }
 
 function sendUser(text, label) {
@@ -130,7 +142,11 @@ child.stdout.on("data", (chunk) => {
     buf = buf.slice(i + 1);
     if (!line.trim()) continue;
     let msg;
-    try { msg = JSON.parse(line); } catch { continue; }
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      continue;
+    }
 
     // Reply to our initialize handshake → send user message 1.
     if (msg.type === "control_response" && !userSent) {
@@ -155,7 +171,9 @@ child.stdout.on("data", (chunk) => {
 
     if (msg.type === "result") {
       resultCount += 1;
-      banner(`\n>>> RESULT #${resultCount} subtype=${msg.subtype} session_id=${msg.session_id} result=${JSON.stringify(msg.result)}\n`);
+      banner(
+        `\n>>> RESULT #${resultCount} subtype=${msg.subtype} session_id=${msg.session_id} result=${JSON.stringify(msg.result)}\n`,
+      );
       if (resultCount === 1) {
         // KEY: do NOT close stdin. Send turn 2 on the SAME process.
         banner(`\n>>> Turn 1 done. KEEPING stdin OPEN; sending turn 2 in 500ms…\n`);

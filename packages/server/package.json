@@ -6,10 +6,17 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "files": ["dist"],
-  "bin": { "remote-coder-server": "./dist/start.js" },
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "remote-coder-server": "./dist/start.js"
+  },
   "scripts": {
     "build": "tsup",
     "start": "node dist/start.js"

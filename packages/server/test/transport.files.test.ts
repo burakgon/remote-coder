@@ -60,7 +60,11 @@ test("GET /fs/download returns 403 outside root and 404 for a missing in-root fi
   current = makeServer();
   const outside = await current.app.inject({ method: "GET", url: "/fs/download?path=../../etc/hosts", headers: auth });
   expect(outside.statusCode).toBe(403);
-  const missing = await current.app.inject({ method: "GET", url: `/fs/download?path=${encodeURIComponent(join(root, "nope.txt"))}`, headers: auth });
+  const missing = await current.app.inject({
+    method: "GET",
+    url: `/fs/download?path=${encodeURIComponent(join(root, "nope.txt"))}`,
+    headers: auth,
+  });
   expect(missing.statusCode).toBe(404);
 });
 

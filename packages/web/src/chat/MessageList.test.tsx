@@ -32,14 +32,18 @@ describe("MessageList", () => {
   });
 
   it("renders a tool-result", () => {
-    render(<MessageList view={viewWith({ turns: [{ kind: "tool-result", toolUseId: "tu1", content: "file written" }] })} />);
+    render(
+      <MessageList view={viewWith({ turns: [{ kind: "tool-result", toolUseId: "tu1", content: "file written" }] })} />,
+    );
     expect(screen.getByText(/file written/i)).toBeInTheDocument();
   });
 
   it("renders the tool-use input path in mono", () => {
     render(
       <MessageList
-        view={viewWith({ turns: [{ kind: "tool-use", id: "tu1", name: "Write", input: { file_path: "/some/path.ts" } }] })}
+        view={viewWith({
+          turns: [{ kind: "tool-use", id: "tu1", name: "Write", input: { file_path: "/some/path.ts" } }],
+        })}
       />,
     );
     expect(screen.getByText("/some/path.ts")).toBeInTheDocument();
@@ -114,7 +118,9 @@ describe("MessageList", () => {
       render(
         <MessageList
           view={viewWith({
-            turns: [{ kind: "tool-result", toolUseId: "tu1", content: "File created at: /private/tmp/rc-spike/spike.txt" }],
+            turns: [
+              { kind: "tool-result", toolUseId: "tu1", content: "File created at: /private/tmp/rc-spike/spike.txt" },
+            ],
           })}
           downloadUrl={downloadUrl}
         />,
@@ -132,7 +138,9 @@ describe("MessageList", () => {
       render(
         <MessageList
           view={viewWith({
-            turns: [{ kind: "tool-result", toolUseId: "tu1", content: "File created at: /private/tmp/rc-spike/spike.txt" }],
+            turns: [
+              { kind: "tool-result", toolUseId: "tu1", content: "File created at: /private/tmp/rc-spike/spike.txt" },
+            ],
           })}
         />,
       );

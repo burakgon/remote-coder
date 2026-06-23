@@ -3,7 +3,9 @@ import { parsePushPayload, notificationOptions, clickTargetUrl } from "./sw-hand
 
 describe("parsePushPayload", () => {
   it("parses a well-formed push payload", () => {
-    const p = parsePushPayload(JSON.stringify({ title: "Task done", body: "ok", url: "https://h/?session=S1", tag: "S1" }));
+    const p = parsePushPayload(
+      JSON.stringify({ title: "Task done", body: "ok", url: "https://h/?session=S1", tag: "S1" }),
+    );
     expect(p).toEqual({ title: "Task done", body: "ok", url: "https://h/?session=S1", tag: "S1" });
   });
   it("falls back for empty/malformed input (never throws)", () => {

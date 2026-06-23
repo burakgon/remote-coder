@@ -17,7 +17,10 @@ const components: Components = {
       return <CodeBlock code={text} language={match?.[1]} />;
     }
     return (
-      <code {...props} style={{ fontFamily: "var(--font-mono)", background: "var(--surface-2)", padding: "0 4px", borderRadius: 4 }}>
+      <code
+        {...props}
+        style={{ fontFamily: "var(--font-mono)", background: "var(--surface-2)", padding: "0 4px", borderRadius: 4 }}
+      >
         {children}
       </code>
     );

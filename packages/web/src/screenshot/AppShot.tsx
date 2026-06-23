@@ -34,11 +34,7 @@ function ChatBody() {
         <MessageList view={view} />
         {pending && (
           <div style={{ padding: "var(--sp-4)" }}>
-            <PermissionPrompt
-              permission={pending}
-              onAnswer={() => {}}
-              onAlwaysAllow={() => {}}
-            />
+            <PermissionPrompt permission={pending} onAnswer={() => {}} onAlwaysAllow={() => {}} />
           </div>
         )}
       </div>

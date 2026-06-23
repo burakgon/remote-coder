@@ -19,12 +19,16 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
           }}
           style={{ padding: "var(--sp-5)", display: "grid", gap: "var(--sp-4)", width: "min(92vw, 420px)" }}
         >
-          <div className="display" style={{ fontSize: "var(--fs-2xl)" }}>remote-coder</div>
+          <div className="display" style={{ fontSize: "var(--fs-2xl)" }}>
+            remote-coder
+          </div>
           <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "var(--fs-sm)" }}>
             Enter the access token from your server to connect.
           </p>
           {initialError && (
-            <div role="alert" aria-live="assertive" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>{initialError}</div>
+            <div role="alert" aria-live="assertive" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>
+              {initialError}
+            </div>
           )}
           <label style={{ display: "grid", gap: "var(--sp-2)" }}>
             <span style={{ fontSize: "var(--fs-sm)" }}>Access token</span>
@@ -35,10 +39,20 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
               value={token}
               onChange={(e) => setToken(e.target.value)}
               autoComplete="off"
-              style={{ minHeight: "var(--tap-min)", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text)", padding: "0 var(--sp-3)", fontFamily: "var(--font-mono)" }}
+              style={{
+                minHeight: "var(--tap-min)",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                color: "var(--text)",
+                padding: "0 var(--sp-3)",
+                fontFamily: "var(--font-mono)",
+              }}
             />
           </label>
-          <Button type="submit" variant="primary">Connect</Button>
+          <Button type="submit" variant="primary">
+            Connect
+          </Button>
           <Button type="button" variant="ghost" onClick={() => onAuthenticated("")}>
             Connect without a token (local dev)
           </Button>

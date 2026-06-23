@@ -15,7 +15,11 @@ test("serializeSetMaxThinkingTokens builds a set_max_thinking_tokens control_req
 
 test("serializeSetMaxThinkingTokens carries an optional thinking_display", () => {
   const obj = JSON.parse(serializeSetMaxThinkingTokens(8000, { thinkingDisplay: "summarized" }));
-  expect(obj.request).toEqual({ subtype: "set_max_thinking_tokens", max_thinking_tokens: 8000, thinking_display: "summarized" });
+  expect(obj.request).toEqual({
+    subtype: "set_max_thinking_tokens",
+    max_thinking_tokens: 8000,
+    thinking_display: "summarized",
+  });
 });
 
 test("serializeSetMaxThinkingTokens accepts null to clear the budget", () => {

@@ -183,7 +183,9 @@ export class ClaudeProcess extends EventEmitter {
   }
 
   setMaxThinkingTokens(maxThinkingTokens: number | null, thinkingDisplay?: "summarized" | "omitted" | null): void {
-    this.write(serializeSetMaxThinkingTokens(maxThinkingTokens, thinkingDisplay === undefined ? {} : { thinkingDisplay }));
+    this.write(
+      serializeSetMaxThinkingTokens(maxThinkingTokens, thinkingDisplay === undefined ? {} : { thinkingDisplay }),
+    );
   }
 
   setPermissionMode(mode: string): void {

@@ -14,7 +14,16 @@ const distDir = join(__dirname, "..", "dist-shot");
 const outDir = join(__dirname, "..", "..", "..", "docs", "design");
 mkdirSync(outDir, { recursive: true });
 
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".woff": "font/woff", ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json" };
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".json": "application/json",
+};
 
 const server = createServer(async (req, res) => {
   try {

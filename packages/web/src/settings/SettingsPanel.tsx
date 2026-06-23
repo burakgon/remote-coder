@@ -117,7 +117,14 @@ export function SettingsPanel({
 
           {session && (
             <section style={{ display: "grid", gap: "var(--sp-2)" }}>
-              <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: 1 }}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "var(--fs-xs)",
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                }}
+              >
                 This session (fixed at start)
               </div>
               <div>
@@ -213,13 +220,31 @@ export function SettingsPanel({
             </section>
           )}
 
-          <section style={{ display: "grid", gap: "var(--sp-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--sp-4)" }}>
-            <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: 1 }}>
+          <section
+            style={{
+              display: "grid",
+              gap: "var(--sp-3)",
+              borderTop: "1px solid var(--border)",
+              paddingTop: "var(--sp-4)",
+            }}
+          >
+            <div
+              style={{
+                color: "var(--text-muted)",
+                fontSize: "var(--fs-xs)",
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
               Defaults for new sessions
             </div>
             <label style={{ display: "grid", gap: "var(--sp-2)" }}>
               <span style={{ fontSize: "var(--fs-sm)" }}>Default effort</span>
-              <select value={draft.effort} onChange={(e) => setDraft((d) => ({ ...d, effort: e.target.value }))} style={fieldStyle}>
+              <select
+                value={draft.effort}
+                onChange={(e) => setDraft((d) => ({ ...d, effort: e.target.value }))}
+                style={fieldStyle}
+              >
                 {EFFORTS.map((e) => (
                   <option key={e} value={e}>
                     {e.charAt(0).toUpperCase() + e.slice(1)}
@@ -253,14 +278,28 @@ export function SettingsPanel({
           </section>
 
           {pushState && (
-            <section style={{ display: "grid", gap: "var(--sp-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--sp-4)" }}>
-              <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: 1 }}>
+            <section
+              style={{
+                display: "grid",
+                gap: "var(--sp-3)",
+                borderTop: "1px solid var(--border)",
+                paddingTop: "var(--sp-4)",
+              }}
+            >
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "var(--fs-xs)",
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                }}
+              >
                 Notifications
               </div>
               {pushState === "unsupported" ? (
                 <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", margin: 0 }}>
-                  Web Push needs HTTPS (or localhost) and a supporting browser. Open this app over your
-                  secure tunnel to enable notifications.
+                  Web Push needs HTTPS (or localhost) and a supporting browser. Open this app over your secure tunnel to
+                  enable notifications.
                 </p>
               ) : pushState === "subscribed" ? (
                 <Button variant="ghost" aria-label="Disable notifications" onClick={() => onDisablePush?.()}>

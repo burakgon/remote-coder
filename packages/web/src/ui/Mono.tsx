@@ -8,7 +8,10 @@ export interface MonoProps {
 
 export function Mono({ children, muted, className }: MonoProps) {
   return (
-    <span className={className} style={{ fontFamily: "var(--font-mono)", color: muted ? "var(--text-muted)" : "inherit" }}>
+    <span
+      className={className}
+      style={{ fontFamily: "var(--font-mono)", color: muted ? "var(--text-muted)" : "inherit" }}
+    >
       {children}
     </span>
   );

@@ -25,17 +25,37 @@ test("invalid JSON throws ProtocolParseError", () => {
 });
 
 test("parses system/init with session and model", () => {
-  const line = JSON.stringify({ type: "system", subtype: "init", session_id: "s1", model: "claude-opus-4-8[1m]", tools: ["Bash"], cwd: "/w" });
-  expect(parseLine(line)).toMatchObject({ type: "system", subtype: "init", sessionId: "s1", model: "claude-opus-4-8[1m]", cwd: "/w" });
+  const line = JSON.stringify({
+    type: "system",
+    subtype: "init",
+    session_id: "s1",
+    model: "claude-opus-4-8[1m]",
+    tools: ["Bash"],
+    cwd: "/w",
+  });
+  expect(parseLine(line)).toMatchObject({
+    type: "system",
+    subtype: "init",
+    sessionId: "s1",
+    model: "claude-opus-4-8[1m]",
+    cwd: "/w",
+  });
 });
 
 test("parses a hook_callback control_request: requestId top-level, subtype from request", () => {
-  const line = JSON.stringify({ type: "control_request", request_id: "r1", request: { subtype: "hook_callback", callback_id: "hook_0", input: { tool_name: "Write" } } });
+  const line = JSON.stringify({
+    type: "control_request",
+    request_id: "r1",
+    request: { subtype: "hook_callback", callback_id: "hook_0", input: { tool_name: "Write" } },
+  });
   expect(parseLine(line)).toMatchObject({ type: "control_request", requestId: "r1", subtype: "hook_callback" });
 });
 
 test("parses a control_response: requestId + subtype nested under response", () => {
-  const line = JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: "r1", response: { ok: true } } });
+  const line = JSON.stringify({
+    type: "control_response",
+    response: { subtype: "success", request_id: "r1", response: { ok: true } },
+  });
   expect(parseLine(line)).toMatchObject({ type: "control_response", requestId: "r1", subtype: "success" });
 });
 
@@ -54,6 +74,8 @@ test("golden: simple-turn parses; has system/init and a result; no permission re
 
 test("golden: permission-turn has a hook_callback control_request and a result", () => {
   const cli = inbound(loadFixture("permission-turn"));
-  expect(cli.some((e) => e.type === "control_request" && (e as { subtype: string }).subtype === "hook_callback")).toBe(true);
+  expect(cli.some((e) => e.type === "control_request" && (e as { subtype: string }).subtype === "hook_callback")).toBe(
+    true,
+  );
   expect(cli.some((e) => e.type === "result")).toBe(true);
 });

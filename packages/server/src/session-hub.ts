@@ -195,7 +195,12 @@ export class SessionHub {
     this.store?.touch(id, this.now());
   }
 
-  async answerPermission(id: string, requestId: string, decision: HookPermissionDecision, reason?: string): Promise<void> {
+  async answerPermission(
+    id: string,
+    requestId: string,
+    decision: HookPermissionDecision,
+    reason?: string,
+  ): Promise<void> {
     await this.ensureLive(id);
     this.manager.answerPermission(id, requestId, decision, reason);
     // A skipped/denied AskUserQuestion routes through here (the web client sends a `deny`

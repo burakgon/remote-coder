@@ -81,7 +81,14 @@ function emitToolUseAndPermissionRequest() {
     message: {
       role: "assistant",
       model: "claude-mock",
-      content: [{ type: "tool_use", id: TOOL_USE_ID, name: "Write", input: { file_path: "/mock/cwd/spike.txt", content: "hello\n" } }],
+      content: [
+        {
+          type: "tool_use",
+          id: TOOL_USE_ID,
+          name: "Write",
+          input: { file_path: "/mock/cwd/spike.txt", content: "hello\n" },
+        },
+      ],
     },
     session_id: SESSION_ID,
   });
@@ -110,7 +117,16 @@ function emitPermissionResult(decision) {
   if (decision === "allow") {
     send({
       type: "user",
-      message: { role: "user", content: [{ type: "tool_result", tool_use_id: TOOL_USE_ID, content: "File created successfully at: /mock/cwd/spike.txt" }] },
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: TOOL_USE_ID,
+            content: "File created successfully at: /mock/cwd/spike.txt",
+          },
+        ],
+      },
       session_id: SESSION_ID,
     });
     send({
@@ -130,7 +146,9 @@ function emitPermissionResult(decision) {
       result: "Write was blocked",
       session_id: SESSION_ID,
       total_cost_usd: 0,
-      permission_denials: [{ tool_name: "Write", tool_use_id: TOOL_USE_ID, tool_input: { file_path: "/mock/cwd/spike.txt" } }],
+      permission_denials: [
+        { tool_name: "Write", tool_use_id: TOOL_USE_ID, tool_input: { file_path: "/mock/cwd/spike.txt" } },
+      ],
     });
   }
 }
@@ -151,7 +169,15 @@ function emitQuestionRequest() {
         tool_name: "AskUserQuestion",
         tool_input: {
           questions: [
-            { question: "Which language?", header: "Language", multiSelect: false, options: [{ label: "TypeScript", description: "TS" }, { label: "Python", description: "Py" }] },
+            {
+              question: "Which language?",
+              header: "Language",
+              multiSelect: false,
+              options: [
+                { label: "TypeScript", description: "TS" },
+                { label: "Python", description: "Py" },
+              ],
+            },
           ],
         },
         tool_use_id: "toolu_q_0001",
@@ -164,12 +190,20 @@ function emitQuestionResult(answers) {
   const picked = answers?.["Which language?"] ?? "(none)";
   send({
     type: "user",
-    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_q_0001", content: `Selected: ${picked}` }] },
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "toolu_q_0001", content: `Selected: ${picked}` }],
+    },
     session_id: SESSION_ID,
   });
   send({
-    type: "result", subtype: "success", is_error: false, result: `You picked ${picked}`,
-    session_id: SESSION_ID, total_cost_usd: 0, permission_denials: [],
+    type: "result",
+    subtype: "success",
+    is_error: false,
+    result: `You picked ${picked}`,
+    session_id: SESSION_ID,
+    total_cost_usd: 0,
+    permission_denials: [],
   });
 }
 
@@ -202,8 +236,14 @@ function handle(msg) {
     }
     return;
   }
-  if (msg.type === "control_request" && ["set_model", "set_max_thinking_tokens", "set_permission_mode"].includes(msg.request?.subtype)) {
-    send({ type: "control_response", response: { subtype: "success", request_id: msg.request_id, response: { ok: true } } });
+  if (
+    msg.type === "control_request" &&
+    ["set_model", "set_max_thinking_tokens", "set_permission_mode"].includes(msg.request?.subtype)
+  ) {
+    send({
+      type: "control_response",
+      response: { subtype: "success", request_id: msg.request_id, response: { ok: true } },
+    });
     return;
   }
   if (msg.type === "user") {

@@ -20,7 +20,7 @@ import { createWriteStream } from "node:fs";
 import { argv, env } from "node:process";
 import { randomUUID } from "node:crypto";
 
-const mode = argv[2];           // "first" | "resume"
+const mode = argv[2]; // "first" | "resume"
 const outPath = argv[3] ?? `resume-${mode}-out.jsonl`;
 const sessionId = argv[4];
 if (!["first", "resume"].includes(mode) || !sessionId) {
@@ -34,24 +34,28 @@ const PROMPT =
     ? "Remember this codeword: BANANA42. Just acknowledge with 'OK'."
     : "What was the codeword I told you earlier? Reply with just the codeword.";
 
-function banner(s) { process.stdout.write(s); }
-function record(obj) { out.write(JSON.stringify({ _dir: "out", ...obj }) + "\n"); }
+function banner(s) {
+  process.stdout.write(s);
+}
+function record(obj) {
+  out.write(JSON.stringify({ _dir: "out", ...obj }) + "\n");
+}
 
 const childEnv = { ...env };
 delete childEnv.ANTHROPIC_API_KEY;
 
 // First run: brand-new session with a FIXED id. Resume run: --resume <id>.
 const baseArgs = [
-  "--input-format", "stream-json",
-  "--output-format", "stream-json",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
   "--verbose",
   "--include-partial-messages",
-  "--permission-mode", "default",
+  "--permission-mode",
+  "default",
 ];
-const args =
-  mode === "first"
-    ? [...baseArgs, "--session-id", sessionId]
-    : [...baseArgs, "--resume", sessionId];
+const args = mode === "first" ? [...baseArgs, "--session-id", sessionId] : [...baseArgs, "--resume", sessionId];
 
 banner(`>>> mode=${mode} sessionId=${sessionId}\n>>> claude ${args.join(" ")}\n`);
 
@@ -64,7 +68,9 @@ const child = spawn("claude", args, {
 const KILL_AFTER_MS = 120_000;
 const killTimer = setTimeout(() => {
   banner(`\n>>> SAFETY TIMEOUT — killing child\n`);
-  try { child.kill("SIGKILL"); } catch {}
+  try {
+    child.kill("SIGKILL");
+  } catch {}
 }, KILL_AFTER_MS);
 
 function write(obj) {
@@ -95,7 +101,11 @@ child.stdout.on("data", (chunk) => {
     buf = buf.slice(i + 1);
     if (!line.trim()) continue;
     let msg;
-    try { msg = JSON.parse(line); } catch { continue; }
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      continue;
+    }
 
     if (msg.type === "system" && msg.subtype === "init") {
       banner(`\n>>> system/init session_id=${msg.session_id}\n`);
@@ -110,7 +120,9 @@ child.stdout.on("data", (chunk) => {
       banner(`\n>>> RESULT subtype=${msg.subtype} session_id=${msg.session_id} result=${JSON.stringify(msg.result)}\n`);
       clearTimeout(killTimer);
       // Close stdin so the process EXITS (proves process death for resume).
-      try { child.stdin.end(); } catch {}
+      try {
+        child.stdin.end();
+      } catch {}
     }
   }
 });

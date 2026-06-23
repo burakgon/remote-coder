@@ -1,14 +1,27 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
-import { parseLine, serializeInitialize, serializeUserMessage, serializeHookPermissionResponse, type InboundEvent } from "@remote-coder/protocol";
+import {
+  parseLine,
+  serializeInitialize,
+  serializeUserMessage,
+  serializeHookPermissionResponse,
+  type InboundEvent,
+} from "@remote-coder/protocol";
 
 const MOCK = fileURLToPath(new URL("./helpers/mock-claude-interactive.mjs", import.meta.url));
 
 /** Spawn the mock, collect parsed stdout events; on each event run `drive`, finish when `done`. */
-function runMock(mode: string, drive: (write: (line: string) => void, events: InboundEvent[]) => void, done: (events: InboundEvent[]) => boolean): Promise<InboundEvent[]> {
+function runMock(
+  mode: string,
+  drive: (write: (line: string) => void, events: InboundEvent[]) => void,
+  done: (events: InboundEvent[]) => boolean,
+): Promise<InboundEvent[]> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [MOCK], { env: { ...process.env, MOCK_MODE: mode }, stdio: ["pipe", "pipe", "inherit"] });
+    const child = spawn(process.execPath, [MOCK], {
+      env: { ...process.env, MOCK_MODE: mode },
+      stdio: ["pipe", "pipe", "inherit"],
+    });
     const events: InboundEvent[] = [];
     let buffer = "";
     let settled = false;
@@ -54,7 +67,9 @@ test("mock (simple): initialize -> control_response + init, then user -> result"
     (evs) => evs.some((e) => e.type === "result"),
   );
 
-  expect(events.some((e) => e.type === "control_response" && (e as { requestId?: string }).requestId === "init-test")).toBe(true);
+  expect(
+    events.some((e) => e.type === "control_response" && (e as { requestId?: string }).requestId === "init-test"),
+  ).toBe(true);
   expect(events.some((e) => e.type === "system" && (e as { subtype: string }).subtype === "init")).toBe(true);
   expect(events.some((e) => e.type === "stream_event")).toBe(true);
   expect(events.some((e) => e.type === "assistant")).toBe(true);
@@ -72,7 +87,9 @@ test("mock (permission): user -> hook_callback, allow -> tool_result + result wi
         write(serializeUserMessage("write a file"));
       }
       if (!answered) {
-        const req = evs.find((e) => e.type === "control_request" && (e as { subtype: string }).subtype === "hook_callback");
+        const req = evs.find(
+          (e) => e.type === "control_request" && (e as { subtype: string }).subtype === "hook_callback",
+        );
         if (req) {
           answered = true;
           write(serializeHookPermissionResponse((req as { requestId: string }).requestId, "allow", "ok"));
@@ -82,7 +99,9 @@ test("mock (permission): user -> hook_callback, allow -> tool_result + result wi
     (evs) => evs.some((e) => e.type === "result"),
   );
 
-  expect(events.some((e) => e.type === "control_request" && (e as { subtype: string }).subtype === "hook_callback")).toBe(true);
+  expect(
+    events.some((e) => e.type === "control_request" && (e as { subtype: string }).subtype === "hook_callback"),
+  ).toBe(true);
   expect(events.some((e) => e.type === "user")).toBe(true);
   const result = events.find((e) => e.type === "result");
   expect(result).toBeTruthy();

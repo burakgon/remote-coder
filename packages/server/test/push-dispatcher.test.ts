@@ -28,7 +28,12 @@ test("sends a push to every subscribed device on a result frame", async () => {
   const d = new PushDispatcher({ store, send, baseUrl: "https://host", coalesceMs: 0 });
   d.handleFrame("S1", frame("result", { type: "result", result: "all done", raw: {} }));
   await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
-  const payload = JSON.parse(send.mock.calls[0]![1] as string) as { title: string; body: string; url: string; tag: string };
+  const payload = JSON.parse(send.mock.calls[0]![1] as string) as {
+    title: string;
+    body: string;
+    url: string;
+    tag: string;
+  };
   expect(payload.title).toBe("Task done");
   expect(payload.body).toContain("all done");
   expect(payload.url).toBe("https://host/?session=S1");
@@ -57,7 +62,14 @@ test("coalesces a burst into a single push per session per window (latest wins)"
     const d = new PushDispatcher({ store, send, baseUrl: "https://host", coalesceMs: 5000 });
     d.handleFrame("S1", frame("result", { type: "result", result: "first", raw: {} }, 1));
     d.handleFrame("S1", frame("permission", { requestId: "r", kind: "hook_callback", toolName: "Bash" }, 2));
-    d.handleFrame("S1", frame("question", { requestId: "q", toolInput: {}, questions: [{ question: "Which?", multiSelect: false, options: [] }] }, 3));
+    d.handleFrame(
+      "S1",
+      frame(
+        "question",
+        { requestId: "q", toolInput: {}, questions: [{ question: "Which?", multiSelect: false, options: [] }] },
+        3,
+      ),
+    );
     await vi.advanceTimersByTimeAsync(5000);
     expect(send).toHaveBeenCalledTimes(1);
     const p = JSON.parse(send.mock.calls[0]![1] as string) as { title: string };
@@ -89,7 +101,12 @@ test("a non-gone send failure keeps the subscription and does not abort the othe
   // Both subscriptions are attempted even though one throws...
   await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
   // ...and neither is pruned (a transient failure is not "gone").
-  expect(store.list().map((s) => s.endpoint).sort()).toEqual(["https://boom", "https://ok"]);
+  expect(
+    store
+      .list()
+      .map((s) => s.endpoint)
+      .sort(),
+  ).toEqual(["https://boom", "https://ok"]);
 });
 
 import { SessionHub, SessionManager } from "../src/index.js";

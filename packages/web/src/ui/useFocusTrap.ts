@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 
 /** Selector for the elements a modal can legitimately move keyboard focus to. */
 const FOCUSABLE =
-  'a[href], area[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+  "a[href], area[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), " +
   'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function focusable(container: HTMLElement): HTMLElement[] {

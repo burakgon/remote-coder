@@ -22,13 +22,17 @@ test("loadConfig never surfaces ANTHROPIC_API_KEY", () => {
 test("buildClaudeArgs always sets the stream-json flag block + session id (remote-approval path)", () => {
   const args = buildClaudeArgs({ sessionId: "sid-1" });
   expect(args).toEqual([
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",
-    "--session-id", "sid-1",
-    "--permission-mode", "default",
+    "--session-id",
+    "sid-1",
+    "--permission-mode",
+    "default",
   ]);
 });
 
@@ -69,7 +73,13 @@ test("buildClaudeArgs never includes -p or --print", () => {
 });
 
 test("buildClaudeArgs never includes -p/--print even with all options set", () => {
-  const args = buildClaudeArgs({ sessionId: "s", dangerouslySkip: true, effort: "high", model: "opus", addDirs: ["/a", "/b"] });
+  const args = buildClaudeArgs({
+    sessionId: "s",
+    dangerouslySkip: true,
+    effort: "high",
+    model: "opus",
+    addDirs: ["/a", "/b"],
+  });
   expect(args).not.toContain("-p");
   expect(args).not.toContain("--print");
 });

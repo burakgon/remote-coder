@@ -28,10 +28,7 @@ export function ChatHeader({ session, wireState, onOpenSettings }: ChatHeaderPro
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", minWidth: 0 }}>
-        <strong
-          className="display"
-          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-        >
+        <strong className="display" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {basename(session.cwd)}
         </strong>
         {/* Truncate the cwd so a long path can't overrun and overprint the right-side status

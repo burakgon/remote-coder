@@ -8,7 +8,12 @@ export interface PushPayload {
 /** Defensive parse: the push body is attacker-influenced-ish (it comes from the push service), so a
  * malformed/empty payload must never throw inside the SW push handler — fall back to a generic shape. */
 export function parsePushPayload(raw: string | undefined): PushPayload {
-  const fallback: PushPayload = { title: "remote-coder", body: "A session needs your attention", url: "/", tag: "remote-coder" };
+  const fallback: PushPayload = {
+    title: "remote-coder",
+    body: "A session needs your attention",
+    url: "/",
+    tag: "remote-coder",
+  };
   if (!raw) return fallback;
   try {
     const obj = JSON.parse(raw) as Partial<PushPayload>;

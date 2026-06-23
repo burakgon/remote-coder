@@ -107,14 +107,7 @@ describe("DirectoryPicker", () => {
           <button type="button" onClick={() => setOpen(true)}>
             open picker
           </button>
-          {open && (
-            <DirectoryPicker
-              listDir={listDir}
-              recents={[]}
-              onPick={vi.fn()}
-              onCancel={() => setOpen(false)}
-            />
-          )}
+          {open && <DirectoryPicker listDir={listDir} recents={[]} onPick={vi.fn()} onCancel={() => setOpen(false)} />}
         </div>
       );
     }

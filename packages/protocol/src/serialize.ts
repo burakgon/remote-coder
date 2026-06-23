@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { CanUseToolResult, ContentBlock, ControlRequestEvent, HookPermissionDecision, ImageBlock } from "./types.js";
+import type {
+  CanUseToolResult,
+  ContentBlock,
+  ControlRequestEvent,
+  HookPermissionDecision,
+  ImageBlock,
+} from "./types.js";
 
 export function buildImageBlock(mediaType: string, base64Data: string): ImageBlock {
   return { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } };
@@ -20,19 +26,33 @@ export function serializeInitialize(opts: { requestId?: string; hookCallbackId?:
   });
 }
 
-export function serializeHookPermissionResponse(requestId: string, decision: HookPermissionDecision, reason = ""): string {
+export function serializeHookPermissionResponse(
+  requestId: string,
+  decision: HookPermissionDecision,
+  reason = "",
+): string {
   return JSON.stringify({
     type: "control_response",
     response: {
       subtype: "success",
       request_id: requestId,
-      response: { async: false, hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: decision, permissionDecisionReason: reason } },
+      response: {
+        async: false,
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: decision,
+          permissionDecisionReason: reason,
+        },
+      },
     },
   });
 }
 
 export function serializeCanUseToolResponse(requestId: string, result: CanUseToolResult): string {
-  return JSON.stringify({ type: "control_response", response: { subtype: "success", request_id: requestId, response: result } });
+  return JSON.stringify({
+    type: "control_response",
+    response: { subtype: "success", request_id: requestId, response: result },
+  });
 }
 
 export function classifyPermissionRequest(
@@ -40,10 +60,20 @@ export function classifyPermissionRequest(
 ): { kind: "hook_callback" | "can_use_tool"; toolName?: string; toolInput?: unknown; toolUseId?: string } | null {
   if (ev.subtype === "hook_callback") {
     const input = (ev.request.input ?? {}) as Record<string, unknown>;
-    return { kind: "hook_callback", toolName: input.tool_name as string, toolInput: input.tool_input, toolUseId: input.tool_use_id as string };
+    return {
+      kind: "hook_callback",
+      toolName: input.tool_name as string,
+      toolInput: input.tool_input,
+      toolUseId: input.tool_use_id as string,
+    };
   }
   if (ev.subtype === "can_use_tool") {
-    return { kind: "can_use_tool", toolName: ev.request.tool_name as string, toolInput: ev.request.input, toolUseId: ev.request.tool_use_id as string };
+    return {
+      kind: "can_use_tool",
+      toolName: ev.request.tool_name as string,
+      toolInput: ev.request.input,
+      toolUseId: ev.request.tool_use_id as string,
+    };
   }
   return null;
 }
@@ -143,7 +173,10 @@ export function serializeSetMaxThinkingTokens(
   maxThinkingTokens: number | null,
   opts: { requestId?: string; thinkingDisplay?: "summarized" | "omitted" | null } = {},
 ): string {
-  const request: Record<string, unknown> = { subtype: "set_max_thinking_tokens", max_thinking_tokens: maxThinkingTokens };
+  const request: Record<string, unknown> = {
+    subtype: "set_max_thinking_tokens",
+    max_thinking_tokens: maxThinkingTokens,
+  };
   if (opts.thinkingDisplay !== undefined) request.thinking_display = opts.thinkingDisplay;
   return controlRequest(request, opts.requestId);
 }

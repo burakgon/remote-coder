@@ -5,8 +5,15 @@
 @import "@fontsource/jetbrains-mono/400.css";
 @import "./tokens.css";
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
 body {
   background: var(--bg);
   color: var(--text);
@@ -14,10 +21,27 @@ body {
   font-size: var(--fs-base);
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, .display { font-family: var(--font-display); font-weight: 600; }
-button { font-family: inherit; }
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+button {
+  font-family: inherit;
+}
 /* Visible keyboard focus everywhere (a11y floor) */
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

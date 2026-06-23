@@ -7,14 +7,26 @@ function hookReq(toolName: string, toolInput: unknown): ControlRequestEvent {
     type: "control_request",
     requestId: "rq-1",
     subtype: "hook_callback",
-    request: { subtype: "hook_callback", callback_id: "hook_0", tool_use_id: "tu-1", input: { tool_name: toolName, tool_input: toolInput } },
+    request: {
+      subtype: "hook_callback",
+      callback_id: "hook_0",
+      tool_use_id: "tu-1",
+      input: { tool_name: toolName, tool_input: toolInput },
+    },
     raw: {},
   };
 }
 
 test("classifyQuestionRequest extracts questions for an AskUserQuestion hook", () => {
   const ev = hookReq("AskUserQuestion", {
-    questions: [{ question: "Pick a language", header: "Language", multiSelect: false, options: [{ label: "TypeScript", description: "TS" }, { label: "Python" }] }],
+    questions: [
+      {
+        question: "Pick a language",
+        header: "Language",
+        multiSelect: false,
+        options: [{ label: "TypeScript", description: "TS" }, { label: "Python" }],
+      },
+    ],
   });
   const q = classifyQuestionRequest(ev);
   expect(q?.requestId).toBe("rq-1");

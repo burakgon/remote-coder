@@ -233,7 +233,9 @@ export function ChatView({ session, api, token }: ChatViewProps) {
             // for the displayed effort; model/permissionMode would also reconcile on the next
             // system/init, but reflecting now keeps the UI responsive.
             setSessions(
-              sessions.map((s) => (s.id === session.id ? { ...s, model: model ?? s.model, effort: effort ?? s.effort } : s)),
+              sessions.map((s) =>
+                s.id === session.id ? { ...s, model: model ?? s.model, effort: effort ?? s.effort } : s,
+              ),
             );
             setSettingsOpen(false);
           }}

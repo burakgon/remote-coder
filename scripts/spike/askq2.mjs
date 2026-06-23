@@ -30,8 +30,12 @@ const PROMPT =
   "with two options labeled exactly TypeScript and Python. After I answer, tell me " +
   "in one sentence which language I picked.";
 
-function banner(s) { process.stdout.write(s); }
-function record(obj) { out.write(JSON.stringify({ _dir: "out", ...obj }) + "\n"); }
+function banner(s) {
+  process.stdout.write(s);
+}
+function record(obj) {
+  out.write(JSON.stringify({ _dir: "out", ...obj }) + "\n");
+}
 
 const childEnv = { ...env };
 delete childEnv.ANTHROPIC_API_KEY;
@@ -39,19 +43,27 @@ delete childEnv.ANTHROPIC_API_KEY;
 const child = spawn(
   "claude",
   [
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",
-    "--permission-mode", "default",
-    "--session-id", randomUUID(),
+    "--permission-mode",
+    "default",
+    "--session-id",
+    randomUUID(),
   ],
   { cwd: process.cwd(), env: childEnv, stdio: ["pipe", "pipe", "pipe"] },
 );
 
 const KILL_AFTER_MS = 180_000;
-const killTimer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, KILL_AFTER_MS);
+const killTimer = setTimeout(() => {
+  try {
+    child.kill("SIGKILL");
+  } catch {}
+}, KILL_AFTER_MS);
 
 function write(obj) {
   record(obj);
@@ -115,9 +127,16 @@ child.stdout.on("data", (chunk) => {
     buf = buf.slice(i + 1);
     if (!line.trim()) continue;
     let msg;
-    try { msg = JSON.parse(line); } catch { continue; }
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      continue;
+    }
 
-    if (msg.type === "control_response" && !userSent) { sendUser(); continue; }
+    if (msg.type === "control_response" && !userSent) {
+      sendUser();
+      continue;
+    }
 
     if (msg.type === "control_request") {
       const reqId = msg.request_id ?? msg.id;
@@ -130,7 +149,9 @@ child.stdout.on("data", (chunk) => {
           answeredAskQ = true;
           const { answers, annotations } = buildAnswers(toolInput);
           const updatedInput = { ...toolInput, answers, annotations };
-          banner(`\n>>> AskUserQuestion hook → ALLOW + inject answers=${JSON.stringify(answers)}\n    updatedInput=${JSON.stringify(updatedInput)}\n`);
+          banner(
+            `\n>>> AskUserQuestion hook → ALLOW + inject answers=${JSON.stringify(answers)}\n    updatedInput=${JSON.stringify(updatedInput)}\n`,
+          );
           write(hookAllow(reqId, updatedInput));
         } else {
           banner(`\n>>> hook_callback tool=${tool} → plain ALLOW\n`);
@@ -144,19 +165,27 @@ child.stdout.on("data", (chunk) => {
     if (msg.type === "assistant") {
       for (const block of msg.message?.content ?? []) {
         if (block.type === "text") banner(`\n>>> ASSISTANT TEXT: ${block.text}\n`);
-        if (block.type === "tool_use") banner(`\n>>> ASSISTANT TOOL_USE: ${block.name} input=${JSON.stringify(block.input)}\n`);
+        if (block.type === "tool_use")
+          banner(`\n>>> ASSISTANT TOOL_USE: ${block.name} input=${JSON.stringify(block.input)}\n`);
       }
     }
     if (msg.type === "user" && msg._dir !== "out") {
       for (const block of msg.message?.content ?? []) {
-        if (block.type === "tool_result") banner(`\n>>> TOOL_RESULT (is_error=${block.is_error}): ${JSON.stringify(block.content)}\n`);
+        if (block.type === "tool_result")
+          banner(`\n>>> TOOL_RESULT (is_error=${block.is_error}): ${JSON.stringify(block.content)}\n`);
       }
     }
 
     if (msg.type === "result") {
-      banner(`\n>>> RESULT subtype=${msg.subtype} result=${JSON.stringify(msg.result)}\n    denials=${JSON.stringify(msg.permission_denials)}\n`);
+      banner(
+        `\n>>> RESULT subtype=${msg.subtype} result=${JSON.stringify(msg.result)}\n    denials=${JSON.stringify(msg.permission_denials)}\n`,
+      );
       clearTimeout(killTimer);
-      setTimeout(() => { try { child.stdin.end(); } catch {} }, 1000);
+      setTimeout(() => {
+        try {
+          child.stdin.end();
+        } catch {}
+      }, 1000);
     }
   }
 });

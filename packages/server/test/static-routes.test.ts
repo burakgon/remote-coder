@@ -68,8 +68,13 @@ afterEach(async () => {
 
 function configFor(): ServerRuntimeConfig {
   return {
-    port: 0, bindAddress: "127.0.0.1", accessToken: "tok", fsRoot: dir,
-    maxUploadBytes: 26214400, dataDir: dir, claude: { claudeBin: process.execPath },
+    port: 0,
+    bindAddress: "127.0.0.1",
+    accessToken: "tok",
+    fsRoot: dir,
+    maxUploadBytes: 26214400,
+    dataDir: dir,
+    claude: { claudeBin: process.execPath },
   };
 }
 
@@ -90,7 +95,11 @@ describe("serving the PWA on the same origin", () => {
     result = createServer(configFor(), new SessionManager({ claudeBin: process.execPath }), { webDir });
     const noTok = await result.app.inject({ method: "GET", url: "/sessions" });
     expect(noTok.statusCode).toBe(401);
-    const withTok = await result.app.inject({ method: "GET", url: "/sessions", headers: { authorization: "Bearer tok" } });
+    const withTok = await result.app.inject({
+      method: "GET",
+      url: "/sessions",
+      headers: { authorization: "Bearer tok" },
+    });
     expect(withTok.statusCode).toBe(200);
   });
 
@@ -103,7 +112,11 @@ describe("serving the PWA on the same origin", () => {
 
   test("an unknown API path 404s as JSON (not the SPA shell)", async () => {
     result = createServer(configFor(), new SessionManager({ claudeBin: process.execPath }), { webDir });
-    const res = await result.app.inject({ method: "GET", url: "/sessions/nope", headers: { authorization: "Bearer tok" } });
+    const res = await result.app.inject({
+      method: "GET",
+      url: "/sessions/nope",
+      headers: { authorization: "Bearer tok" },
+    });
     expect(res.statusCode).toBe(404);
     expect(res.headers["content-type"]).toContain("application/json");
   });

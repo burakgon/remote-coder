@@ -5,11 +5,7 @@ export { ClaudeProcess } from "./claude-process.js";
 export type { ClaudeProcessOptions, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
 export { SessionManager } from "./session-manager.js";
 export type { CreateSessionOptions, Session, SessionManagerDeps } from "./session-manager.js";
-export {
-  loadServerConfig,
-  isLoopbackAddress,
-  assertConfigAllowsStart,
-} from "./server-config.js";
+export { loadServerConfig, isLoopbackAddress, assertConfigAllowsStart } from "./server-config.js";
 export type { ServerRuntimeConfig } from "./server-config.js";
 export { AuthGate, extractBearerToken } from "./auth.js";
 export type { AuthGateOptions, AuthCheckResult } from "./auth.js";

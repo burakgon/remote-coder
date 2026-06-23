@@ -87,7 +87,11 @@ export function App() {
   }
 
   if (phase === "validating") {
-    return <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>Connecting…</div>;
+    return (
+      <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>
+        Connecting…
+      </div>
+    );
   }
 
   const list = (
@@ -129,11 +133,23 @@ export function App() {
               // session into another — a cross-session bypass of the permission gate.
               <ChatView key={active.id} session={active} api={api} token={token} />
             ) : (
-              <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>Session not found.</div>
+              <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>
+                Session not found.
+              </div>
             );
           })()
         ) : (
-          <div style={{ display: "grid", placeItems: "center", gap: "var(--sp-4)", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)", textAlign: "center" }}>
+          <div
+            style={{
+              display: "grid",
+              placeItems: "center",
+              gap: "var(--sp-4)",
+              height: "100%",
+              color: "var(--text-muted)",
+              padding: "var(--sp-5)",
+              textAlign: "center",
+            }}
+          >
             <span>Select or start a session.</span>
             {/* A landing-state CTA so a new session is reachable without first opening the mobile
                 sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile). */}

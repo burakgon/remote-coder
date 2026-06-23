@@ -29,9 +29,7 @@ export interface AuthGateOptions {
   now?: () => number;
 }
 
-export type AuthCheckResult =
-  | { ok: true }
-  | { ok: false; reason: "locked" | "invalid" | "missing-token-config" };
+export type AuthCheckResult = { ok: true } | { ok: false; reason: "locked" | "invalid" | "missing-token-config" };
 
 interface ClientState {
   failures: number;

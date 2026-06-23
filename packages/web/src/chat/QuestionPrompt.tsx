@@ -65,7 +65,14 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
         {question.questions.map((q, qi) => (
           <div key={qi} style={{ display: "grid", gap: "var(--sp-2)" }}>
             {q.header && (
-              <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: 1 }}>
+              <div
+                style={{
+                  color: "var(--text-muted)",
+                  fontSize: "var(--fs-xs)",
+                  textTransform: "uppercase",
+                  letterSpacing: 1,
+                }}
+              >
                 {q.header}
               </div>
             )}
@@ -101,7 +108,9 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                   >
                     <span>{opt.label}</span>
                     {opt.description && (
-                      <span style={{ color: selected ? "var(--on-accent)" : "var(--text-muted)", fontSize: "var(--fs-xs)" }}>
+                      <span
+                        style={{ color: selected ? "var(--on-accent)" : "var(--text-muted)", fontSize: "var(--fs-xs)" }}
+                      >
                         {opt.description}
                       </span>
                     )}

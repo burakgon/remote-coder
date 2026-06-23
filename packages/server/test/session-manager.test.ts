@@ -39,7 +39,12 @@ test("two concurrent sessions are independent", async () => {
   const a = await mgr.createSession({ cwd: process.cwd() });
   const b = await mgr.createSession({ cwd: process.cwd() });
   expect(a.id).not.toBe(b.id);
-  expect(mgr.listSessions().map((s) => s.id).sort()).toEqual([a.id, b.id].sort());
+  expect(
+    mgr
+      .listSessions()
+      .map((s) => s.id)
+      .sort(),
+  ).toEqual([a.id, b.id].sort());
 
   const ra: Promise<ResultEvent[]> = once(a.process, "result") as Promise<ResultEvent[]>;
   const rb: Promise<ResultEvent[]> = once(b.process, "result") as Promise<ResultEvent[]>;

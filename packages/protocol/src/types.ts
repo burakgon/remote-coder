@@ -8,9 +8,24 @@ export interface SystemEvent {
   cwd?: string;
   raw: unknown;
 }
-export interface StreamEvent { type: "stream_event"; event: unknown; sessionId?: string; raw: unknown; }
-export interface AssistantEvent { type: "assistant"; message: unknown; sessionId?: string; raw: unknown; }
-export interface UserEvent { type: "user"; message: unknown; sessionId?: string; raw: unknown; }
+export interface StreamEvent {
+  type: "stream_event";
+  event: unknown;
+  sessionId?: string;
+  raw: unknown;
+}
+export interface AssistantEvent {
+  type: "assistant";
+  message: unknown;
+  sessionId?: string;
+  raw: unknown;
+}
+export interface UserEvent {
+  type: "user";
+  message: unknown;
+  sessionId?: string;
+  raw: unknown;
+}
 export interface ResultEvent {
   type: "result";
   subtype?: string;
@@ -35,8 +50,15 @@ export interface ControlResponseEvent {
   response: Record<string, unknown>;
   raw: unknown;
 }
-export interface RateLimitEvent { type: "rate_limit_event"; raw: unknown; }
-export interface UnknownEvent { type: "unknown"; rawType?: string; raw: unknown; }
+export interface RateLimitEvent {
+  type: "rate_limit_event";
+  raw: unknown;
+}
+export interface UnknownEvent {
+  type: "unknown";
+  rawType?: string;
+  raw: unknown;
+}
 
 export type InboundEvent =
   | SystemEvent
@@ -49,8 +71,14 @@ export type InboundEvent =
   | RateLimitEvent
   | UnknownEvent;
 
-export interface TextBlock { type: "text"; text: string; }
-export interface ImageBlock { type: "image"; source: { type: "base64"; media_type: string; data: string }; }
+export interface TextBlock {
+  type: "text";
+  text: string;
+}
+export interface ImageBlock {
+  type: "image";
+  source: { type: "base64"; media_type: string; data: string };
+}
 export type ContentBlock = TextBlock | ImageBlock;
 
 export type HookPermissionDecision = "allow" | "deny";

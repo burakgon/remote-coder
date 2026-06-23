@@ -91,7 +91,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     .then(({ app, url, token, tokenGenerated }) => {
       console.log(`remote-coder server listening on ${url}`);
       if (tokenGenerated && token) {
-        console.log(`\n  Access token (generated, stored in the data dir):\n    ${token}\n  Open: ${url}/?token=${token}\n`);
+        console.log(
+          `\n  Access token (generated, stored in the data dir):\n    ${token}\n  Open: ${url}/?token=${token}\n`,
+        );
       } else if (!token) {
         console.log(`  (NO_TOKEN tokenless loopback dev mode — no access token required)`);
       }

@@ -63,12 +63,15 @@ const child = spawn(
   [
     // NOTE: no `-p`. Bidirectional stream-json keeps the session interactive
     // enough to round-trip control_requests; it still exits after the result.
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",
-    "--permission-mode", "default",
+    "--permission-mode",
+    "default",
   ],
   { cwd: process.cwd(), env: childEnv, stdio: ["pipe", "pipe", "pipe"] },
 );
@@ -132,7 +135,11 @@ child.stdout.on("data", (chunk) => {
     buf = buf.slice(i + 1);
     if (!line.trim()) continue;
     let msg;
-    try { msg = JSON.parse(line); } catch { continue; }
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      continue;
+    }
 
     // The CLI's reply to our initialize handshake → now send the user message.
     if (msg.type === "control_response" && !userSent) {
@@ -147,7 +154,9 @@ child.stdout.on("data", (chunk) => {
         answeredHook = true;
         const reply = hookResponse(reqId);
         const tool = msg.request?.input?.tool_name ?? "?";
-        banner(`\n>>> SENDING control_response (hook ${hookDecision} for tool=${tool}, reqId=${reqId}):\n${JSON.stringify(reply)}\n`);
+        banner(
+          `\n>>> SENDING control_response (hook ${hookDecision} for tool=${tool}, reqId=${reqId}):\n${JSON.stringify(reply)}\n`,
+        );
         write(reply);
       } else if (sub === "can_use_tool") {
         // The direct permission path, if the binary ever uses it over stdio.
@@ -170,7 +179,11 @@ child.stdout.on("data", (chunk) => {
     if (msg.type === "result") {
       banner(`\n>>> RESULT (${msg.subtype}); closing stdin\n`);
       clearTimeout(killTimer);
-      try { child.stdin.end(); } catch { /* already closed */ }
+      try {
+        child.stdin.end();
+      } catch {
+        /* already closed */
+      }
     }
   }
 });

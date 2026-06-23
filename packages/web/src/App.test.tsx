@@ -26,9 +26,7 @@ describe("App token validation on load", () => {
     saveToken("good-token");
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
-        sessions: [
-          { id: "s1", cwd: "/home/u/remote-coder", dangerouslySkip: false, status: "running", createdAt: 1 },
-        ],
+        sessions: [{ id: "s1", cwd: "/home/u/remote-coder", dangerouslySkip: false, status: "running", createdAt: 1 }],
       }),
     );
 
@@ -122,8 +120,20 @@ class CapturingWebSocket {
 }
 
 describe("App — auto-allow rules are scoped per session (no cross-session leak)", () => {
-  const sessionA: SessionMeta = { id: "a", cwd: "/home/u/proj-a", dangerouslySkip: false, status: "running", createdAt: 1 };
-  const sessionB: SessionMeta = { id: "b", cwd: "/home/u/proj-b", dangerouslySkip: false, status: "running", createdAt: 2 };
+  const sessionA: SessionMeta = {
+    id: "a",
+    cwd: "/home/u/proj-a",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 1,
+  };
+  const sessionB: SessionMeta = {
+    id: "b",
+    cwd: "/home/u/proj-b",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 2,
+  };
 
   let realWS: typeof WebSocket;
   beforeEach(() => {
@@ -180,7 +190,10 @@ describe("App — auto-allow rules are scoped per session (no cross-session leak
     await screen.findByRole("region", { name: /permission request/i });
     await userEvent.click(screen.getByRole("button", { name: /always allow write/i }));
     // A answered its own request allow, and the auto-allow indicator is visible in A.
-    expect(wsSends).toContainEqual({ sessionId: "a", frame: { type: "permission", requestId: "a-r1", decision: "allow" } });
+    expect(wsSends).toContainEqual({
+      sessionId: "a",
+      frame: { type: "permission", requestId: "a-r1", decision: "allow" },
+    });
     expect(screen.getByText(/auto-allow/i)).toBeInTheDocument();
 
     // Switch the active session to B — this must remount ChatView (key by session id) with fresh
@@ -207,7 +220,13 @@ describe("App — auto-allow rules are scoped per session (no cross-session leak
 });
 
 describe("App notification deep-link (?session=)", () => {
-  const deepSession: SessionMeta = { id: "deep-1", cwd: "/home/u/deep", dangerouslySkip: false, status: "running", createdAt: 1 };
+  const deepSession: SessionMeta = {
+    id: "deep-1",
+    cwd: "/home/u/deep",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 1,
+  };
 
   function setSearch(search: string) {
     // jsdom's location is configurable; replace search and reset pathname so we can assert the clear.
@@ -359,7 +378,12 @@ describe("App full flow", () => {
     FakeWS.last!.push({
       seq: 2,
       kind: "permission",
-      payload: { requestId: "req-1", kind: "hook_callback", toolName: "Write", toolInput: { file_path: "/home/u/proj/a.txt" } },
+      payload: {
+        requestId: "req-1",
+        kind: "hook_callback",
+        toolName: "Write",
+        toolInput: { file_path: "/home/u/proj/a.txt" },
+      },
     });
     const region = await screen.findByRole("region", { name: /permission request/i });
     await userEvent.click(within(region).getByRole("button", { name: /^allow$/i }));

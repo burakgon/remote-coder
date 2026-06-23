@@ -9,9 +9,12 @@ import type { RunDeps } from "../src/index.js";
  * Build a fake startServer that records the env it was called with and never binds a real port.
  * The real `app.close()` is stubbed so no live Fastify instance is required.
  */
-function fakeDeps(
-  overrides: Partial<RunDeps> = {},
-): { deps: RunDeps; out: string[]; err: string[]; calls: NodeJS.ProcessEnv[] } {
+function fakeDeps(overrides: Partial<RunDeps> = {}): {
+  deps: RunDeps;
+  out: string[];
+  err: string[];
+  calls: NodeJS.ProcessEnv[];
+} {
   const out: string[] = [];
   const err: string[] = [];
   const calls: NodeJS.ProcessEnv[] = [];

@@ -67,7 +67,12 @@ export function DirectoryPicker({ listDir, recents, onPick, onCancel }: Director
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
-  const entries: DirEntry[] = listing ? fuzzyFilter(listing.entries.filter((e) => e.isDirectory), filter) : [];
+  const entries: DirEntry[] = listing
+    ? fuzzyFilter(
+        listing.entries.filter((e) => e.isDirectory),
+        filter,
+      )
+    : [];
 
   return (
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Pick a directory" className="rc-picker">
@@ -156,9 +161,7 @@ export function DirectoryPicker({ listDir, recents, onPick, onCancel }: Director
             ))}
           </ul>
           {listing && entries.length === 0 && !error && (
-            <div className="rc-picker__hint">
-              {filter ? "No matches." : "No subdirectories here."}
-            </div>
+            <div className="rc-picker__hint">{filter ? "No matches." : "No subdirectories here."}</div>
           )}
         </section>
       </div>

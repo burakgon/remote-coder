@@ -17,9 +17,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@remote-coder/protocol": fileURLToPath(
-        new URL("../protocol/src/index.ts", import.meta.url),
-      ),
+      "@remote-coder/protocol": fileURLToPath(new URL("../protocol/src/index.ts", import.meta.url)),
     },
   },
 });

@@ -1,31 +1,41 @@
 :root {
   color-scheme: dark;
   /* Surfaces — cool ink, not pure black */
-  --bg: #0E1116;
-  --surface: #161B22;
-  --surface-2: #1C232C;
-  --border: #262E38;
+  --bg: #0e1116;
+  --surface: #161b22;
+  --surface-2: #1c232c;
+  --border: #262e38;
   /* Text */
-  --text: #E6EDF3;
-  --text-muted: #8B98A5;
+  --text: #e6edf3;
+  --text-muted: #8b98a5;
   /* Brand / signal accent — warm amber (Claude-warm) */
-  --accent: #E8A33D;
-  --on-accent: #1A1206; /* dark ink for text/icons sitting ON the amber accent */
+  --accent: #e8a33d;
+  --on-accent: #1a1206; /* dark ink for text/icons sitting ON the amber accent */
   /* Semantic STATE colors — used as small dots/edges, NOT fills */
-  --iris: #C9A2FF;   /* awaiting-you (permission/question) — the ONE rare attention color */
-  --cyan: #5AC8E8;   /* running-tool */
-  --ok: #5AD19A;     /* success */
-  --err: #F2685C;    /* error */
+  --iris: #c9a2ff; /* awaiting-you (permission/question) — the ONE rare attention color */
+  --cyan: #5ac8e8; /* running-tool */
+  --ok: #5ad19a; /* success */
+  --err: #f2685c; /* error */
   /* Type scale (rem) */
-  --fs-xs: 0.75rem;  --fs-sm: 0.875rem; --fs-base: 1rem;
-  --fs-lg: 1.125rem; --fs-xl: 1.375rem; --fs-2xl: 1.75rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
   /* Fonts */
   --font-display: "Space Grotesk", system-ui, sans-serif; /* headings, wordmark, labels */
-  --font-body: "Inter", system-ui, sans-serif;            /* body */
+  --font-body: "Inter", system-ui, sans-serif; /* body */
   --font-mono: "JetBrains Mono", ui-monospace, monospace; /* paths, ids, tools, code, picker */
   /* Spacing + radius */
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
-  --radius: 10px; --radius-sm: 6px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --radius: 10px;
+  --radius-sm: 6px;
   /* Layout */
   --tap-min: 44px; /* minimum touch target */
   --rail-w: 300px; /* desktop session rail */

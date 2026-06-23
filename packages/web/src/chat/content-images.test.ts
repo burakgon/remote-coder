@@ -3,7 +3,9 @@ import { imageBlockSrc, extractFilePaths } from "./content-images";
 
 describe("imageBlockSrc", () => {
   it("builds a data url from a base64 image block", () => {
-    expect(imageBlockSrc({ type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } })).toBe("data:image/png;base64,QUJD");
+    expect(imageBlockSrc({ type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } })).toBe(
+      "data:image/png;base64,QUJD",
+    );
   });
 });
 

@@ -1,5 +1,4 @@
-export type LiveWireState =
-  | "idle" | "thinking" | "streaming" | "awaiting" | "running-tool" | "success" | "error";
+export type LiveWireState = "idle" | "thinking" | "streaming" | "awaiting" | "running-tool" | "success" | "error";
 
 const LABELS: Record<LiveWireState, string> = {
   idle: "Idle",
@@ -40,12 +39,22 @@ export function LiveWire({ state, ...rest }: LiveWireProps) {
       role="status"
       aria-label={rest["aria-label"] ?? LABELS[state]}
       data-state={state}
-      style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)", color }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "var(--sp-2)",
+        fontFamily: "var(--font-mono)",
+        fontSize: "var(--fs-xs)",
+        color,
+      }}
     >
       <span
         aria-hidden
         style={{
-          width: 8, height: 8, borderRadius: "50%", background: color,
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: color,
           boxShadow: `0 0 6px ${animated ? color : "transparent"}`,
           animation: animated ? "rc-pulse 1.2s ease-in-out infinite" : "none",
         }}

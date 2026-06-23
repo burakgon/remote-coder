@@ -17,7 +17,13 @@ afterEach(async () => {
 });
 
 const sample = (): StoredSession => ({
-  id: "a", cwd: "/w", dangerouslySkip: false, status: "running", createdAt: 1, lastActivityAt: 1, permissionMode: "acceptEdits",
+  id: "a",
+  cwd: "/w",
+  dangerouslySkip: false,
+  status: "running",
+  createdAt: 1,
+  lastActivityAt: 1,
+  permissionMode: "acceptEdits",
 });
 
 test("permissionMode round-trips through upsert/get", () => {

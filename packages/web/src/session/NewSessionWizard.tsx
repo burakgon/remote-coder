@@ -52,12 +52,7 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
   // Step 1 — the directory picker (the headline). It owns the whole viewport.
   if (!cwd) {
     return (
-      <DirectoryPicker
-        listDir={api.listDir}
-        recents={recents}
-        onPick={(path) => setCwd(path)}
-        onCancel={onClose}
-      />
+      <DirectoryPicker listDir={api.listDir} recents={recents} onPick={(path) => setCwd(path)} onCancel={onClose} />
     );
   }
 
@@ -101,11 +96,7 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
 
           <label className="rc-wizard__field">
             <span className="rc-wizard__field-label">Effort</span>
-            <select
-              value={effort}
-              onChange={(e) => setEffort(e.target.value)}
-              className="rc-wizard__control"
-            >
+            <select value={effort} onChange={(e) => setEffort(e.target.value)} className="rc-wizard__control">
               {EFFORTS.map((e) => (
                 <option key={e} value={e}>
                   {e}
@@ -128,11 +119,7 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
           </label>
 
           <label className={`rc-wizard__danger${dangerouslySkip ? " rc-wizard__danger--on" : ""}`}>
-            <input
-              type="checkbox"
-              checked={dangerouslySkip}
-              onChange={(e) => setDangerouslySkip(e.target.checked)}
-            />
+            <input type="checkbox" checked={dangerouslySkip} onChange={(e) => setDangerouslySkip(e.target.checked)} />
             <span>Dangerously skip permissions (RCE risk)</span>
           </label>
 

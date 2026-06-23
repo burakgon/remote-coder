@@ -65,13 +65,17 @@ delete childEnv.ANTHROPIC_API_KEY;
 const child = spawn(
   "claude",
   [
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",
-    "--permission-mode", "default",
-    "--session-id", randomUUID(),
+    "--permission-mode",
+    "default",
+    "--session-id",
+    randomUUID(),
   ],
   { cwd: process.cwd(), env: childEnv, stdio: ["pipe", "pipe", "pipe"] },
 );
@@ -126,10 +130,10 @@ const findings = {
 };
 // Track the most recent model + permission_mode the CLI reports.
 const observed = {
-  initModels: [],            // model on each system/init
-  assistantModels: [],       // model on each assistant message
-  resultText: [],            // result.result text per turn
-  hookPermissionModes: [],   // permission_mode seen in hook_callback inputs
+  initModels: [], // model on each system/init
+  assistantModels: [], // model on each assistant message
+  resultText: [], // result.result text per turn
+  hookPermissionModes: [], // permission_mode seen in hook_callback inputs
 };
 
 function finish(why) {
@@ -137,8 +141,16 @@ function finish(why) {
   done = true;
   banner(`\n>>> FINISH (${why}); closing stdin\n`);
   clearTimeout(killTimer);
-  try { child.stdin.end(); } catch { /* already closed */ }
-  setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, 5000);
+  try {
+    child.stdin.end();
+  } catch {
+    /* already closed */
+  }
+  setTimeout(() => {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  }, 5000);
 }
 
 function sendUser(text, label) {
@@ -186,12 +198,18 @@ child.stdout.on("data", (chunk) => {
     buf = buf.slice(i + 1);
     if (!line.trim()) continue;
     let msg;
-    try { msg = JSON.parse(line); } catch { continue; }
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      continue;
+    }
 
     // Track observed model / permission mode.
     if (msg.type === "system" && msg.subtype === "init") {
       observed.initModels.push(msg.model);
-      banner(`\n>>> system/init model=${JSON.stringify(msg.model)} permissionMode=${JSON.stringify(msg.permissionMode)}\n`);
+      banner(
+        `\n>>> system/init model=${JSON.stringify(msg.model)} permissionMode=${JSON.stringify(msg.permissionMode)}\n`,
+      );
     }
     if (msg.type === "assistant" && msg.message?.model) {
       observed.assistantModels.push(msg.message.model);
@@ -213,7 +231,9 @@ child.stdout.on("data", (chunk) => {
       const accepted = sub === "success";
       const errorText = msg.response.error ?? null;
       findings[meta.subtype] = { accepted, error: errorText, fields: meta.fields, raw: msg.response };
-      banner(`\n>>> CONTROL_RESPONSE for ${meta.subtype}: subtype=${sub} ${accepted ? "ACCEPTED" : `REJECTED error=${JSON.stringify(errorText)}`}\n`);
+      banner(
+        `\n>>> CONTROL_RESPONSE for ${meta.subtype}: subtype=${sub} ${accepted ? "ACCEPTED" : `REJECTED error=${JSON.stringify(errorText)}`}\n`,
+      );
       continue;
     }
 
@@ -236,7 +256,9 @@ child.stdout.on("data", (chunk) => {
     if (msg.type === "result") {
       resultCount += 1;
       observed.resultText.push(msg.result);
-      banner(`\n>>> RESULT #${resultCount} subtype=${msg.subtype} result=${JSON.stringify(msg.result)} permission_denials=${JSON.stringify(msg.permission_denials)}\n`);
+      banner(
+        `\n>>> RESULT #${resultCount} subtype=${msg.subtype} result=${JSON.stringify(msg.result)} permission_denials=${JSON.stringify(msg.permission_denials)}\n`,
+      );
 
       if (resultCount === 1) {
         // Session is live. Try set_model, then ask the model who it is.
@@ -275,8 +297,13 @@ function printFindings() {
   banner("\n\n================= FINDINGS =================\n");
   for (const k of Object.keys(findings)) {
     const f = findings[k];
-    if (!f) { banner(`${k}: NO RESPONSE SEEN\n`); continue; }
-    banner(`${k}: ${f.accepted ? "ACCEPTED" : "REJECTED"} fields=${JSON.stringify(f.fields)}${f.error ? ` error=${JSON.stringify(f.error)}` : ""}\n`);
+    if (!f) {
+      banner(`${k}: NO RESPONSE SEEN\n`);
+      continue;
+    }
+    banner(
+      `${k}: ${f.accepted ? "ACCEPTED" : "REJECTED"} fields=${JSON.stringify(f.fields)}${f.error ? ` error=${JSON.stringify(f.error)}` : ""}\n`,
+    );
   }
   banner(`\ninit models per turn: ${JSON.stringify(observed.initModels)}\n`);
   banner(`assistant models: ${JSON.stringify([...new Set(observed.assistantModels)])}\n`);

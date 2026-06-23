@@ -26,7 +26,15 @@ const variants: Record<NonNullable<ButtonProps["variant"]>, React.CSSProperties>
   danger: { background: "transparent", color: "var(--err)", borderColor: "var(--err)" },
 };
 
-export function Button({ variant = "ghost", type = "button", disabled, onClick, className, children, ...rest }: ButtonProps) {
+export function Button({
+  variant = "ghost",
+  type = "button",
+  disabled,
+  onClick,
+  className,
+  children,
+  ...rest
+}: ButtonProps) {
   return (
     <button
       type={type}

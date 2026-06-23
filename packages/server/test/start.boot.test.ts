@@ -47,7 +47,11 @@ test("first run on loopback generates + persists + reports a token", async () =>
   // The token actually gates: an unauthenticated request is rejected.
   const res = await running.app.inject({ method: "GET", url: "/sessions" });
   expect(res.statusCode).toBe(401);
-  const ok = await running.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${running.token}` } });
+  const ok = await running.app.inject({
+    method: "GET",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${running.token}` },
+  });
   expect(ok.statusCode).toBe(200);
 });
 
@@ -77,12 +81,20 @@ test("NO_TOKEN=1 on loopback boots tokenless (no token required)", async () => {
 const TOKEN = "boot-token";
 function configFor(): ServerRuntimeConfig {
   return {
-    port: 0, bindAddress: "127.0.0.1", accessToken: TOKEN, fsRoot: process.cwd(),
-    maxUploadBytes: 26214400, dataDir: dir, claude: { claudeBin: process.execPath },
+    port: 0,
+    bindAddress: "127.0.0.1",
+    accessToken: TOKEN,
+    fsRoot: process.cwd(),
+    maxUploadBytes: 26214400,
+    dataDir: dir,
+    claude: { claudeBin: process.execPath },
   };
 }
 function managerFor(mode: string) {
-  return new SessionManager({ claudeBin: process.execPath }, { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: mode }, startTimeoutMs: 5000 });
+  return new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: mode }, startTimeoutMs: 5000 },
+  );
 }
 
 test("a message to a persisted-but-dead (dormant) session resumes it via claude --resume", async () => {
@@ -93,8 +105,10 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
     const store = openSessionStore({ dbPath });
     const s1 = createServer(configFor(), managerFor("simple"), { store, history: new HistoryService() });
     const created = await s1.app.inject({
-      method: "POST", url: "/sessions",
-      headers: { authorization: `Bearer ${TOKEN}` }, payload: { cwd: process.cwd() },
+      method: "POST",
+      url: "/sessions",
+      headers: { authorization: `Bearer ${TOKEN}` },
+      payload: { cwd: process.cwd() },
     });
     expect(created.statusCode).toBe(201);
     id = created.json().session.id as string;
@@ -108,7 +122,11 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
   direct = createServer(configFor(), managerFor("resume"), { store: store2, history: new HistoryService() });
   const url = await direct.app.listen({ port: 0, host: "127.0.0.1" });
 
-  const list = await direct.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` } });
+  const list = await direct.app.inject({
+    method: "GET",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
   const sessions = list.json().sessions as { id: string; status: string }[];
   expect(sessions.find((s) => s.id === id)?.status).toBe("dormant");
 
@@ -132,7 +150,11 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
   });
 
   // After the resume the meta flips to running.
-  const after = await direct.app.inject({ method: "GET", url: "/sessions", headers: { authorization: `Bearer ${TOKEN}` } });
+  const after = await direct.app.inject({
+    method: "GET",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
   const afterSessions = after.json().sessions as { id: string; status: string }[];
   expect(afterSessions.find((s) => s.id === id)?.status).toBe("running");
 }, 30000);

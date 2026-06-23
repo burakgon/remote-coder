@@ -14,11 +14,7 @@ function hubFor(mode: string) {
 }
 
 /** Resolve once a frame matching `pred` arrives on the subscription. */
-function waitForFrame(
-  hub: SessionHub,
-  id: string,
-  pred: (f: ServerFrame) => boolean,
-): Promise<ServerFrame> {
+function waitForFrame(hub: SessionHub, id: string, pred: (f: ServerFrame) => boolean): Promise<ServerFrame> {
   return new Promise((resolve) => {
     const sub = hub.subscribe(id, (f) => {
       if (pred(f)) {

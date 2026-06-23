@@ -19,9 +19,15 @@ afterEach(async () => {
 
 function sample(id: string): StoredSession {
   return {
-    id, cwd: "/work/" + id, model: "claude-opus-4-8", effort: "high",
-    dangerouslySkip: false, displayName: "Session " + id, status: "running",
-    createdAt: 1000, lastActivityAt: 1000,
+    id,
+    cwd: "/work/" + id,
+    model: "claude-opus-4-8",
+    effort: "high",
+    dangerouslySkip: false,
+    displayName: "Session " + id,
+    status: "running",
+    createdAt: 1000,
+    lastActivityAt: 1000,
   };
 }
 
@@ -57,7 +63,12 @@ test("data survives reopening the same db file (durability)", () => {
 test("list returns all rows; delete removes one", () => {
   store.upsert(sample("a"));
   store.upsert(sample("b"));
-  expect(store.list().map((s) => s.id).sort()).toEqual(["a", "b"]);
+  expect(
+    store
+      .list()
+      .map((s) => s.id)
+      .sort(),
+  ).toEqual(["a", "b"]);
   store.delete("a");
   expect(store.list().map((s) => s.id)).toEqual(["b"]);
 });

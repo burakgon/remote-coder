@@ -17,19 +17,27 @@ afterEach(async () => {
 // handleClientFrame, which is wired in Task 11. Un-skipped in Task 11 once `answer` is wired.
 test("AskUserQuestion: question frame -> answer frame -> model reflects the choice", async () => {
   const config: ServerRuntimeConfig = {
-    port: 0, bindAddress: "127.0.0.1", accessToken: TOKEN,
-    fsRoot: process.cwd(), maxUploadBytes: 26214400, claude: { claudeBin: process.execPath },
+    port: 0,
+    bindAddress: "127.0.0.1",
+    accessToken: TOKEN,
+    fsRoot: process.cwd(),
+    maxUploadBytes: 26214400,
+    claude: { claudeBin: process.execPath },
   };
   const manager = new SessionManager(config.claude, {
-    spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000,
+    spawnPrefixArgs: [MOCK],
+    baseEnv: { ...process.env, MOCK_MODE: "question" },
+    startTimeoutMs: 5000,
   });
   current = createServer(config, manager);
   const httpUrl = await current.app.listen({ port: 0, host: "127.0.0.1" });
   const wsBase = httpUrl.replace(/^http/, "ws");
 
   const created = await current.app.inject({
-    method: "POST", url: "/sessions",
-    headers: { authorization: `Bearer ${TOKEN}` }, payload: { cwd: process.cwd() },
+    method: "POST",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+    payload: { cwd: process.cwd() },
   });
   const id = created.json().session.id;
 
@@ -44,7 +52,14 @@ test("AskUserQuestion: question frame -> answer frame -> model reflects the choi
       }
       if (frame.kind === "question") {
         const p = frame.payload as { requestId: string; toolInput: unknown };
-        ws.send(JSON.stringify({ type: "answer", requestId: p.requestId, toolInput: p.toolInput, answers: { "Which language?": "Python" } }));
+        ws.send(
+          JSON.stringify({
+            type: "answer",
+            requestId: p.requestId,
+            toolInput: p.toolInput,
+            answers: { "Which language?": "Python" },
+          }),
+        );
       }
       if (frame.kind === "result") {
         expect((frame.payload as { result?: string }).result).toContain("Python");

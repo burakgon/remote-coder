@@ -26,7 +26,10 @@ const DESKTOP_QUERY = "(min-width: 768px)";
  */
 function useIsDesktop(): boolean {
   const [desktop, setDesktop] = useState(
-    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(DESKTOP_QUERY).matches,
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia(DESKTOP_QUERY).matches,
   );
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -46,7 +49,14 @@ function useIsDesktop(): boolean {
  * the sheet; a backdrop + the sheet's own close button dismiss it. Layout is CSS-driven so the
  * desktop rail is unaffected by `sessionsOpen`.
  */
-export function AppLayout({ children, sessionList, onShowSessions, onHideSessions, sessionsOpen, conversationActive }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  sessionList,
+  onShowSessions,
+  onHideSessions,
+  sessionsOpen,
+  conversationActive,
+}: AppLayoutProps) {
   const open = sessionsOpen ? "true" : "false";
   const isDesktop = useIsDesktop();
   // On desktop the rail is permanently visible, so always mount the list. On mobile the rail is a
@@ -57,12 +67,7 @@ export function AppLayout({ children, sessionList, onShowSessions, onHideSession
   return (
     <div className="rc-shell">
       {sessionsOpen && (
-        <button
-          type="button"
-          className="rc-scrim"
-          aria-label="Close sessions"
-          onClick={onHideSessions}
-        />
+        <button type="button" className="rc-scrim" aria-label="Close sessions" onClick={onHideSessions} />
       )}
 
       <aside className="rc-rail" data-testid="sessions-rail" data-open={open}>

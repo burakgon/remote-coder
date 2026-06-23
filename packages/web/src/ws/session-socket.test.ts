@@ -18,10 +18,20 @@ class FakeWS {
     this.url = url;
     FakeWS.instances.push(this);
   }
-  send(data: string) { this.sent.push(data); }
-  close() { this.readyState = 3; this.onclose?.(); }
-  _open() { this.readyState = 1; this.onopen?.(); }
-  _message(frame: ServerFrame) { this.onmessage?.({ data: JSON.stringify(frame) }); }
+  send(data: string) {
+    this.sent.push(data);
+  }
+  close() {
+    this.readyState = 3;
+    this.onclose?.();
+  }
+  _open() {
+    this.readyState = 1;
+    this.onopen?.();
+  }
+  _message(frame: ServerFrame) {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
 }
 
 describe("SessionSocket", () => {

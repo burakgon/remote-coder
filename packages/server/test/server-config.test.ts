@@ -1,9 +1,5 @@
 import { expect, test } from "vitest";
-import {
-  loadServerConfig,
-  isLoopbackAddress,
-  assertConfigAllowsStart,
-} from "../src/index.js";
+import { loadServerConfig, isLoopbackAddress, assertConfigAllowsStart } from "../src/index.js";
 
 test("loadServerConfig applies safe defaults (loopback, port 4280, no token)", () => {
   const cfg = loadServerConfig({ HOME: "/home/u" });

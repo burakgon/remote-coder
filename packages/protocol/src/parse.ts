@@ -1,7 +1,10 @@
 import type { InboundEvent } from "./types.js";
 
 export class ProtocolParseError extends Error {
-  constructor(message: string, readonly line: string) {
+  constructor(
+    message: string,
+    readonly line: string,
+  ) {
     super(message);
     this.name = "ProtocolParseError";
   }
@@ -49,11 +52,23 @@ export function parseLine(line: string): InboundEvent | null {
       };
     case "control_request": {
       const request = rec(obj.request);
-      return { type: "control_request", requestId: str(obj.request_id) ?? "", subtype: str(request.subtype) ?? "", request, raw: obj };
+      return {
+        type: "control_request",
+        requestId: str(obj.request_id) ?? "",
+        subtype: str(request.subtype) ?? "",
+        request,
+        raw: obj,
+      };
     }
     case "control_response": {
       const response = rec(obj.response);
-      return { type: "control_response", requestId: str(response.request_id), subtype: str(response.subtype), response, raw: obj };
+      return {
+        type: "control_response",
+        requestId: str(response.request_id),
+        subtype: str(response.subtype),
+        response,
+        raw: obj,
+      };
     }
     case "rate_limit_event":
       return { type: "rate_limit_event", raw: obj };

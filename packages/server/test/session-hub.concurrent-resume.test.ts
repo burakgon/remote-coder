@@ -80,9 +80,7 @@ test("a FAILED resume releases the in-flight key so a later message retries", as
   const { hub, manager } = dormantHub(id);
 
   // First attempt: force resumeSession to reject so ensureLive's resume fails.
-  const failingSpy = vi
-    .spyOn(manager, "resumeSession")
-    .mockRejectedValueOnce(new Error("spawn boom"));
+  const failingSpy = vi.spyOn(manager, "resumeSession").mockRejectedValueOnce(new Error("spawn boom"));
   await expect(hub.sendMessage(id, "first")).rejects.toThrow(/spawn boom/);
   expect(failingSpy).toHaveBeenCalledTimes(1);
 

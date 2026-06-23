@@ -5,12 +5,28 @@ import { SettingsPanel } from "./SettingsPanel";
 import type { SessionMeta } from "../types/server";
 import type { SessionDefaults } from "./defaults";
 
-const session: SessionMeta = { id: "s1", cwd: "/p", model: "opus", effort: "high", dangerouslySkip: false, status: "running", createdAt: 1 };
+const session: SessionMeta = {
+  id: "s1",
+  cwd: "/p",
+  model: "opus",
+  effort: "high",
+  dangerouslySkip: false,
+  status: "running",
+  createdAt: 1,
+};
 const defaults: SessionDefaults = { effort: "medium", dangerouslySkip: false };
 
 describe("SettingsPanel", () => {
   it("shows the active session's fixed settings read-only", () => {
-    render(<SettingsPanel session={session} defaults={defaults} onSaveDefaults={vi.fn()} onStopSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <SettingsPanel
+        session={session}
+        defaults={defaults}
+        onSaveDefaults={vi.fn()}
+        onStopSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
   });
@@ -18,7 +34,15 @@ describe("SettingsPanel", () => {
   it("stops the session after a confirm", async () => {
     const onStop = vi.fn();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    render(<SettingsPanel session={session} defaults={defaults} onSaveDefaults={vi.fn()} onStopSession={onStop} onClose={vi.fn()} />);
+    render(
+      <SettingsPanel
+        session={session}
+        defaults={defaults}
+        onSaveDefaults={vi.fn()}
+        onStopSession={onStop}
+        onClose={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: /stop session/i }));
     expect(onStop).toHaveBeenCalledWith("s1");
     vi.restoreAllMocks();
@@ -42,7 +66,15 @@ describe("SettingsPanel", () => {
   });
 
   it("is a trapping modal: aria-modal, focus moves in, and Tab cycles within the dialog", async () => {
-    render(<SettingsPanel session={session} defaults={defaults} onSaveDefaults={vi.fn()} onStopSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <SettingsPanel
+        session={session}
+        defaults={defaults}
+        onSaveDefaults={vi.fn()}
+        onStopSession={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     // On mount focus is pulled into the dialog (first focusable element).

@@ -15,7 +15,15 @@ function Turn({ item, downloadUrl }: { item: TurnItem; downloadUrl?: (path: stri
       );
     case "tool-use":
       return (
-        <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "baseline", color: "var(--cyan)", fontSize: "var(--fs-sm)" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--sp-2)",
+            alignItems: "baseline",
+            color: "var(--cyan)",
+            fontSize: "var(--fs-sm)",
+          }}
+        >
           <span style={{ fontFamily: "var(--font-display)" }}>Tool</span>
           <Mono>{item.name}</Mono>
           <Mono muted>{summarizeInput(item.input)}</Mono>

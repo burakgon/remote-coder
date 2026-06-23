@@ -33,7 +33,11 @@ beforeEach(() => {
 const session: SessionMeta = { id: "s1", cwd: "/home/u/proj", dangerouslySkip: false, status: "running", createdAt: 1 };
 
 const history: ServerFrame[] = [
-  { seq: 1, kind: "event", payload: { type: "assistant", message: { content: [{ type: "text", text: "Hello from history" }] } } },
+  {
+    seq: 1,
+    kind: "event",
+    payload: { type: "assistant", message: { content: [{ type: "text", text: "Hello from history" }] } },
+  },
   { seq: 2, kind: "result", payload: { type: "result", result: "All set", permissionDenials: [] } },
 ];
 

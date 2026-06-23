@@ -66,7 +66,10 @@ export class SessionManager {
    * session whose process is gone (after a restart or crash). The caller supplies the real cwd
    * (stored alongside the session — never reverse-derived from the lossy transcript dir name).
    */
-  async resumeSession(id: string, opts: { cwd: string; model?: string; effort?: string; dangerouslySkip?: boolean }): Promise<Session> {
+  async resumeSession(
+    id: string,
+    opts: { cwd: string; model?: string; effort?: string; dangerouslySkip?: boolean },
+  ): Promise<Session> {
     const proc = new ClaudeProcess({
       claudeBin: this.config.claudeBin,
       cwd: opts.cwd,

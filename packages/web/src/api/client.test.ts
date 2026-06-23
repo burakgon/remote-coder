@@ -16,7 +16,9 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe("ApiClient", () => {
   it("listSessions GETs /sessions with a bearer token and returns the array", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ sessions: [{ id: "s1", cwd: "/p", dangerouslySkip: false, status: "running", createdAt: 1 }] }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ sessions: [{ id: "s1", cwd: "/p", dangerouslySkip: false, status: "running", createdAt: 1 }] }),
+    );
     const api = createApiClient({ baseUrl, getToken: () => "tok" });
     const sessions = await api.listSessions();
     expect(sessions).toHaveLength(1);
@@ -26,7 +28,9 @@ describe("ApiClient", () => {
   });
 
   it("createSession POSTs the body and returns session", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ session: { id: "s2", cwd: "/x", dangerouslySkip: false, status: "running", createdAt: 2 } }, 201));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ session: { id: "s2", cwd: "/x", dangerouslySkip: false, status: "running", createdAt: 2 } }, 201),
+    );
     const api = createApiClient({ baseUrl, getToken: () => undefined });
     const s = await api.createSession({ cwd: "/x", model: "opus" });
     expect(s.id).toBe("s2");
@@ -52,13 +56,17 @@ describe("ApiClient", () => {
 
   it("downloadUrl includes path and token", () => {
     const api = createApiClient({ baseUrl, getToken: () => "tok" });
-    expect(api.downloadUrl("/home/u/a.txt")).toBe(`${baseUrl}/fs/download?path=${encodeURIComponent("/home/u/a.txt")}&token=tok`);
+    expect(api.downloadUrl("/home/u/a.txt")).toBe(
+      `${baseUrl}/fs/download?path=${encodeURIComponent("/home/u/a.txt")}&token=tok`,
+    );
   });
 });
 
 describe("wsUrl", () => {
   it("builds a ws:// url with token and since", () => {
-    expect(wsUrl("http://127.0.0.1:4280", "abc", { token: "t", since: 12 })).toBe("ws://127.0.0.1:4280/sessions/abc/ws?token=t&since=12");
+    expect(wsUrl("http://127.0.0.1:4280", "abc", { token: "t", since: 12 })).toBe(
+      "ws://127.0.0.1:4280/sessions/abc/ws?token=t&since=12",
+    );
   });
   it("omits absent params and upgrades https->wss", () => {
     expect(wsUrl("https://host", "abc", {})).toBe("wss://host/sessions/abc/ws");

@@ -7,8 +7,30 @@ import type { QuestionPayload } from "../types/server";
 function single(): QuestionPayload {
   return {
     requestId: "rq",
-    toolInput: { questions: [{ question: "Which language?", header: "Language", multiSelect: false, options: [{ label: "TypeScript", description: "TS" }, { label: "Python", description: "Py" }] }] },
-    questions: [{ question: "Which language?", header: "Language", multiSelect: false, options: [{ label: "TypeScript", description: "TS" }, { label: "Python", description: "Py" }] }],
+    toolInput: {
+      questions: [
+        {
+          question: "Which language?",
+          header: "Language",
+          multiSelect: false,
+          options: [
+            { label: "TypeScript", description: "TS" },
+            { label: "Python", description: "Py" },
+          ],
+        },
+      ],
+    },
+    questions: [
+      {
+        question: "Which language?",
+        header: "Language",
+        multiSelect: false,
+        options: [
+          { label: "TypeScript", description: "TS" },
+          { label: "Python", description: "Py" },
+        ],
+      },
+    ],
   };
 }
 
@@ -91,7 +113,9 @@ describe("QuestionPrompt", () => {
     // index-based keys they are distinct. Each is independently togglable (first matches by name).
     const q: QuestionPayload = {
       requestId: "rq",
-      toolInput: { questions: [{ question: "Pick one", multiSelect: false, options: [{ label: "Yes" }, { label: "Yes" }] }] },
+      toolInput: {
+        questions: [{ question: "Pick one", multiSelect: false, options: [{ label: "Yes" }, { label: "Yes" }] }],
+      },
       questions: [{ question: "Pick one", multiSelect: false, options: [{ label: "Yes" }, { label: "Yes" }] }],
     };
     render(<QuestionPrompt question={q} onAnswer={() => {}} onCancel={() => {}} />);

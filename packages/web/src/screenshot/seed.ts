@@ -16,9 +16,29 @@ export const SCREENSHOT_TOKEN = "screenshot-demo-token";
 
 // Three sessions for the rail: one Awaiting you (active), one Streaming, one Idle.
 export const SESSIONS: SessionMeta[] = [
-  { id: "sess-active", cwd: "/Users/burakgon/Developer/remote-coder", model: "claude-opus-4-8", dangerouslySkip: false, status: "running", createdAt: Date.now() - 1000 * 60 * 12 },
-  { id: "sess-stream", cwd: "/Users/burakgon/work/api-gateway", model: "claude-opus-4-8", dangerouslySkip: false, status: "running", createdAt: Date.now() - 1000 * 60 * 40 },
-  { id: "sess-idle", cwd: "/Users/burakgon/notes", dangerouslySkip: false, status: "running", createdAt: Date.now() - 1000 * 60 * 90 },
+  {
+    id: "sess-active",
+    cwd: "/Users/burakgon/Developer/remote-coder",
+    model: "claude-opus-4-8",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: Date.now() - 1000 * 60 * 12,
+  },
+  {
+    id: "sess-stream",
+    cwd: "/Users/burakgon/work/api-gateway",
+    model: "claude-opus-4-8",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: Date.now() - 1000 * 60 * 40,
+  },
+  {
+    id: "sess-idle",
+    cwd: "/Users/burakgon/notes",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: Date.now() - 1000 * 60 * 90,
+  },
 ];
 
 export const ACTIVE_ID = "sess-active";
@@ -44,7 +64,9 @@ function activeFrames(): ServerFrame[] {
       kind: "event",
       payload: {
         type: "user",
-        message: { content: [{ type: "text", text: "Capture the protocol notes into a spike file, then run the tests." }] },
+        message: {
+          content: [{ type: "text", text: "Capture the protocol notes into a spike file, then run the tests." }],
+        },
       },
     },
     {
@@ -62,7 +84,12 @@ function activeFrames(): ServerFrame[] {
         type: "assistant",
         message: {
           content: [
-            { type: "tool_use", id: "toolu_01", name: "Write", input: { file_path: "/private/tmp/rc-spike/spike.txt", content: "…" } },
+            {
+              type: "tool_use",
+              id: "toolu_01",
+              name: "Write",
+              input: { file_path: "/private/tmp/rc-spike/spike.txt", content: "…" },
+            },
           ],
         },
       },
@@ -84,8 +111,25 @@ function activeFrames(): ServerFrame[] {
 // Give the Streaming session a little live text so its rail dot reads "Streaming".
 function streamFrames(): ServerFrame[] {
   return [
-    { seq: 1, kind: "event", payload: { type: "user", message: { content: [{ type: "text", text: "Add a token-bucket rate limiter to the gateway." }] } } },
-    { seq: 2, kind: "event", payload: { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "Sketching the limiter — I'll add a per-key bucket…" } } } },
+    {
+      seq: 1,
+      kind: "event",
+      payload: {
+        type: "user",
+        message: { content: [{ type: "text", text: "Add a token-bucket rate limiter to the gateway." }] },
+      },
+    },
+    {
+      seq: 2,
+      kind: "event",
+      payload: {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "text_delta", text: "Sketching the limiter — I'll add a per-key bucket…" },
+        },
+      },
+    },
   ];
 }
 

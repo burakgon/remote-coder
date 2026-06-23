@@ -29,8 +29,10 @@ export interface BuildClaudeArgsOptions {
  */
 export function buildClaudeArgs(opts: BuildClaudeArgsOptions): string[] {
   const args: string[] = [
-    "--input-format", "stream-json",
-    "--output-format", "stream-json",
+    "--input-format",
+    "stream-json",
+    "--output-format",
+    "stream-json",
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",

@@ -111,9 +111,26 @@ function SessionRail() {
       <div style={eyebrow}>mission control</div>
 
       <Surface level={1} as="section">
-        <div style={{ padding: "var(--sp-3) var(--sp-4)", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            padding: "var(--sp-3) var(--sp-4)",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <span style={eyebrow}>Sessions</span>
-          <span style={{ color: "var(--ok)", fontFamily: "var(--font-mono)", fontSize: "var(--fs-xs)", display: "inline-flex", alignItems: "center", gap: "var(--sp-1)" }}>
+          <span
+            style={{
+              color: "var(--ok)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--fs-xs)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--sp-1)",
+            }}
+          >
             <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)" }} />
             linked
           </span>
@@ -133,16 +150,29 @@ function SessionRail() {
                   background: active ? "color-mix(in srgb, var(--iris) 6%, transparent)" : "transparent",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-2)" }}>
+                <div
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-2)" }}
+                >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
                     <WireGlyph state={s.state} />
-                    <strong className="display" style={{ fontSize: "var(--fs-sm)" }}>{s.name}</strong>
+                    <strong className="display" style={{ fontSize: "var(--fs-sm)" }}>
+                      {s.name}
+                    </strong>
                   </span>
                   <LiveWire state={s.state} aria-label={`${s.name} session is ${s.state}`} />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
                   <Mono muted>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: "100%", fontSize: "var(--fs-xs)" }}>
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        display: "block",
+                        maxWidth: "100%",
+                        fontSize: "var(--fs-xs)",
+                      }}
+                    >
                       {s.cwd}
                     </span>
                   </Mono>
@@ -157,7 +187,9 @@ function SessionRail() {
           })}
         </div>
         <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)" }}>
-          <Button variant="ghost" aria-label="Start a new session">+ New session</Button>
+          <Button variant="ghost" aria-label="Start a new session">
+            + New session
+          </Button>
         </div>
       </Surface>
     </aside>
@@ -180,7 +212,9 @@ function ChatView() {
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", minWidth: 0 }}>
-          <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>remote-coder</strong>
+          <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>
+            remote-coder
+          </strong>
           <Mono muted>
             ~/Developer/remote-coder · <span style={{ color: "var(--accent)" }}>main</span>
           </Mono>
@@ -231,7 +265,8 @@ function ChatView() {
               padding: "var(--sp-4)",
               borderLeft: "3px solid var(--iris)",
               borderRadius: "var(--radius)",
-              boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--iris) 22%, transparent), 0 0 24px color-mix(in srgb, var(--iris) 12%, transparent)",
+              boxShadow:
+                "inset 0 0 0 1px color-mix(in srgb, var(--iris) 22%, transparent), 0 0 24px color-mix(in srgb, var(--iris) 12%, transparent)",
               display: "grid",
               gap: "var(--sp-3)",
             }}
@@ -255,9 +290,13 @@ function ChatView() {
       </div>
 
       {/* Composer */}
-      <div style={{ padding: "var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", gap: "var(--sp-2)" }}>
+      <div
+        style={{ padding: "var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", gap: "var(--sp-2)" }}
+      >
         <input placeholder="Message claude…" aria-label="Message claude" style={inputStyle} />
-        <Button variant="primary" aria-label="Send message">Send</Button>
+        <Button variant="primary" aria-label="Send message">
+          Send
+        </Button>
       </div>
     </Surface>
   );
@@ -266,8 +305,12 @@ function ChatView() {
 function DirectoryPicker() {
   return (
     <Surface level={1} as="section">
-      <div style={{ padding: "var(--sp-4)", borderBottom: "1px solid var(--border)", display: "grid", gap: "var(--sp-3)" }}>
-        <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>Pick a directory</strong>
+      <div
+        style={{ padding: "var(--sp-4)", borderBottom: "1px solid var(--border)", display: "grid", gap: "var(--sp-3)" }}
+      >
+        <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>
+          Pick a directory
+        </strong>
         <input
           placeholder="Filter directories…"
           aria-label="Filter directories"
@@ -319,7 +362,9 @@ function DirectoryPicker() {
               }}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
-                <span aria-hidden style={{ color: "var(--text-muted)" }}>▸</span>
+                <span aria-hidden style={{ color: "var(--text-muted)" }}>
+                  ▸
+                </span>
                 <Mono>{d.name}/</Mono>
               </span>
               {d.isGitRepo && <GitBadge branch={d.branch} />}
@@ -328,7 +373,15 @@ function DirectoryPicker() {
         </div>
       </div>
 
-      <div style={{ padding: "var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: "var(--sp-3)" }}>
+      <div
+        style={{
+          padding: "var(--sp-4)",
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: "var(--sp-3)",
+        }}
+      >
         <Button variant="ghost">Cancel</Button>
         <Button variant="primary">Open session here</Button>
       </div>

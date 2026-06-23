@@ -1,4 +1,11 @@
-import type { ContentBlock, DiagnosticPayload, PermissionPayload, QuestionPayload, ResultPayload, ServerFrame } from "../types/server";
+import type {
+  ContentBlock,
+  DiagnosticPayload,
+  PermissionPayload,
+  QuestionPayload,
+  ResultPayload,
+  ServerFrame,
+} from "../types/server";
 import type { LiveWireState } from "../ui/LiveWire";
 
 export type TurnItem =
@@ -24,9 +31,17 @@ export function emptyView(): SessionView {
   return { liveText: "", thinkingText: "", turns: [], diagnostics: [], wireState: "idle", lastSeq: 0 };
 }
 
-interface DeltaEvent { type?: string; index?: number; delta?: { type?: string; text?: string; thinking?: string; partial_json?: string } }
-interface AssistantMsg { message?: { content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }> } }
-interface UserMsg { message?: { content?: Array<{ type?: string; tool_use_id?: string; content?: unknown }> } }
+interface DeltaEvent {
+  type?: string;
+  index?: number;
+  delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
+}
+interface AssistantMsg {
+  message?: { content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }> };
+}
+interface UserMsg {
+  message?: { content?: Array<{ type?: string; tool_use_id?: string; content?: unknown }> };
+}
 
 /**
  * Pure: fold one ServerFrame into the per-session view. Never throws on unknown shapes.
@@ -64,7 +79,10 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     next.liveText = "";
     next.thinkingText = "";
     next.wireState = r.isError ? "error" : "success";
-    next.turns = [...view.turns, { kind: "result", result: r.result, isError: r.isError, totalCostUsd: r.totalCostUsd }];
+    next.turns = [
+      ...view.turns,
+      { kind: "result", result: r.result, isError: r.isError, totalCostUsd: r.totalCostUsd },
+    ];
     return next;
   }
   if (frame.kind === "exit") {
