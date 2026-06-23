@@ -9,7 +9,7 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean"
+    "build": "tsup src/index.ts --format esm --dts --clean --tsconfig tsconfig.build.json"
   },
   "dependencies": {
     "@remote-coder/protocol": "workspace:*"

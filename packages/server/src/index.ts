@@ -3,3 +3,5 @@ export { loadConfig, buildClaudeArgs } from "./config.js";
 export type { ServerConfig, BuildClaudeArgsOptions } from "./config.js";
 export { ClaudeProcess } from "./claude-process.js";
 export type { ClaudeProcessOptions, PermissionEvent } from "./claude-process.js";
+export { SessionManager } from "./session-manager.js";
+export type { CreateSessionOptions, Session, SessionManagerDeps } from "./session-manager.js";
