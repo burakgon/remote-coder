@@ -3,7 +3,7 @@ import { parseArgs, helpText, versionText } from "../src/args.js";
 
 describe("parseArgs", () => {
   test("defaults", () => {
-    expect(parseArgs([])).toEqual({ help: false, version: false, noToken: false });
+    expect(parseArgs([])).toEqual({ help: false, version: false, noToken: false, command: "serve" });
   });
   test("--help / -h", () => {
     expect(parseArgs(["--help"]).help).toBe(true);
@@ -14,6 +14,7 @@ describe("parseArgs", () => {
       help: false,
       version: false,
       noToken: false,
+      command: "serve",
       port: "8080",
       bind: "0.0.0.0",
     });
@@ -30,6 +31,19 @@ describe("parseArgs", () => {
   });
   test("an unknown flag throws a clear error", () => {
     expect(() => parseArgs(["--bogus"])).toThrow(/unknown option.*--bogus/i);
+  });
+  test("defaults to the serve command", () => {
+    expect(parseArgs([]).command).toBe("serve");
+  });
+  test("install subcommand", () => {
+    expect(parseArgs(["install"]).command).toBe("install");
+  });
+  test("uninstall subcommand", () => {
+    expect(parseArgs(["uninstall"]).command).toBe("uninstall");
+  });
+  test("a subcommand is only recognized as the leading positional", () => {
+    // `install` after a flag is a non-leading positional → ignored, stays in serve mode.
+    expect(parseArgs(["--no-token", "install"]).command).toBe("serve");
   });
 });
 
@@ -52,6 +66,11 @@ describe("helpText", () => {
   });
   test("points at the secure remote-access / tunnel note", () => {
     expect(helpText().toLowerCase()).toContain("tunnel");
+  });
+  test("mentions the install / uninstall subcommands", () => {
+    const h = helpText();
+    expect(h).toContain("install");
+    expect(h).toContain("uninstall");
   });
 });
 

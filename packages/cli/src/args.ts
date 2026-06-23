@@ -3,6 +3,8 @@ import { createRequire } from "node:module";
 export interface CliOptions {
   help: boolean;
   version: boolean;
+  /** A leading positional subcommand: serve (default), install, or uninstall. */
+  command: "serve" | "install" | "uninstall";
   port?: string;
   bind?: string;
   noToken: boolean;
@@ -16,9 +18,14 @@ export interface CliOptions {
  * the wrong (default) config. Non-flag positionals are ignored (none are defined yet).
  */
 export function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = { help: false, version: false, noToken: false };
+  const opts: CliOptions = { help: false, version: false, noToken: false, command: "serve" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? "";
+    // A leading positional subcommand selects the mode (serve is the default when absent).
+    if (i === 0 && (arg === "install" || arg === "uninstall")) {
+      opts.command = arg;
+      continue;
+    }
     const eq = arg.indexOf("=");
     const [flag, inlineValue] = eq >= 0 ? [arg.slice(0, eq), arg.slice(eq + 1)] : [arg, undefined];
     const takeValue = (): string | undefined => (inlineValue !== undefined ? inlineValue : argv[(i += 1)]);
@@ -46,6 +53,8 @@ export function helpText(): string {
     "",
     "Usage:",
     "  remote-coder [options]",
+    "  remote-coder install     Install a per-user login service (launchd/systemd --user).",
+    "  remote-coder uninstall   Print how to remove the service.",
     "",
     "Options:",
     "  --port <n>      Port to listen on (default 4280; 0 = pick a free port). Sets PORT.",

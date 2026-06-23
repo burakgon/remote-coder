@@ -1,4 +1,7 @@
-import { describe, expect, test, vi } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { run } from "../src/index.js";
 import type { RunDeps } from "../src/index.js";
 
@@ -119,5 +122,47 @@ describe("run — boot path (mocked startServer, no real listen)", () => {
     const code = await run([], deps);
     expect(code).not.toBe(0);
     expect(err.join("")).toContain("port in use");
+  });
+});
+
+describe("run — install / uninstall subcommands (never the real ~)", () => {
+  // installService resolves the unit dir from os.homedir(), which honors $HOME — point it at a temp
+  // dir so the dispatch never writes into the real ~/Library or ~/.config.
+  let prevHome: string | undefined;
+  let home: string;
+  beforeEach(() => {
+    prevHome = process.env.HOME;
+    home = mkdtempSync(join(tmpdir(), "rc-run-install-"));
+    process.env.HOME = home;
+  });
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test("`install` writes a per-user unit, prints its path, and does NOT start the server", async () => {
+    const { deps, out } = fakeDeps({ env: { REMOTE_CODER_DATA_DIR: join(home, "data") } });
+    const code = await run(["install"], deps);
+    expect(code).toBe(0);
+    expect(deps.startServer).not.toHaveBeenCalled();
+    const text = out.join("");
+    expect(text).toContain("Wrote service unit:");
+    // The unit landed under the temp HOME (LaunchAgent on darwin, systemd --user on linux) — the dir
+    // exists and the dispatch printed the platform's load command.
+    const launchd = join(home, "Library", "LaunchAgents", "com.remote-coder.plist");
+    const systemd = join(home, ".config", "systemd", "user", "remote-coder.service");
+    expect(existsSync(launchd) || existsSync(systemd)).toBe(true);
+    expect(text).toMatch(/launchctl load|systemctl --user/);
+  });
+
+  test("`uninstall` prints both platforms' removal commands and does NOT start the server", async () => {
+    const { deps, out } = fakeDeps();
+    const code = await run(["uninstall"], deps);
+    expect(code).toBe(0);
+    expect(deps.startServer).not.toHaveBeenCalled();
+    const text = out.join("");
+    expect(text).toContain("launchctl unload");
+    expect(text).toContain("systemctl --user disable");
   });
 });

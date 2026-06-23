@@ -71,6 +71,32 @@ export async function run(argv: string[], deps: RunDeps = defaultDeps()): Promis
     return 0;
   }
 
+  if (opts.command === "install") {
+    // Lazy imports so the serve path doesn't pull these in; `install.ts` only needs fs + os.
+    const { installService } = await import("./install.js");
+    const { resolveDataDir } = await import("@remote-coder/server");
+    const cliPath = process.argv[1] ?? "";
+    try {
+      const { path, instructions } = installService({
+        nodePath: process.execPath,
+        cliPath,
+        dataDir: resolveDataDir(deps.env),
+      });
+      deps.stdout(`Wrote service unit: ${path}\n\nTo start it:\n${instructions}\n`);
+    } catch (err) {
+      deps.stderr(`${(err as Error).message}\n`);
+      return 1;
+    }
+    return 0;
+  }
+  if (opts.command === "uninstall") {
+    deps.stdout(
+      "macOS:  launchctl unload -w ~/Library/LaunchAgents/com.remote-coder.plist && rm ~/Library/LaunchAgents/com.remote-coder.plist\n" +
+        "Linux:  systemctl --user disable --now remote-coder && rm ~/.config/systemd/user/remote-coder.service\n",
+    );
+    return 0;
+  }
+
   // Map flags onto the env vars startServer reads (it owns config resolution, stores, VAPID, and
   // serving packages/web/dist when present).
   const env: NodeJS.ProcessEnv = { ...deps.env };
