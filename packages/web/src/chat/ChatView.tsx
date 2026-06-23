@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatHeader } from "./ChatHeader";
+import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { PermissionPrompt } from "./PermissionPrompt";
 import { Button } from "../ui/Button";
@@ -155,8 +156,13 @@ export function ChatView({ session, api, token }: ChatViewProps) {
             />
           </div>
         )}
-        {/* Task 8 adds the composer below. */}
       </div>
+      <Composer
+        onSend={(frame) => send(frame)}
+        onUploadFile={async (file) => {
+          await api.uploadFile(session.cwd, file);
+        }}
+      />
     </div>
   );
 }
