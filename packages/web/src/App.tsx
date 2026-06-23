@@ -10,6 +10,8 @@ import { wireStateForSession } from "./session/status";
 import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
+import { ConnectionBanner } from "./pwa/ConnectionBanner";
+import { useOnline } from "./pwa/online-status";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -20,6 +22,7 @@ export function App() {
   const { sessions, setSessions, setToken, activeSessionId, setActive, views } = useStore();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const online = useOnline();
 
   const api = useMemo(
     () => createApiClient({ baseUrl: API_BASE_URL, getToken: () => (token === "" ? undefined : token) }),
@@ -87,6 +90,7 @@ export function App() {
 
   return (
     <>
+      <ConnectionBanner online={online} />
       <AppLayout
         sessionList={list}
         sessionsOpen={sessionsOpen}
