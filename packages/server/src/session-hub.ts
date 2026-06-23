@@ -136,6 +136,11 @@ export class SessionHub {
     this.manager.stopSession(id);
   }
 
+  /** Stop every live session — used by the server's onClose hook so no child `claude` is left running. */
+  stopAll(): void {
+    for (const id of this.records.keys()) this.stopSession(id);
+  }
+
   private require(id: string): SessionRecord {
     const record = this.records.get(id);
     if (!record) throw new Error(`unknown session: ${id}`);

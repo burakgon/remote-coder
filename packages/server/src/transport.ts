@@ -46,11 +46,15 @@ export function createServer(
   app.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     // No token configured (loopback dev): allow. Non-loopback w/o token is blocked at startup.
     if (!config.accessToken) return;
-    const queryToken = (request.query as { token?: string } | undefined)?.token;
+    // `?token=a&token=b` parses to an array — only a single string is a usable token.
+    // Anything else (array, missing) becomes undefined so the auth path can't be fed a non-string.
+    const q = request.query as { token?: unknown };
+    const queryToken = typeof q?.token === "string" ? q.token : undefined;
     const token = extractBearerToken(request.headers.authorization) ?? queryToken;
     const result = authGate.check(token, request.ip);
     if (!result.ok) {
       reply.code(401).send({ error: "unauthorized" });
+      return;
     }
   });
 
@@ -61,16 +65,23 @@ export function createServer(
   // reads ?token= too). By the time this handler runs, the token is already validated;
   // we only reject an unknown session here.
   app.register(async (wsScope) => {
-    wsScope.get<{ Params: { id: string } }>(
+    wsScope.get<{ Params: { id: string }; Querystring: { since?: string } }>(
       "/sessions/:id/ws",
       { websocket: true },
-      (socket: WebSocket, request: FastifyRequest<{ Params: { id: string } }>) => {
+      (socket: WebSocket, request: FastifyRequest<{ Params: { id: string }; Querystring: { since?: string } }>) => {
         const id = request.params.id;
 
         if (!hub.getSession(id)) {
           socket.close(4404, "session not found");
           return;
         }
+
+        // Optional delta replay: `?since=<seq>` replays only frames AFTER that seq (reconnect
+        // without re-receiving the whole buffer). Ignore an absent/invalid value (full replay).
+        const sinceRaw = request.query.since;
+        const sinceParsed = sinceRaw === undefined ? NaN : Number(sinceRaw);
+        const sinceSeq =
+          Number.isInteger(sinceParsed) && sinceParsed >= 0 ? sinceParsed : undefined;
 
         // SessionHub fan-out is SYNCHRONOUS: a throw from socket.send() (e.g. the socket is
         // closing) would unwind the hub's listener loop straight into the ClaudeProcess emit.
@@ -88,7 +99,7 @@ export function createServer(
               // socket already torn down — nothing more to do
             }
           }
-        });
+        }, sinceSeq);
 
         socket.on("message", (raw: Buffer) => {
           let msg: Record<string, unknown>;
@@ -162,7 +173,7 @@ export function createServer(
     try {
       const file = await fsService.readFileForDownload(request.query.path);
       reply
-        .header("content-disposition", `attachment; filename="${file.filename}"`)
+        .header("content-disposition", contentDisposition(file.filename))
         .header("content-type", "application/octet-stream")
         .send(file.data);
     } catch (err) {
@@ -208,7 +219,26 @@ export function createServer(
     }
   });
 
+  // Graceful shutdown: app.close() must tear down every live session's child `claude`
+  // process, or they leak as orphans (SIGTERM/SIGINT in start.ts close the app).
+  app.addHook("onClose", async () => {
+    hub.stopAll();
+  });
+
   return { app, hub, authGate };
+}
+
+/**
+ * Build a safe `Content-Disposition` value for a download. A filename containing `"`, `\`, or a
+ * CR/LF could break out of the header (header injection) or corrupt the quoted-string. We strip
+ * control chars for the ASCII `filename=` fallback (quotes/backslashes escaped) and carry the full
+ * UTF-8 name via RFC 5987 `filename*=` (percent-encoded), which modern clients prefer.
+ */
+function contentDisposition(filename: string): string {
+  // Drop control chars (incl. CR/LF) from the ASCII fallback, then escape `\` and `"`.
+  const ascii = filename.replace(/[\x00-\x1f\x7f"\\]/g, "_");
+  const encoded = encodeURIComponent(filename);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
 function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unknown>): void {

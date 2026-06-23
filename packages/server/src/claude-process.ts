@@ -46,6 +46,7 @@ export interface DiagnosticEvent {
   message: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class ClaudeProcess extends EventEmitter {
   readonly sessionId: string;
   private readonly opts: ClaudeProcessOptions;
@@ -230,6 +231,7 @@ export class ClaudeProcess extends EventEmitter {
 }
 
 // Typed event overloads.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface ClaudeProcess {
   on(event: "event", listener: (ev: InboundEvent) => void): this;
   on(event: "permission", listener: (perm: PermissionEvent) => void): this;

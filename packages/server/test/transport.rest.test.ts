@@ -37,6 +37,13 @@ test("requests without a valid token get 401", async () => {
   expect(res.statusCode).toBe(401);
 });
 
+test("a non-string ?token= (repeated param -> array) is rejected with 401, not 500", async () => {
+  current = makeServer();
+  // `?token=a&token=b` parses to an array; feeding that to the auth path must not 500.
+  const res = await current.app.inject({ method: "GET", url: "/sessions?token=a&token=b" });
+  expect(res.statusCode).toBe(401);
+});
+
 test("POST /sessions creates a session and GET lists it", async () => {
   current = makeServer();
   const created = await current.app.inject({

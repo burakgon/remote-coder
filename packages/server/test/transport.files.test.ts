@@ -68,6 +68,28 @@ test("GET /fs/download streams a file with an attachment header", async () => {
   expect(res.body).toBe("# hi");
 });
 
+test("GET /fs/download escapes a filename with quotes/control chars (no header break)", async () => {
+  current = makeServer();
+  // A filename with a literal double-quote would break out of the quoted-string in the
+  // Content-Disposition header if interpolated raw. Such a name is legal on disk.
+  const trickyName = 'a"b.txt';
+  writeFileSync(join(root, trickyName), "data");
+  const res = await current.app.inject({
+    method: "GET",
+    url: `/fs/download?path=${encodeURIComponent(join(root, trickyName))}`,
+    headers: auth,
+  });
+  expect(res.statusCode).toBe(200);
+  const cd = res.headers["content-disposition"] as string;
+  // The raw quote must NOT appear unescaped in the ASCII fallback (it is replaced with `_`),
+  // and the full name is carried losslessly via the RFC 5987 filename*= form.
+  expect(cd).toContain('filename="a_b.txt"');
+  expect(cd).toContain("filename*=UTF-8''a%22b.txt");
+  // No CR/LF smuggled into the header value.
+  expect(cd).not.toContain("\n");
+  expect(cd).not.toContain("\r");
+});
+
 test("POST /fs/upload writes a file under the target dir", async () => {
   current = makeServer();
   const boundary = "----rcboundary";

@@ -19,12 +19,21 @@ export async function startServer(
 // Run when executed directly (node dist/start.js), not when imported.
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   startServer()
-    .then(({ url }) => {
-      // eslint-disable-next-line no-console
+    .then(({ app, url }) => {
       console.log(`remote-coder server listening on ${url}`);
+      // Graceful shutdown: app.close() fires the onClose hook, which stops every live
+      // session (and its child `claude`), so a deployment leaves no orphaned processes.
+      const shutdown = (signal: NodeJS.Signals) => {
+        console.log(`received ${signal}, shutting down`);
+        app
+          .close()
+          .then(() => process.exit(0))
+          .catch(() => process.exit(0));
+      };
+      process.on("SIGTERM", () => shutdown("SIGTERM"));
+      process.on("SIGINT", () => shutdown("SIGINT"));
     })
     .catch((err: unknown) => {
-      // eslint-disable-next-line no-console
       console.error(`remote-coder server failed to start: ${(err as Error).message}`);
       process.exit(1);
     });

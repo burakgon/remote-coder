@@ -203,6 +203,59 @@ test("WS: a subscriber is removed on socket close (no leak in the hub)", async (
   });
 });
 
+test("WS: ?since=N delta replay sends only frames with seq > N", async () => {
+  const config = configFor();
+  current = createServer(config, managerFor("simple", config));
+  const base = await listen(current);
+  const id = await createSession(current);
+  const hub = current.hub;
+
+  // Drive a full turn so the buffer holds several frames (init event + stream events + result).
+  await new Promise<void>((resolve, reject) => {
+    let sent = false;
+    const ws = openWs(base, id, TOKEN, (frame, sock) => {
+      if (!sent) {
+        sent = true;
+        sock.send(JSON.stringify({ type: "user", content: "hi" }));
+      }
+      if (frame.kind === "result") {
+        sock.close();
+        resolve();
+      }
+    });
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error("no result over ws (since setup)")), 6000);
+  });
+
+  // Pick a cutoff in the middle of the buffer; reconnect with ?since=cutoff.
+  const all = hub.getHistory(id);
+  expect(all.length).toBeGreaterThan(1);
+  const cutoff = all[Math.floor(all.length / 2)].seq;
+
+  await new Promise<void>((resolve, reject) => {
+    const q = `?token=${encodeURIComponent(TOKEN)}&since=${cutoff}`;
+    const ws = new WebSocket(`${base}/sessions/${id}/ws${q}`);
+    const seqs: number[] = [];
+    ws.on("message", (data: Buffer) => seqs.push((JSON.parse(data.toString()) as ServerFrame).seq));
+    ws.on("error", reject);
+    ws.on("open", () => {
+      // The replay is synchronous on subscribe; give the event loop a tick to flush, then assert.
+      setTimeout(() => {
+        try {
+          expect(seqs.length).toBeGreaterThan(0); // some frames ARE after the cutoff
+          expect(seqs.every((s) => s > cutoff)).toBe(true); // and NONE at or before it
+          ws.close();
+          resolve();
+        } catch (err) {
+          ws.close();
+          reject(err as Error);
+        }
+      }, 200);
+    });
+    setTimeout(() => reject(new Error("since-replay socket never opened")), 6000);
+  });
+});
+
 test("WS: permission round-trip and reconnect replay", async () => {
   const config = configFor();
   current = createServer(config, managerFor("permission", config));
