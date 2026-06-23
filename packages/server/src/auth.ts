@@ -70,6 +70,7 @@ export class AuthGate {
 
   check(presentedToken: string | undefined, clientKey: string): AuthCheckResult {
     if (!this.token) return { ok: false, reason: "missing-token-config" };
+    this.sweepExpired();
 
     const state = this.clients.get(clientKey) ?? { failures: 0, lockedUntil: 0 };
     const t = this.now();
@@ -88,5 +89,21 @@ export class AuthGate {
     }
     this.clients.set(clientKey, state);
     return { ok: false, reason: "invalid" };
+  }
+
+  /** Drop entries whose lockout has expired and whose failure count is 0 — keeps the map bounded. */
+  private sweepExpired(): void {
+    const t = this.now();
+    for (const [key, state] of this.clients) {
+      if (state.lockedUntil <= t && state.failures === 0) this.clients.delete(key);
+    }
+  }
+
+  /** TEST ONLY: number of tracked clients currently locked (lockedUntil in the future). */
+  lockedClientCount(): number {
+    const t = this.now();
+    let n = 0;
+    for (const state of this.clients.values()) if (state.lockedUntil > t) n += 1;
+    return n;
   }
 }

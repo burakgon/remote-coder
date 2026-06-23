@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
-import { FsService } from "./fs-service.js";
+import { FsService, FsError } from "./fs-service.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import { SessionHub } from "./session-hub.js";
@@ -161,7 +161,11 @@ export function createServer(
       const target = request.query.path ?? config.fsRoot;
       return await fsService.listDirectory(target);
     } catch (err) {
-      reply.code(400).send({ error: (err as Error).message });
+      if (err instanceof FsError) {
+        reply.code(err.code === "forbidden" ? 403 : 404).send({ error: err.message });
+      } else {
+        reply.code(400).send({ error: (err as Error).message });
+      }
     }
   });
 
@@ -177,11 +181,10 @@ export function createServer(
         .header("content-type", "application/octet-stream")
         .send(file.data);
     } catch (err) {
-      const message = (err as Error).message;
-      if (message.includes("outside the allowed root")) {
-        reply.code(400).send({ error: message });
+      if (err instanceof FsError) {
+        reply.code(err.code === "forbidden" ? 403 : 404).send({ error: err.message });
       } else {
-        reply.code(404).send({ error: message });
+        reply.code(404).send({ error: (err as Error).message });
       }
     }
   });

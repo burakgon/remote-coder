@@ -13,8 +13,8 @@ export {
 export type { ServerRuntimeConfig } from "./server-config.js";
 export { AuthGate, extractBearerToken } from "./auth.js";
 export type { AuthGateOptions, AuthCheckResult } from "./auth.js";
-export { FsService } from "./fs-service.js";
-export type { DirEntry, DirListing, FsServiceOptions } from "./fs-service.js";
+export { FsService, FsError } from "./fs-service.js";
+export type { DirEntry, DirListing, FsServiceOptions, FsErrorCode } from "./fs-service.js";
 export { ReplayBuffer, isCriticalKind } from "./replay-buffer.js";
 export type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
 export { SessionHub } from "./session-hub.js";

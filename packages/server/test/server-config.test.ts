@@ -44,6 +44,24 @@ test("loadServerConfig never surfaces ANTHROPIC_API_KEY", () => {
   expect(JSON.stringify(cfg)).not.toContain("sk-should-be-ignored");
 });
 
+test("a non-numeric PORT falls back to the default (no NaN)", () => {
+  const cfg = loadServerConfig({ PORT: "not-a-number" } as NodeJS.ProcessEnv);
+  expect(cfg.port).toBe(4280);
+});
+
+test("an out-of-range PORT throws a clear error", () => {
+  expect(() => loadServerConfig({ PORT: "70000" } as NodeJS.ProcessEnv)).toThrow(/PORT/);
+});
+
+test("a non-numeric MAX_UPLOAD_BYTES falls back to the default", () => {
+  const cfg = loadServerConfig({ MAX_UPLOAD_BYTES: "huge" } as NodeJS.ProcessEnv);
+  expect(cfg.maxUploadBytes).toBe(26214400);
+});
+
+test("a non-positive MAX_UPLOAD_BYTES throws", () => {
+  expect(() => loadServerConfig({ MAX_UPLOAD_BYTES: "0" } as NodeJS.ProcessEnv)).toThrow(/MAX_UPLOAD_BYTES/);
+});
+
 test("isLoopbackAddress recognises loopback forms", () => {
   expect(isLoopbackAddress("127.0.0.1")).toBe(true);
   expect(isLoopbackAddress("::1")).toBe(true);

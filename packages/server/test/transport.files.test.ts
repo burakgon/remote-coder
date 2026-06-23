@@ -50,10 +50,18 @@ test("GET /fs/list returns the listing rooted at fsRoot", async () => {
   expect(names).toEqual(["sub", "readme.md"]); // dir first, then file
 });
 
-test("GET /fs/list rejects path traversal with 400", async () => {
+test("GET /fs/list rejects path traversal with 403", async () => {
   current = makeServer();
   const res = await current.app.inject({ method: "GET", url: "/fs/list?path=../..", headers: auth });
-  expect(res.statusCode).toBe(400);
+  expect(res.statusCode).toBe(403);
+});
+
+test("GET /fs/download returns 403 outside root and 404 for a missing in-root file", async () => {
+  current = makeServer();
+  const outside = await current.app.inject({ method: "GET", url: "/fs/download?path=../../etc/hosts", headers: auth });
+  expect(outside.statusCode).toBe(403);
+  const missing = await current.app.inject({ method: "GET", url: `/fs/download?path=${encodeURIComponent(join(root, "nope.txt"))}`, headers: auth });
+  expect(missing.statusCode).toBe(404);
 });
 
 test("GET /fs/download streams a file with an attachment header", async () => {

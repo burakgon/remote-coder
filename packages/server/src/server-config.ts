@@ -22,11 +22,28 @@ export interface ServerRuntimeConfig {
   claude: ServerConfig;
 }
 
+/**
+ * Parse an integer env option. An ABSENT or UNPARSEABLE value falls back to the default (lenient);
+ * a present-but-out-of-range value is a configuration ERROR (fail fast at boot).
+ */
+function parseIntOption(
+  raw: string | undefined,
+  fallback: number,
+  name: string,
+  range: { min?: number; max?: number },
+): number {
+  if (raw === undefined) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  if ((range.min !== undefined && n < range.min) || (range.max !== undefined && n > range.max)) {
+    throw new Error(`invalid ${name}: ${raw} (must be ${range.min ?? "-∞"}..${range.max ?? "∞"})`);
+  }
+  return n;
+}
+
 export function loadServerConfig(env: NodeJS.ProcessEnv): ServerRuntimeConfig {
-  const port = env.PORT ? Number.parseInt(env.PORT, 10) : 4280;
-  const maxUploadBytes = env.MAX_UPLOAD_BYTES
-    ? Number.parseInt(env.MAX_UPLOAD_BYTES, 10)
-    : 26214400;
+  const port = parseIntOption(env.PORT, 4280, "PORT", { min: 1, max: 65535 });
+  const maxUploadBytes = parseIntOption(env.MAX_UPLOAD_BYTES, 26214400, "MAX_UPLOAD_BYTES", { min: 1 });
   const cfg: ServerRuntimeConfig = {
     port,
     bindAddress: env.BIND_ADDRESS ?? "127.0.0.1",

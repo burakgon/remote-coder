@@ -1,7 +1,18 @@
-import { readdir, readFile, writeFile, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, stat, realpath } from "node:fs/promises";
 import { resolve, join, sep, basename } from "node:path";
 import { buildImageBlock } from "@remote-coder/protocol";
 import type { ImageBlock } from "@remote-coder/protocol";
+
+export type FsErrorCode = "forbidden" | "not-found";
+
+export class FsError extends Error {
+  readonly code: FsErrorCode;
+  constructor(code: FsErrorCode, message: string) {
+    super(message);
+    this.name = "FsError";
+    this.code = code;
+  }
+}
 
 export interface DirEntry {
   name: string;
@@ -32,17 +43,38 @@ export class FsService {
   resolveWithinRoot(target: string): string {
     const resolved = resolve(this.root, target);
     if (resolved !== this.root && !resolved.startsWith(this.root + sep)) {
-      throw new Error(`path is outside the allowed root: ${target}`);
+      throw new FsError("forbidden", `path is outside the allowed root: ${target}`);
     }
     return resolved;
   }
 
+  /** Resolve real paths so a symlink inside root cannot point outside it. Missing -> not-found. */
+  private async realWithinRoot(resolvedPath: string): Promise<string> {
+    let realRoot: string;
+    let realTarget: string;
+    try {
+      realRoot = await realpath(this.root);
+    } catch {
+      realRoot = this.root;
+    }
+    try {
+      realTarget = await realpath(resolvedPath);
+    } catch {
+      throw new FsError("not-found", `not found: ${resolvedPath}`);
+    }
+    if (realTarget !== realRoot && !realTarget.startsWith(realRoot + sep)) {
+      throw new FsError("forbidden", `path resolves outside the allowed root`);
+    }
+    return realTarget;
+  }
+
   async listDirectory(target: string): Promise<DirListing> {
     const dir = this.resolveWithinRoot(target);
-    const dirStat = await stat(dir);
+    const realDir = await this.realWithinRoot(dir);
+    const dirStat = await stat(realDir);
     if (!dirStat.isDirectory()) throw new Error(`not a directory: ${target}`);
 
-    const dirents = await readdir(dir, { withFileTypes: true });
+    const dirents = await readdir(realDir, { withFileTypes: true });
     const entries: DirEntry[] = [];
     for (const d of dirents) {
       const full = join(dir, d.name);
@@ -81,7 +113,8 @@ export class FsService {
 
   async readFileForDownload(target: string): Promise<{ filename: string; data: Buffer }> {
     const file = this.resolveWithinRoot(target);
-    const data = await readFile(file);
+    const real = await this.realWithinRoot(file);
+    const data = await readFile(real);
     return { filename: basename(file), data };
   }
 
@@ -90,6 +123,8 @@ export class FsService {
       throw new Error(`invalid upload filename (no path separators allowed): ${filename}`);
     }
     const dir = this.resolveWithinRoot(targetDir);
+    // Realpath the TARGET DIR (the file does not exist yet) so a symlinked dir cannot escape root.
+    await this.realWithinRoot(dir);
     const dest = this.resolveWithinRoot(join(dir, filename));
     await writeFile(dest, data);
     return { path: dest };

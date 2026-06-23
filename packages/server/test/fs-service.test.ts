@@ -1,13 +1,15 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { FsService } from "../src/index.js";
+import { FsService, FsError } from "../src/index.js";
 
 let root: string;
+let outside: string;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "rc-fs-"));
+  outside = mkdtempSync(join(tmpdir(), "rc-outside-"));
   // root/
   //   project-a/.git/HEAD            (a git repo on branch "main")
   //   plain-dir/
@@ -20,6 +22,7 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
+  rmSync(outside, { recursive: true, force: true });
 });
 
 test("listDirectory lists children, dirs first, marks git repos + branch", async () => {
@@ -61,6 +64,19 @@ test("writeUploadedFile writes under root and rejects separators in the name", a
   expect(back.data.toString("utf8")).toBe("data");
   await expect(fs.writeUploadedFile(root, "../evil.txt", Buffer.from("x"))).rejects.toThrow();
   await expect(fs.writeUploadedFile(root, "sub/evil.txt", Buffer.from("x"))).rejects.toThrow();
+});
+
+test("a symlink inside root that points outside root is rejected (realpath defense)", async () => {
+  writeFileSync(join(outside, "secret.txt"), "TOP SECRET");
+  symlinkSync(join(outside, "secret.txt"), join(root, "link.txt"));
+  const svc = new FsService({ root });
+  await expect(svc.readFileForDownload(join(root, "link.txt"))).rejects.toBeInstanceOf(FsError);
+  await expect(svc.readFileForDownload(join(root, "link.txt"))).rejects.toMatchObject({ code: "forbidden" });
+});
+
+test("a missing file throws FsError with code not-found", async () => {
+  const svc = new FsService({ root });
+  await expect(svc.readFileForDownload(join(root, "nope.txt"))).rejects.toMatchObject({ code: "not-found" });
 });
 
 test("buildImageBlockFromUpload returns a protocol image block", () => {

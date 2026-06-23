@@ -38,6 +38,18 @@ test("repeated failures lock the client out, and the lock expires", () => {
   expect(gate.check("s3cret", "ip-x")).toEqual({ ok: true });
 });
 
+test("expired lockout entries are evicted opportunistically (map does not grow unbounded)", () => {
+  let t = 0;
+  const gate = new AuthGate({ token: "secret", maxFailures: 1, lockoutMs: 100, now: () => t });
+  // Lock out client A at t=0.
+  gate.check("wrong", "A"); // 1 failure -> locks
+  expect(gate.lockedClientCount()).toBe(1);
+  // Advance past the lockout window; a check for a DIFFERENT client sweeps A out.
+  t = 1000;
+  gate.check("secret", "B"); // success for B; the sweep removes the expired A entry
+  expect(gate.lockedClientCount()).toBe(0);
+});
+
 test("lockout is per-client; a success resets the failure count", () => {
   const t = 0; // never reassigned in this case (prefer-const); the other case advances the clock
   const gate = new AuthGate({ token: "s3cret", maxFailures: 2, lockoutMs: 1000, now: () => t });
