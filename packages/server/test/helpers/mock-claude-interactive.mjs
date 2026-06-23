@@ -144,6 +144,9 @@ stdin.on("end", () => process.exit(0));
 function handle(msg) {
   if (msg.type === "control_request" && msg.request?.subtype === "initialize") {
     emitInitResponse(msg.request_id);
+    if (MODE === "stderr") {
+      process.stderr.write("auth expired → re-login on the host\n");
+    }
     return;
   }
   if (msg.type === "user") {

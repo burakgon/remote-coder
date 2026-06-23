@@ -41,11 +41,17 @@ export interface PermissionEvent {
   toolUseId?: string;
 }
 
+export interface DiagnosticEvent {
+  source: "stderr" | "parser";
+  message: string;
+}
+
 export class ClaudeProcess extends EventEmitter {
   readonly sessionId: string;
   private readonly opts: ClaudeProcessOptions;
   private child?: ChildProcessWithoutNullStreams;
   private stdoutBuffer = "";
+  private stderrBuffer = "";
   private started = false;
   private initRequestId?: string;
   private spawnPrefixArgs: string[] = [];
@@ -93,7 +99,7 @@ export class ClaudeProcess extends EventEmitter {
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => this.onStdoutChunk(chunk));
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", () => { /* diagnostics surfaced in a later plan; ignore here */ });
+    child.stderr.on("data", (chunk: string) => this.onStderrChunk(chunk));
     child.on("error", (err) => this.emit("error", err));
     child.on("exit", (code, signal) => this.emit("exit", { code, signal }));
 
@@ -174,14 +180,24 @@ export class ClaudeProcess extends EventEmitter {
     }
   }
 
+  private onStderrChunk(chunk: string): void {
+    this.stderrBuffer += chunk;
+    let nl: number;
+    while ((nl = this.stderrBuffer.indexOf("\n")) !== -1) {
+      const line = this.stderrBuffer.slice(0, nl);
+      this.stderrBuffer = this.stderrBuffer.slice(nl + 1);
+      if (line.trim()) this.emit("diagnostic", { source: "stderr", message: line });
+    }
+  }
+
   private handleLine(line: string): void {
     let ev: InboundEvent | null;
     try {
       ev = parseLine(line);
     } catch (err) {
       if (err instanceof ProtocolParseError) {
-        // Malformed line: log + skip, never crash (spec §10).
-        console.warn(`[claude-process ${this.sessionId}] skipping malformed line: ${err.message}`);
+        // Malformed line: surface as a diagnostic + skip, never crash (spec §10).
+        this.emit("diagnostic", { source: "parser", message: err.message });
         return;
       }
       throw err;
@@ -218,16 +234,19 @@ export interface ClaudeProcess {
   on(event: "event", listener: (ev: InboundEvent) => void): this;
   on(event: "permission", listener: (perm: PermissionEvent) => void): this;
   on(event: "result", listener: (result: ResultEvent) => void): this;
+  on(event: "diagnostic", listener: (diag: DiagnosticEvent) => void): this;
   on(event: "exit", listener: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): this;
   on(event: "error", listener: (err: Error) => void): this;
   once(event: "event", listener: (ev: InboundEvent) => void): this;
   once(event: "permission", listener: (perm: PermissionEvent) => void): this;
   once(event: "result", listener: (result: ResultEvent) => void): this;
+  once(event: "diagnostic", listener: (diag: DiagnosticEvent) => void): this;
   once(event: "exit", listener: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): this;
   once(event: "error", listener: (err: Error) => void): this;
   emit(event: "event", ev: InboundEvent): boolean;
   emit(event: "permission", perm: PermissionEvent): boolean;
   emit(event: "result", result: ResultEvent): boolean;
+  emit(event: "diagnostic", diag: DiagnosticEvent): boolean;
   emit(event: "exit", info: { code: number | null; signal: NodeJS.Signals | null }): boolean;
   emit(event: "error", err: Error): boolean;
 }

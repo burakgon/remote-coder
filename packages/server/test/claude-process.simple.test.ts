@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { ClaudeProcess } from "../src/index.js";
 import type { ResultEvent } from "@remote-coder/protocol";
 
@@ -55,13 +55,13 @@ test("malformed stdout lines are skipped, not fatal", async () => {
   const proc = makeProc("simple");
   proc.setSpawnPrefixArgsForTest([MOCK]);
   let errored = false;
+  const diags: { source: string; message: string }[] = [];
   proc.on("error", () => (errored = true));
+  proc.on("diagnostic", (d) => diags.push(d));
   await proc.start();
   // The mock never emits malformed lines, but feeding the line buffer a junk line must not throw.
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   proc.ingestLineForTest("{not json");
-  expect(warn).toHaveBeenCalled();
+  expect(diags.some((d) => d.source === "parser")).toBe(true);
   expect(errored).toBe(false);
-  warn.mockRestore();
   proc.stop();
 });
