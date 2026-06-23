@@ -43,9 +43,12 @@ test("a simple turn emits assistant + result, then the child exits", async () =>
   expect(result.type).toBe("result");
   expect(result.permissionDenials).toEqual([]);
 
-  await exitPromise; // closing stdin on result should let the mock exit
   expect(events).toContain("assistant");
   expect(events).toContain("result");
+
+  // Keep-alive: the process does NOT exit on result. stop() closes stdin -> the mock exits.
+  proc.stop();
+  await exitPromise;
 });
 
 test("malformed stdout lines are skipped, not fatal", async () => {

@@ -149,11 +149,19 @@ export class ClaudeProcess extends EventEmitter {
   }
 
   stop(): void {
-    if (this.child && !this.child.killed) this.child.kill();
+    if (!this.child || this.child.killed) return;
+    // Keep-alive teardown: close stdin first so the child can exit cleanly, then kill.
+    if (this.child.stdin.writable) this.child.stdin.end();
+    this.child.kill();
   }
 
   private write(line: string): void {
-    this.child?.stdin.write(line + "\n");
+    if (!this.child || !this.child.stdin.writable) {
+      // Write after teardown: surface a clear error, never crash (spec §10).
+      this.emit("error", new Error(`write after teardown (session ${this.sessionId})`));
+      return;
+    }
+    this.child.stdin.write(line + "\n");
   }
 
   private onStdoutChunk(chunk: string): void {
@@ -198,9 +206,9 @@ export class ClaudeProcess extends EventEmitter {
     }
 
     if (ev.type === "result") {
+      // Multi-turn keep-alive: `result` only marks turn completion. The process
+      // stays alive for the next sendUserMessage; stdin is closed only in stop().
       this.emit("result", ev as ResultEvent);
-      // Lifecycle: on result, close stdin so the child exits.
-      this.child?.stdin.end();
     }
   }
 }
