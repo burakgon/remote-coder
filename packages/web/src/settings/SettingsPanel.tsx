@@ -15,6 +15,10 @@ export interface SettingsPanelProps {
   onStopSession?: (id: string) => void;
   /** When provided, the active-session block becomes editable and applies changes live. */
   onApplyLiveSettings?: (s: { model?: string; effort?: string; permissionMode?: string }) => void;
+  /** Push opt-in handlers. When omitted, the Notifications section is hidden (e.g. in tests/screenshots). */
+  pushState?: "subscribed" | "unsubscribed" | "unsupported";
+  onEnablePush?: () => void;
+  onDisablePush?: () => void;
   onClose: () => void;
 }
 
@@ -34,6 +38,9 @@ export function SettingsPanel({
   onSaveDefaults,
   onStopSession,
   onApplyLiveSettings,
+  pushState,
+  onEnablePush,
+  onDisablePush,
   onClose,
 }: SettingsPanelProps) {
   const [draft, setDraft] = useState<SessionDefaults>(defaults);
@@ -245,6 +252,31 @@ export function SettingsPanel({
               Save defaults
             </Button>
           </section>
+
+          {pushState && (
+            <section style={{ display: "grid", gap: "var(--sp-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--sp-4)" }}>
+              <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", textTransform: "uppercase", letterSpacing: 1 }}>
+                Notifications
+              </div>
+              {pushState === "unsupported" ? (
+                <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", margin: 0 }}>
+                  Web Push needs HTTPS (or localhost) and a supporting browser. Open this app over your
+                  secure tunnel to enable notifications.
+                </p>
+              ) : pushState === "subscribed" ? (
+                <Button variant="ghost" aria-label="Disable notifications" onClick={() => onDisablePush?.()}>
+                  Notifications on — tap to disable
+                </Button>
+              ) : (
+                <Button variant="primary" aria-label="Enable notifications" onClick={() => onEnablePush?.()}>
+                  Enable notifications
+                </Button>
+              )}
+              <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", margin: 0 }}>
+                Get a push when a session finishes a task or needs your permission/answer.
+              </p>
+            </section>
+          )}
 
           <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", margin: 0 }}>
             The access token is stored in this browser only (localStorage).

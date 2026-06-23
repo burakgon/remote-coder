@@ -25,6 +25,9 @@ export interface ApiClient {
   listDir(path?: string): Promise<DirListing>;
   uploadFile(dir: string, file: File): Promise<{ path: string }>;
   downloadUrl(path: string): string;
+  getVapidPublicKey(): Promise<string>;
+  subscribePush(sub: PushSubscriptionJSON): Promise<void>;
+  unsubscribePush(endpoint: string): Promise<void>;
 }
 
 export interface ApiClientOptions {
@@ -113,6 +116,24 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       const token = getToken();
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
       return `${baseUrl}/fs/download?path=${encodeURIComponent(path)}${tokenParam}`;
+    },
+    async getVapidPublicKey() {
+      const body = await req<{ publicKey: string }>("/push/vapid", { headers: headers() });
+      return body.publicKey;
+    },
+    async subscribePush(sub) {
+      await req<{ ok: true }>("/push/subscribe", {
+        method: "POST",
+        headers: headers({ "content-type": "application/json" }),
+        body: JSON.stringify({ endpoint: sub.endpoint, keys: sub.keys }),
+      });
+    },
+    async unsubscribePush(endpoint) {
+      await req<{ ok: true }>("/push/unsubscribe", {
+        method: "POST",
+        headers: headers({ "content-type": "application/json" }),
+        body: JSON.stringify({ endpoint }),
+      });
     },
   };
 }

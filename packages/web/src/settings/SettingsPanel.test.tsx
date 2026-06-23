@@ -149,4 +149,36 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
   });
+
+  it("shows an opt-in button when push is unsubscribed and fires onEnablePush", async () => {
+    const onEnablePush = vi.fn();
+    render(
+      <SettingsPanel
+        session={session}
+        defaults={defaults}
+        onSaveDefaults={vi.fn()}
+        onStopSession={vi.fn()}
+        onClose={vi.fn()}
+        pushState="unsubscribed"
+        onEnablePush={onEnablePush}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Enable notifications" }));
+    expect(onEnablePush).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a disable control when already subscribed", () => {
+    render(
+      <SettingsPanel
+        session={session}
+        defaults={defaults}
+        onSaveDefaults={vi.fn()}
+        onStopSession={vi.fn()}
+        onClose={vi.fn()}
+        pushState="subscribed"
+        onDisablePush={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Disable notifications" })).toBeInTheDocument();
+  });
 });

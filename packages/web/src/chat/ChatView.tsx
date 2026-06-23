@@ -12,6 +12,7 @@ import { wireStateForSession } from "../session/status";
 import { emptyView } from "../store/frame-reducer";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { loadDefaults, saveDefaults, EFFORT_THINKING_TOKENS } from "../settings/defaults";
+import { enablePush, disablePush, currentPushState } from "../pwa/push";
 import type { ApiClient } from "../api/client";
 import type { SessionMeta } from "../types/server";
 
@@ -28,6 +29,12 @@ export function ChatView({ session, api, token }: ChatViewProps) {
   const sessions = useStore((s) => s.sessions);
   const setSessions = useStore((s) => s.setSessions);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Reflect the device's current push-subscription state in Settings. No permission is requested
+  // here — `currentPushState` only reads the existing subscription (the opt-in is a deliberate tap).
+  const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported">("unsubscribed");
+  useEffect(() => {
+    void currentPushState().then(setPushState);
+  }, []);
 
   // Open the live socket (frames flow into the store via the hook).
   const { send } = useSessionSocket(session, token);
@@ -229,6 +236,17 @@ export function ChatView({ session, api, token }: ChatViewProps) {
               sessions.map((s) => (s.id === session.id ? { ...s, model: model ?? s.model, effort: effort ?? s.effort } : s)),
             );
             setSettingsOpen(false);
+          }}
+          pushState={pushState}
+          onEnablePush={async () => {
+            const result = await enablePush(api);
+            setPushState(
+              result === "subscribed" ? "subscribed" : result === "unsupported" ? "unsupported" : "unsubscribed",
+            );
+          }}
+          onDisablePush={async () => {
+            await disablePush(api);
+            setPushState("unsubscribed");
           }}
           onClose={() => setSettingsOpen(false)}
         />
