@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-shot/
 *.log
 .DS_Store
 .env

@@ -6,22 +6,29 @@ import { validateImage, fileToBase64 } from "./image-util";
 import { matchSlash } from "./slash";
 import type { OutboundFrame } from "../types/server";
 
-export interface ComposerProps {
-  onSend: (frame: OutboundFrame) => void;
-  onUploadFile: (file: File) => Promise<void>;
-  disabled?: boolean;
-}
-
-interface PendingImage {
+export interface PendingImage {
   id: string;
   mediaType: string;
   dataBase64: string;
   name: string;
 }
 
-export function Composer({ onSend, onUploadFile, disabled }: ComposerProps) {
-  const [text, setText] = useState("");
-  const [images, setImages] = useState<PendingImage[]>([]);
+export interface ComposerProps {
+  onSend: (frame: OutboundFrame) => void;
+  onUploadFile: (file: File) => Promise<void>;
+  disabled?: boolean;
+  /**
+   * Initial composer contents. Optional and defaulting to empty — production (`ChatView`) never
+   * passes these. They exist so a non-interactive preview (the screenshot harness) can show the
+   * REAL composer pre-filled with a draft + attached image thumbnail, instead of a hand-drawn mock.
+   */
+  initialText?: string;
+  initialImages?: PendingImage[];
+}
+
+export function Composer({ onSend, onUploadFile, disabled, initialText, initialImages }: ComposerProps) {
+  const [text, setText] = useState(initialText ?? "");
+  const [images, setImages] = useState<PendingImage[]>(initialImages ?? []);
   const [error, setError] = useState<string | undefined>();
   const imageInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
