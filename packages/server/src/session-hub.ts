@@ -60,6 +60,15 @@ export class SessionHub {
   private readonly store?: SessionStore;
   private readonly history?: HistoryService;
   private readonly records = new Map<string, SessionRecord>();
+  /**
+   * Per-id in-flight resume promises (mirrors transport.ts's idempotency `inFlight` map). Guards the
+   * resume window: between the moment ensureLive sees the session as dormant and the moment the
+   * manager registers the live process, two overlapping ensureLive(id) calls would BOTH spawn
+   * `claude --resume <id>` — leaking one process and double-registering listeners. Memoizing the
+   * promise per id collapses concurrent callers onto a single resume; the key is released in a
+   * `finally` so a FAILED resume can be retried by a later message.
+   */
+  private readonly resumeInFlight = new Map<string, Promise<void>>();
 
   constructor(manager: SessionManager, opts: SessionHubOptions = {}) {
     this.manager = manager;
@@ -271,15 +280,31 @@ export class SessionHub {
   private async ensureLive(id: string): Promise<void> {
     const record = this.require(id);
     if (this.manager.getSession(id)) return; // already live
-    const session = await this.manager.resumeSession(id, {
-      cwd: record.meta.cwd,
-      model: record.meta.model,
-      effort: record.meta.effort,
-      dangerouslySkip: record.meta.dangerouslySkip,
-    });
-    record.meta.status = "running";
-    this.attach(session.process, record);
-    this.persist(record.meta);
+    // A concurrent ensureLive is already resuming this id — await ITS promise instead of spawning a
+    // second `claude --resume`. NOTE: the has()-check and the set() below must stay synchronous (no
+    // await between them) so two overlapping callers can never both miss and both spawn.
+    const pending = this.resumeInFlight.get(id);
+    if (pending) return pending;
+
+    const resume = (async () => {
+      const session = await this.manager.resumeSession(id, {
+        cwd: record.meta.cwd,
+        model: record.meta.model,
+        effort: record.meta.effort,
+        dangerouslySkip: record.meta.dangerouslySkip,
+      });
+      record.meta.status = "running";
+      this.attach(session.process, record);
+      this.persist(record.meta);
+    })();
+    this.resumeInFlight.set(id, resume);
+    try {
+      await resume;
+    } finally {
+      // Release the key whether the resume succeeded or FAILED — a failed resume must not wedge the
+      // session forever; a later message can retry rather than awaiting a settled-rejected promise.
+      this.resumeInFlight.delete(id);
+    }
   }
 
   private require(id: string): SessionRecord {
