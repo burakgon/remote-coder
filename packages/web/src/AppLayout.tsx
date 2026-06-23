@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export interface AppLayoutProps {
@@ -6,6 +7,36 @@ export interface AppLayoutProps {
   onShowSessions?: () => void;
   onHideSessions?: () => void;
   sessionsOpen?: boolean;
+  /**
+   * When a conversation occupies the main panel, the mobile sheet is collapsed; mounting the hidden
+   * session list behind it would leave a duplicate of the active session (cwd/name) in the DOM and
+   * a11y tree. Pass `true` to keep the rail's list out of the DOM while it's the off-screen sheet on
+   * mobile. On desktop (rail always visible) and on the landing screen this has no effect.
+   */
+  conversationActive?: boolean;
+}
+
+const DESKTOP_QUERY = "(min-width: 768px)";
+
+/**
+ * True on the desktop breakpoint (≥768px), where the rail is permanently visible. On mobile the
+ * rail is an off-screen bottom sheet: we only MOUNT its contents while it is open so the hidden
+ * session list never sits in the DOM/accessibility tree behind the conversation. Falls back to
+ * `false` (mobile-first) where `matchMedia` is unavailable (e.g. jsdom / SSR).
+ */
+function useIsDesktop(): boolean {
+  const [desktop, setDesktop] = useState(
+    () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(DESKTOP_QUERY).matches,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const onChange = () => setDesktop(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return desktop;
 }
 
 /**
@@ -15,8 +46,14 @@ export interface AppLayoutProps {
  * the sheet; a backdrop + the sheet's own close button dismiss it. Layout is CSS-driven so the
  * desktop rail is unaffected by `sessionsOpen`.
  */
-export function AppLayout({ children, sessionList, onShowSessions, onHideSessions, sessionsOpen }: AppLayoutProps) {
+export function AppLayout({ children, sessionList, onShowSessions, onHideSessions, sessionsOpen, conversationActive }: AppLayoutProps) {
   const open = sessionsOpen ? "true" : "false";
+  const isDesktop = useIsDesktop();
+  // On desktop the rail is permanently visible, so always mount the list. On mobile the rail is a
+  // bottom sheet: keep mounting the list (so it's ready when the sheet opens) EXCEPT while a
+  // conversation owns the main panel and the sheet is closed — then the hidden list would just be a
+  // duplicate of the active session behind the chat, so we drop it from the DOM/a11y tree.
+  const showRailContent = isDesktop || Boolean(sessionsOpen) || !conversationActive;
   return (
     <div className="rc-shell">
       {sessionsOpen && (
@@ -34,7 +71,7 @@ export function AppLayout({ children, sessionList, onShowSessions, onHideSession
             Close
           </button>
         </div>
-        {sessionList}
+        {showRailContent && sessionList}
       </aside>
 
       <main className="rc-main">{children}</main>

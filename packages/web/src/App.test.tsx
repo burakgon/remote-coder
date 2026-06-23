@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -88,7 +88,9 @@ describe("App ready-state controls", () => {
     await userEvent.click(screen.getByRole("button", { name: /show sessions/i }));
     // Listing the start directory once the picker mounts.
     fetchMock.mockResolvedValueOnce(jsonResponse({ path: "/home/u", entries: [] }));
-    await userEvent.click(screen.getByRole("button", { name: /new session/i }));
+    // The landing panel also offers a "New session" CTA, so scope to the rail's button here.
+    const rail = within(screen.getByTestId("sessions-rail"));
+    await userEvent.click(rail.getByRole("button", { name: /new session/i }));
     expect(await screen.findByRole("dialog", { name: /pick a directory/i })).toBeInTheDocument();
   });
 });
@@ -201,5 +203,120 @@ describe("App — auto-allow rules are scoped per session (no cross-session leak
       frame: { type: "permission", requestId: "b-r1", decision: "allow" },
     });
     expect(wsSends.filter((s) => s.sessionId === "b")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Full-app flow (Task 12): drives the REAL App end-to-end with `fetch` + `WebSocket` stubbed.
+// login → empty list → new-session wizard (directory picker) → chat → streamed text →
+// permission prompt → answer over WS → result clears the prompt. Proves every screen connects.
+// ---------------------------------------------------------------------------------------------
+
+// A controllable fake WebSocket so the test can push frames into the chat view.
+class FakeWS {
+  static last: FakeWS | undefined;
+  url: string;
+  readyState = 1;
+  OPEN = 1;
+  onopen: (() => void) | null = null;
+  onmessage: ((e: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  sent: string[] = [];
+  constructor(url: string) {
+    this.url = url;
+    FakeWS.last = this;
+    setTimeout(() => this.onopen?.(), 0);
+  }
+  send(data: string) {
+    this.sent.push(data);
+  }
+  close() {
+    this.readyState = 3;
+    this.onclose?.();
+  }
+  push(frame: unknown) {
+    act(() => this.onmessage?.({ data: JSON.stringify(frame) }));
+  }
+}
+
+const flowSession: SessionMeta = {
+  id: "sess-1",
+  cwd: "/home/u/proj",
+  dangerouslySkip: false,
+  status: "running",
+  createdAt: 1,
+};
+
+describe("App full flow", () => {
+  let flowFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    useStore.setState({ token: undefined, sessions: [], activeSessionId: undefined, views: {} });
+    FakeWS.last = undefined;
+    vi.stubGlobal("WebSocket", FakeWS as unknown as typeof WebSocket);
+    flowFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/sessions") && method === "GET") return jsonResponse({ sessions: [] });
+      if (url.endsWith("/sessions") && method === "POST") return jsonResponse({ session: flowSession }, 201);
+      if (url.includes("/fs/list")) return jsonResponse({ path: "/home/u", entries: [] });
+      if (url.includes(`/sessions/${flowSession.id}`) && !url.includes("/stop")) {
+        return jsonResponse({ session: flowSession, history: [] });
+      }
+      return jsonResponse({ error: "not found" }, 404);
+    });
+    vi.stubGlobal("fetch", flowFetch);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("logs in, lists sessions, starts a new session, and renders streamed + permission frames", async () => {
+    render(<App />);
+
+    // 1) Login (tokenless dev path).
+    await userEvent.click(await screen.findByRole("button", { name: /without a token/i }));
+
+    // 2) Empty session list → open the wizard.
+    await userEvent.click(await screen.findByRole("button", { name: /new session/i }));
+
+    // 3) Directory picker → use the current dir → settings → start.
+    await userEvent.click(await screen.findByRole("button", { name: /use this directory/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /start session/i }));
+
+    // 4) The chat view for the created session renders (header shows the cwd).
+    await waitFor(() => expect(screen.getByText("/home/u/proj")).toBeInTheDocument());
+
+    // 5) Push a streamed text delta over the socket → it renders live.
+    await waitFor(() => expect(FakeWS.last).toBeDefined());
+    FakeWS.last!.push({
+      seq: 1,
+      kind: "event",
+      payload: {
+        type: "stream_event",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Working on it" } },
+      },
+    });
+    await waitFor(() => expect(screen.getByText(/working on it/i)).toBeInTheDocument());
+
+    // 6) Push a permission frame → the iris awaiting-you prompt appears → answer Allow over WS.
+    FakeWS.last!.push({
+      seq: 2,
+      kind: "permission",
+      payload: { requestId: "req-1", kind: "hook_callback", toolName: "Write", toolInput: { file_path: "/home/u/proj/a.txt" } },
+    });
+    const region = await screen.findByRole("region", { name: /permission request/i });
+    await userEvent.click(within(region).getByRole("button", { name: /^allow$/i }));
+    expect(FakeWS.last!.sent.some((s) => s.includes("req-1") && s.includes("allow"))).toBe(true);
+
+    // 7) A result frame clears the prompt.
+    FakeWS.last!.push({
+      seq: 3,
+      kind: "result",
+      payload: { type: "result", result: "Created the file", permissionDenials: [] },
+    });
+    await waitFor(() => expect(screen.queryByRole("region", { name: /permission request/i })).not.toBeInTheDocument());
+    expect(screen.getByText(/created the file/i)).toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
 import { useOnline } from "./pwa/online-status";
+import { Button } from "./ui/Button";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -94,6 +95,7 @@ export function App() {
       <AppLayout
         sessionList={list}
         sessionsOpen={sessionsOpen}
+        conversationActive={activeSessionId !== undefined}
         onShowSessions={() => setSessionsOpen(true)}
         onHideSessions={() => setSessionsOpen(false)}
       >
@@ -112,7 +114,14 @@ export function App() {
             );
           })()
         ) : (
-          <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)" }}>Select or start a session.</div>
+          <div style={{ display: "grid", placeItems: "center", gap: "var(--sp-4)", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)", textAlign: "center" }}>
+            <span>Select or start a session.</span>
+            {/* A landing-state CTA so a new session is reachable without first opening the mobile
+                sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile). */}
+            <Button variant="primary" onClick={() => setWizardOpen(true)} aria-label="New session">
+              + New session
+            </Button>
+          </div>
         )}
       </AppLayout>
       {wizardOpen && (
