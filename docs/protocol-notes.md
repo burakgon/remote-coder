@@ -405,3 +405,210 @@ Practical notes for the driver: drop the "close stdin on `result`" step and
 instead gate it on session teardown; track `result` count (or `result.uuid`) to
 delimit turns since `system/init` now recurs per turn; keep one safety/idle
 watchdog rather than a per-turn kill timer.
+
+---
+
+## Plan-5 spikes: AskUserQuestion answering + resume/history
+
+Captured by driving the **real** `claude` (v2.1.186, subscription auth,
+`ANTHROPIC_API_KEY` unset) from a throwaway cwd (`/private/tmp/rc-spike5`) via
+`scripts/spike/askq.mjs`, `scripts/spike/askq2.mjs`, `scripts/spike/resume.mjs`.
+Cross-checked against the binary's own strings. Host paths/PII sanitized in
+free-text only; structural keys verbatim.
+
+### A. AskUserQuestion — surfacing + answering (SOLVED)
+
+**Question:** how does the model asking the USER to pick among options surface
+over headless stream-json, and how do we deliver the chosen option so the model
+proceeds and reflects the choice?
+
+**How AskUserQuestion is gated (from the binary).** The tool's own
+`checkPermissions` returns a permission **ask**:
+
+```js
+// AskUserQuestion.checkPermissions:
+{ behavior: "ask", message: "Answer questions?", updatedInput: { questions, ...metadata } }
+```
+
+In headless `default` mode an `"ask"` is **auto-denied** (same root cause as
+ordinary permissions — "no client to answer it"). The interactive UI answers it
+via a dialog whose answer-builder (binary fn `$9m`) produces a permission
+**allow** whose `updatedInput` carries the chosen labels:
+
+```js
+// interactive answer → permission allow with the answers merged into the input:
+{ behavior:"allow", updatedInput:{ ...input, answers:{ "<question text>":"<chosen label>" }, annotations:{…} } }
+```
+
+i.e. **the answer to AskUserQuestion is an `answers` map (question → chosen
+option label) merged into the tool input.**
+
+**What did NOT work (attempt 1 — `askq.mjs`).** Declaring the dialog kind in
+the `initialize` handshake
+(`supportedDialogKinds:["permission_ask_user_question"]`) and merely **allowing**
+the PreToolUse `hook_callback` does **not** route a dialog to us. No
+`request_user_dialog` control_request is emitted over headless stdio; the tool's
+internal `"ask"` still parks and auto-cancels:
+
+```jsonc
+// CLI → us: the un-answerable dialog collapses into an is_error tool_result
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Answer questions?","is_error":true,"tool_use_id":"toolu_…"}]}}
+// result: model says it was "dismissed without a selection"; AskUserQuestion lands in permission_denials
+```
+
+(The `request_user_dialog` / `can_use_tool` direct paths are reserved for the
+interactive bridge/Remote-Control transport — never emitted over headless
+stdio, exactly like `can_use_tool` for ordinary permissions in §5b.)
+
+**WORKING answer shape (attempt 2 — `askq2.mjs`).** Answer at the **PreToolUse
+hook**: when the `hook_callback` fires for `tool_name === "AskUserQuestion"`,
+reply `permissionDecision:"allow"` **and inject the answers into
+`hookSpecificOutput.updatedInput`** (mirroring `$9m`). The CLI runs the tool
+with the pre-filled `answers`, the tool emits a non-error `tool_result` stating
+the selection, and the model reflects the choice.
+
+The `hook_callback` request the CLI sends for AskUserQuestion (verbatim, the
+`tool_input` is the full questions payload):
+
+```json
+{"type":"control_request","request_id":"…","request":{"subtype":"hook_callback","callback_id":"hook_0","input":{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which language do you prefer?","header":"Language","multiSelect":false,"options":[{"label":"TypeScript","description":"…"},{"label":"Python","description":"…"}]}]},"tool_use_id":"toolu_…","session_id":"…","cwd":"/private/tmp/rc-spike5","permission_mode":"default", …}}}
+```
+
+- **Question/options shape**: `tool_input.questions[]` =
+  `{question:<string>, header:<short label>, multiSelect:<bool>, options:[{label, description}]}`.
+  AskUserQuestion always implicitly adds a Skip button + a free-text box, so the
+  model is told not to include `None`/`Other` options.
+
+The `control_response` the binary ACCEPTED (made the tool succeed):
+
+```json
+{"type":"control_response","response":{"subtype":"success","request_id":"…","response":{"async":false,"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"spike auto-allow","updatedInput":{"questions":[…echoed…],"answers":{"Which language do you prefer?":"TypeScript"},"annotations":{"Which language do you prefer?":{"preview":"<option description>"}}}}}}}
+```
+
+- Same envelope as the §5c permission allow, with **two additions inside
+  `hookSpecificOutput`**:
+  - **`updatedInput`** — the original `tool_input` **plus** `answers` and
+    (optional) `annotations`.
+  - **`answers`** — `{ "<question text>": "<chosen option label>" }`. The key is
+    the exact `question` string; the value is the exact option `label`.
+    Multi-select / free-text would extend this (free text uses a `notes` field
+    in `annotations`, per `$9m`); single-choice is just the label.
+  - **`annotations`** (optional) — `{ "<question text>": {preview:"…", notes?:"…"} }`.
+    Omitting it still works; it only enriches the tool_result preview.
+
+What the CLI then emitted (the tool succeeded, **`permission_denials: []`**):
+
+```jsonc
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"Your questions have been answered: \"Which language do you prefer?\"=\"TypeScript\" selected preview:\n…. You can now continue with these answers in mind.","tool_use_id":"toolu_…"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"You picked TypeScript."}], …}}
+{"type":"result","subtype":"success","result":"You picked TypeScript.","permission_denials":[]}
+```
+
+**Did the model reflect the choice? YES** — final text `"You picked
+TypeScript."`. Re-running with choice `"Python"` selects the other label the
+same way (pick `options.find(o => o.label === choice)`).
+
+Binary cross-check (`strings`): `permission_ask_user_question` is a real dialog
+kind (`{kind, payload:{requestId,toolName,permissionResult,questions},
+result:{behavior}}`); the answer builder `$9m` returns
+`{behavior:"allow", updatedInput:{...input, answers, annotations}}`;
+`supportedDialogKinds` is an init field (`A.array(A.string()).optional()`,
+"CLAUDE treats ABSENCE as 'cannot render'"). But the **dialog path never fires
+over headless stdio** — the **PreToolUse-hook `updatedInput.answers`** injection
+is the channel that works.
+
+### B. Resume across process death + transcript location (SOLVED)
+
+**Resume continues context? YES.**
+
+1. Process 1: `claude … --session-id <UUID>` (stream-json, cwd
+   `/private/tmp/rc-spike5`). Sent "Remember this codeword: BANANA42…" →
+   `result:"OK"`; closed stdin → process **exited** (code 0).
+2. Process 2 (fresh): **`claude … --resume <same UUID>`** (stream-json, **same
+   cwd**). Asked "What was the codeword…" → `result:"BANANA42"`. Context
+   survived process death.
+
+**Exact resume invocation:** `--resume <session-id>` (NOT `--session-id` again —
+that errors on an existing id; NOT `--continue`, which picks the most-recent
+session implicitly). Same flags as steady-state
+(`--input-format/--output-format stream-json --verbose
+--include-partial-messages --permission-mode default`), **same cwd**, and the
+same `initialize` handshake. The resumed turn keeps the **same `session_id`**
+on every line (`f2b3cf5d-…`).
+
+Caveat: `--resume` injects a synthetic warm-up turn (`user:"Continue from where
+you left off."` → `assistant:"No response requested."`) before our first real
+message. Harmless, but it appears in the transcript; the daemon should expect /
+ignore it when rendering history.
+
+**Transcript path + encoding.** History lives in ONE file per session:
+
+```
+~/.claude/projects/<ENCODED_CWD>/<session-id>.jsonl
+```
+
+- **`<ENCODED_CWD>` encoding** (binary fn `OS`):
+  `cwd.replace(/[^a-zA-Z0-9]/g, "-")` — **every** non-alphanumeric char (`/`,
+  `.`, `_`, space, …) becomes `-`; the leading `/` becomes a leading `-`. If the
+  result exceeds a max length, it is truncated and a base36 hash of the full cwd
+  is appended (`<truncated>-<hash>`). Examples observed:
+  `/private/tmp/rc-spike5` → `-private-tmp-rc-spike5`;
+  `/Users/<user>/Developer/remote-coder` → `-Users-<user>-Developer-remote-coder`;
+  `…/magicplay.io` → `…-magicplay-io` (the `.` collapses to `-`). **Note:**
+  because `.`/`_`/`/` all map to `-`, the encoding is lossy/ambiguous — the
+  daemon should track the real cwd alongside the session, not reverse-derive it.
+  (`/tmp` resolves through the `/private/tmp` symlink, so the macOS encoding uses
+  `-private-tmp-…`.)
+- **Resume reuses the same `<session-id>.jsonl`** — process 2 **appended** to
+  the file process 1 wrote (it grew across the restart), so the whole
+  conversation (both processes) is in one file.
+
+**History is parseable. YES.** Newline-delimited JSON; one record per line.
+Top-level `type` values seen: `user`, `assistant` (the renderable turns), plus
+bookkeeping lines to skip (`queue-operation`, `attachment`, `last-prompt`,
+`mode`). Renderable line shapes:
+
+```jsonc
+// user turn
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Remember this codeword: BANANA42…"}]},"uuid":"…","parentUuid":"…","timestamp":"2026-…Z","sessionId":"f2b3cf5d-…","cwd":"/private/tmp/rc-spike5","gitBranch":"…","version":"2.1.186"}
+// assistant turn (content blocks: thinking | text | tool_use)
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"OK"}]},"requestId":"…","uuid":"…","parentUuid":"…","timestamp":"…","sessionId":"f2b3cf5d-…",…}
+```
+
+- **Each line carries `uuid` + `parentUuid`** → the turns form a linked tree
+  (follow `parentUuid` for the active thread; sidechains/sub-agents branch off).
+  Also present per line: `sessionId`, `cwd`, `timestamp`, `gitBranch`,
+  `version`, `userType`, `entrypoint`.
+- `message.content` is the standard Anthropic blocks array (text / thinking /
+  tool_use / tool_result) — the **same** `message` shape as the live
+  `assistant`/`user` stdout lines (§3), so one parser serves both. `tool_result`
+  blocks live in `user` lines; `tool_use` in `assistant` lines.
+- Rendering history = read the `.jsonl`, keep `type∈{user,assistant}`, walk the
+  `parentUuid` chain, project each `message.content` to text/tool blocks.
+
+### Recommended Plan-5 approach
+
+- **AskUserQuestion: BUILD the channel.** It works headlessly via the PreToolUse
+  hook (which the daemon already runs for permissions — Plan 4). On a
+  `hook_callback` with `tool_name === "AskUserQuestion"`: parse
+  `input.tool_input.questions[]`, surface the questions/options to the remote
+  user, collect their picks, then answer the **same** `hook_callback` with
+  `permissionDecision:"allow"` + `hookSpecificOutput.updatedInput =
+  {...tool_input, answers:{<question>:<label>}, annotations?}`. No
+  `request_user_dialog`/`can_use_tool` handling needed; do **not** rely on
+  `supportedDialogKinds` (it doesn't route over stdio). This reuses the existing
+  permission round-trip plumbing — it's the same envelope plus an `answers`
+  field. (If the remote user cancels/skips: answer `permissionDecision:"deny"`,
+  which yields a normal denial the model handles.)
+- **Resume: `--resume <id>` + read the `.jsonl` for history.** Steady state stays
+  keep-alive (Plan 3 model A); on daemon restart, respawn with `--resume <id>`
+  (same cwd) to rehydrate live context, and render past history by parsing
+  `~/.claude/projects/<OS(cwd)>/<id>.jsonl` (filter to user/assistant, walk
+  `parentUuid`). Store the real cwd per session (don't reverse the lossy
+  encoding) and skip the synthetic "Continue from where you left off." warm-up
+  turn. SQLite-only is unnecessary for history — the transcript jsonl already
+  has it; SQLite remains the daemon's own session index/metadata store.
+
+Source drivers: `scripts/spike/askq.mjs` (failed attempt — declare+allow),
+`scripts/spike/askq2.mjs` (WORKING — hook `updatedInput.answers`),
+`scripts/spike/resume.mjs` (resume + transcript).
