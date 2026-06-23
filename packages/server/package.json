@@ -13,6 +13,13 @@
     "build": "tsup src/index.ts --format esm --dts --clean --tsconfig tsconfig.build.json"
   },
   "dependencies": {
-    "@remote-coder/protocol": "workspace:*"
+    "@remote-coder/protocol": "workspace:*",
+    "fastify": "^5.1.0",
+    "@fastify/websocket": "^11.0.1",
+    "@fastify/multipart": "^10.0.0"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.12"
   }
 }
