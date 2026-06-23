@@ -69,6 +69,8 @@ The **control protocol** for interactive permissions/questions (`control_request
 - The captured fixtures become the **golden test files** for the `protocol` package and the **mock `claude`** used in CI.
 - All schema knowledge is isolated in one `protocol` module so a format change touches one place.
 
+**Resolution (2026-06-23 — spike complete):** The protocol was captured from the real binary; canonical shapes live in [`docs/protocol-notes.md`](../../protocol-notes.md) with fixtures in `packages/protocol/fixtures/`. Key correction to the assumptions below: in **headless** stream-json, a default-mode tool is **auto-denied** and `can_use_tool` is **not** emitted (and `--permission-prompt-tool` does not exist in v2.1.186). The working remote-permission mechanism is **`initialize` handshake registering a `PreToolUse` hook → CLI emits a `hook_callback` `control_request` → we answer with a `control_response` carrying `hookSpecificOutput.permissionDecision`**. Envelope rule: `request_id` is top-level on requests, nested at `response.request_id` on responses, payload at `response.response`. The §7 data flow below is conceptually correct but the literal control messages follow `protocol-notes.md`.
+
 ---
 
 ## 4. Decisions (from brainstorming)
