@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
@@ -52,6 +52,11 @@ export function resolveAccessToken(opts: ResolveAccessTokenOptions): { token: st
 
   const token = (opts.generate ?? defaultGenerate)();
   ensureDataDir(opts.dataDir);
+  // `mode` is honored only when CREATING a file; overwriting an existing path
+  // (e.g. a pre-existing empty `token` file) leaves its old, possibly
+  // world-readable mode intact. chmodSync unconditionally enforces 0600 so a
+  // freshly generated secret can never land in a too-permissive file.
   writeFileSync(tokenPath, token + "\n", { mode: 0o600 });
+  chmodSync(tokenPath, 0o600);
   return { token, generated: true };
 }

@@ -47,6 +47,31 @@ test("an existing token file is reused (generated=false, no regeneration)", asyn
   expect(r).toEqual({ token: "STORED", generated: false });
 });
 
+test("an existing-but-EMPTY token file (mode 0644) -> regenerates AND ends at mode 0600", async () => {
+  const tokenPath = join(dir, "token");
+  // Empty file pre-created world-readable: the empty-file guard falls through to
+  // regenerate-and-overwrite, where writeFileSync's `mode` option is ignored.
+  await writeFile(tokenPath, "", { mode: 0o644 });
+  expect((await stat(tokenPath)).mode & 0o777).toBe(0o644); // precondition
+
+  const r = resolveAccessToken({ dataDir: dir, generate: () => "REGENERATED" });
+  expect(r.generated).toBe(true);
+  expect(r.token).toBe("REGENERATED");
+  expect((await readFile(tokenPath, "utf8")).trim()).toBe("REGENERATED");
+  // Without the post-write chmodSync this stays 0644 (the security defect).
+  expect((await stat(tokenPath)).mode & 0o777).toBe(0o600);
+});
+
+test("regenerating over a pre-existing token file ends at mode 0600", async () => {
+  const tokenPath = join(dir, "token");
+  await writeFile(tokenPath, "OLD\n", { mode: 0o644 });
+  // Drop the stored token so the empty/missing guard regenerates over it.
+  await writeFile(tokenPath, "", { mode: 0o644 });
+  const r = resolveAccessToken({ dataDir: dir, generate: () => "NEW" });
+  expect(r.generated).toBe(true);
+  expect((await stat(tokenPath)).mode & 0o777).toBe(0o600);
+});
+
 test("the default generator produces strong (>=32 byte) base64url randomness, distinct per call", async () => {
   const a = resolveAccessToken({ dataDir: dir });
   await rm(join(dir, "token"), { force: true });
