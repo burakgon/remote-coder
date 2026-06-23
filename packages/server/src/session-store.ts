@@ -28,7 +28,6 @@ export interface SessionStore {
 export interface OpenSessionStoreOptions {
   /** Path to the SQLite file. ":memory:" uses an in-process DB. */
   dbPath: string;
-  now?: () => number;
 }
 
 /** Row <-> StoredSession mapping (SQLite stores booleans as 0/1, optionals as NULL). */

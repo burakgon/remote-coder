@@ -181,6 +181,10 @@ export class SessionHub {
   async answerPermission(id: string, requestId: string, decision: HookPermissionDecision, reason?: string): Promise<void> {
     await this.ensureLive(id);
     this.manager.answerPermission(id, requestId, decision, reason);
+    // A skipped/denied AskUserQuestion routes through here (the web client sends a `deny`
+    // permission for "Skip"), so the remembered tool_input would otherwise leak for the session
+    // lifetime — answerQuestion deletes it on the answer path, mirror that on the cancel path.
+    this.records.get(id)?.questionToolInputs.delete(requestId);
   }
 
   /**

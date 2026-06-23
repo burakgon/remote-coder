@@ -69,7 +69,9 @@ describe("SettingsPanel", () => {
     expect(screen.queryByLabelText(/permission mode/i)).not.toBeInTheDocument();
   });
 
-  it("when onApplyLiveSettings is provided, changing the active session's model sends a live update", async () => {
+  it("changing ONLY the model sends model but OMITS permissionMode/effort (no silent downgrade)", async () => {
+    // The bug: always sending permissionMode (seeded to "default") would reset an acceptEdits/plan
+    // session to default when the user only edited the model. Untouched controls must be omitted.
     const onApply = vi.fn();
     render(
       <SettingsPanel
@@ -84,10 +86,14 @@ describe("SettingsPanel", () => {
     await userEvent.clear(modelInput);
     await userEvent.type(modelInput, "claude-opus-4-8");
     await userEvent.click(screen.getByRole("button", { name: /apply to session/i }));
-    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ model: "claude-opus-4-8" }));
+    expect(onApply).toHaveBeenCalledTimes(1);
+    const sent = onApply.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sent).toEqual({ model: "claude-opus-4-8" });
+    expect(sent).not.toHaveProperty("permissionMode");
+    expect(sent).not.toHaveProperty("effort");
   });
 
-  it("sends the selected effort and permission mode in the live update", async () => {
+  it("sends only the CHANGED controls: changing effort+permission omits the untouched model", async () => {
     const onApply = vi.fn();
     render(
       <SettingsPanel
@@ -101,7 +107,25 @@ describe("SettingsPanel", () => {
     await userEvent.selectOptions(screen.getByLabelText(/active session effort/i), "max");
     await userEvent.selectOptions(screen.getByLabelText(/active session permission mode/i), "plan");
     await userEvent.click(screen.getByRole("button", { name: /apply to session/i }));
-    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ effort: "max", permissionMode: "plan" }));
+    expect(onApply).toHaveBeenCalledTimes(1);
+    const sent = onApply.mock.calls[0]![0] as Record<string, unknown>;
+    expect(sent).toEqual({ effort: "max", permissionMode: "plan" });
+    expect(sent).not.toHaveProperty("model");
+  });
+
+  it("applying with NO changes sends an empty update (every control omitted)", async () => {
+    const onApply = vi.fn();
+    render(
+      <SettingsPanel
+        session={session}
+        defaults={defaults}
+        onSaveDefaults={vi.fn()}
+        onApplyLiveSettings={onApply}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /apply to session/i }));
+    expect(onApply).toHaveBeenCalledWith({});
   });
 
   it("reflects the active session's model/effort into the editable controls", () => {

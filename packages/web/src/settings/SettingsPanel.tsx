@@ -40,9 +40,19 @@ export function SettingsPanel({
   // Live-edit drafts for the active session. Effort has NO wire echo (set_max_thinking_tokens is
   // silent), so it is reflected optimistically; model/permission-mode are observable on the next
   // system/init but we also reflect them optimistically into the session list (see ChatView).
-  const [liveModel, setLiveModel] = useState(session?.model ?? "");
-  const [liveEffort, setLiveEffort] = useState(session?.effort ?? "medium");
-  const [livePermissionMode, setLivePermissionMode] = useState("default");
+  //
+  // The seeded values are captured so "Apply to session" can send ONLY the controls the user
+  // actually CHANGED. permissionMode seeds to "default" but the session's real mode is unknown to
+  // the client (not in SessionMeta) — so always sending it would SILENTLY downgrade an
+  // acceptEdits/plan session to default when the user only edited the model. Omitting an unchanged
+  // control leaves the running session's setting untouched (the server only applies fields present
+  // in the `settings` frame).
+  const seededModel = session?.model ?? "";
+  const seededEffort = session?.effort ?? "medium";
+  const seededPermissionMode = "default";
+  const [liveModel, setLiveModel] = useState(seededModel);
+  const [liveEffort, setLiveEffort] = useState(seededEffort);
+  const [livePermissionMode, setLivePermissionMode] = useState(seededPermissionMode);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // Real modal semantics: trap Tab within the dialog and restore focus to the trigger on close.
@@ -152,13 +162,15 @@ export function SettingsPanel({
                   <Button
                     variant="primary"
                     aria-label="Apply to session"
-                    onClick={() =>
-                      onApplyLiveSettings({
-                        model: liveModel || undefined,
-                        effort: liveEffort,
-                        permissionMode: livePermissionMode,
-                      })
-                    }
+                    onClick={() => {
+                      // Only send the controls the user CHANGED — an unchanged control is omitted so
+                      // it cannot silently reset the running session's value (see seeding note above).
+                      const update: { model?: string; effort?: string; permissionMode?: string } = {};
+                      if (liveModel !== seededModel) update.model = liveModel || undefined;
+                      if (liveEffort !== seededEffort) update.effort = liveEffort;
+                      if (livePermissionMode !== seededPermissionMode) update.permissionMode = livePermissionMode;
+                      onApplyLiveSettings(update);
+                    }}
                   >
                     Apply to session
                   </Button>

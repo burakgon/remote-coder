@@ -77,4 +77,27 @@ describe("QuestionPrompt", () => {
     await userEvent.click(screen.getByRole("button", { name: /Python/ }));
     expect(screen.getByRole("button", { name: /^Submit/ })).toBeEnabled();
   });
+
+  test("single-select uses role=group (toggle-button + aria-pressed), not a radiogroup", () => {
+    // The single-select branch uses aria-pressed toggle buttons, which mismatch radiogroup
+    // semantics (that expects role=radio children). Both branches must be role=group.
+    render(<QuestionPrompt question={single()} onAnswer={() => {}} onCancel={() => {}} />);
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.getByRole("group")).toBeInTheDocument();
+  });
+
+  test("duplicate option labels do not collide (index-based keys) and toggle independently", async () => {
+    // Two options share the label "Yes". With label-based keys React would warn/collide; with
+    // index-based keys they are distinct. Each is independently togglable (first matches by name).
+    const q: QuestionPayload = {
+      requestId: "rq",
+      toolInput: { questions: [{ question: "Pick one", multiSelect: false, options: [{ label: "Yes" }, { label: "Yes" }] }] },
+      questions: [{ question: "Pick one", multiSelect: false, options: [{ label: "Yes" }, { label: "Yes" }] }],
+    };
+    render(<QuestionPrompt question={q} onAnswer={() => {}} onCancel={() => {}} />);
+    const options = screen.getAllByRole("button", { name: /^Yes$/ });
+    expect(options).toHaveLength(2);
+    await userEvent.click(options[0]!);
+    expect(options[0]!).toHaveAttribute("aria-pressed", "true");
+  });
 });

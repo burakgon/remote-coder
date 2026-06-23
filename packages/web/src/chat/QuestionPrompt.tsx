@@ -70,8 +70,8 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
               </div>
             )}
             <div>{q.question}</div>
-            <div role={q.multiSelect ? "group" : "radiogroup"} style={{ display: "grid", gap: "var(--sp-2)" }}>
-              {q.options.map((opt) => {
+            <div role="group" style={{ display: "grid", gap: "var(--sp-2)" }}>
+              {q.options.map((opt, oi) => {
                 const selected = selections[qi]?.has(opt.label) ?? false;
                 // NOTE: the shared `Button` (packages/web/src/ui/Button.tsx) has CLOSED props (no
                 // `style`, no `aria-pressed`, no rest spread), so option toggles are plain styled
@@ -80,7 +80,7 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                 // <button> keyboard-accessible without a custom class.
                 return (
                   <button
-                    key={opt.label}
+                    key={`${qi}-${oi}`}
                     type="button"
                     aria-pressed={selected}
                     onClick={() => toggle(qi, opt.label, q.multiSelect)}
