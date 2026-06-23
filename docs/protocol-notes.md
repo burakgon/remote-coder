@@ -612,3 +612,131 @@ bookkeeping lines to skip (`queue-operation`, `attachment`, `last-prompt`,
 Source drivers: `scripts/spike/askq.mjs` (failed attempt — declare+allow),
 `scripts/spike/askq2.mjs` (WORKING — hook `updatedInput.answers`),
 `scripts/spike/resume.mjs` (resume + transcript).
+
+### Live settings (set_model / set_max_thinking_tokens / set_permission_mode)
+
+Captured by `scripts/spike/livesettings.mjs` against the **real** `claude`
+v2.1.186 (subscription auth, `ANTHROPIC_API_KEY` unset, cwd
+`/private/tmp/rc-spike-livesettings`). Flow: `initialize` handshake → turn 1
+(warm-up) makes the session live → send each settings `control_request`
+mid-session, then run a follow-up turn to observe the effect. Field names were
+first read out of the binary's own Zod schemas + main-loop control handler, then
+confirmed on the wire. **All three are ACCEPTED over headless stream-json stdin
+on the first-guess shape** (the binary's main loop — not just the REPL bridge —
+handles them). These are the **client → CLI** direction; `request_id` is
+top-level and echoed back inside `response` (same envelope as §5).
+
+The binary's verbatim Zod schemas (v2.1.186) — the source of truth for fields:
+
+```js
+A.object({ subtype:A.literal("set_model"), model:A.string().optional() })
+A.object({ subtype:A.literal("set_max_thinking_tokens"),
+           max_thinking_tokens:A.number().nullable(),
+           thinking_display:A.enum(["summarized","omitted"]).nullable().optional() })
+A.object({ subtype:A.literal("set_permission_mode"),
+           mode:A.enum(["default","acceptEdits","bypassPermissions","plan","dontAsk","auto"]),
+           ultraplan:A.boolean().optional() })
+```
+
+The full client→CLI mutating set is one Set in the binary:
+`{"interrupt","set_permission_mode","set_model","set_max_thinking_tokens",
+"set_color","mcp_toggle","message_rated"}` (plus `rename_session`).
+
+#### 1. `set_model` — VERIFIED, effect OBSERVED
+
+Working request (verbatim, we sent):
+
+```json
+{"type":"control_request","request_id":"ctl-…","request":{"subtype":"set_model","model":"claude-sonnet-4-6"}}
+```
+
+CLI reply — **ACCEPTED** (no payload):
+
+```json
+{"type":"control_response","response":{"subtype":"success","request_id":"ctl-…"}}
+```
+
+- **Exact field: `model`** (the guessed name; `modelName`/`value` not needed).
+  `model` is **optional**; omitting it or sending `"default"` resets to the
+  workspace default (binary: `e.request.model ?? "default"`).
+- **Effect OBSERVED — yes.** After the switch, the **next turn's `system/init`
+  reported `"model":"claude-sonnet-4-6"`** (was `"claude-opus-4-8[1m]"`), the
+  `assistant` message block reported `"model":"claude-sonnet-4-6"`, and asking
+  the model its id returned `result:"claude-sonnet-4-6"`. The switch takes effect
+  on the **subsequent** turn (the in-flight turn keeps its model). The binary
+  calls `notifyMetadataChanged({model})` and sets `mainLoopModelForSession`, so
+  it's a session-scoped override.
+
+#### 2. `set_max_thinking_tokens` — VERIFIED, effect uncertain (accepted)
+
+Working request (verbatim, we sent):
+
+```json
+{"type":"control_request","request_id":"ctl-…","request":{"subtype":"set_max_thinking_tokens","max_thinking_tokens":30000}}
+```
+
+CLI reply — **ACCEPTED** (no payload):
+
+```json
+{"type":"control_response","response":{"subtype":"success","request_id":"ctl-…"}}
+```
+
+- **Exact field: `max_thinking_tokens`** (a `number`, and **nullable** — `null`
+  clears it). The guessed name was right; `maxThinkingTokens`/`tokens`/`value`
+  not needed.
+- **Optional sibling `thinking_display`**: `"summarized"` | `"omitted"` | `null`
+  (we omitted it → keeps the session-start `--thinking-display`). Sending `null`
+  clears to the API default; a value replaces the session display mode.
+- **Effect observed — uncertain.** The CLI accepts and updates session state
+  (binary: `re = D_c(max_thinking_tokens, thinking_display)`), but there is **no
+  per-turn stdout field** that echoes the budget, so the change isn't directly
+  observable on the wire. Acceptance is confirmed; the numeric effect would only
+  show up as more/less thinking in a thinking-heavy turn.
+
+#### 3. `set_permission_mode` — VERIFIED, effect OBSERVED
+
+Working request (verbatim, we sent):
+
+```json
+{"type":"control_request","request_id":"ctl-…","request":{"subtype":"set_permission_mode","mode":"acceptEdits"}}
+```
+
+CLI reply — **ACCEPTED**, and unlike the other two it **echoes a payload**:
+
+```json
+{"type":"control_response","response":{"subtype":"success","request_id":"ctl-…","response":{"mode":"acceptEdits"}}}
+```
+
+- **Exact field: `mode`** (the guessed name; `permissionMode`/`value` not needed).
+  Valid values are the enum
+  `["default","acceptEdits","bypassPermissions","plan","dontAsk","auto"]`.
+  Optional `ultraplan:bool` exists (internal CCR marker; leave unset).
+- **Effect OBSERVED — yes.** After switching to `acceptEdits`, the **next turn's
+  `system/init` reported `"permissionMode":"acceptEdits"`** (was `"default"`),
+  and the **`hook_callback` input for the tool carried
+  `"permission_mode":"acceptEdits"`**. (A PreToolUse `hook_callback` still fires
+  even in `acceptEdits` because we registered a hook in `initialize`; the hook
+  is independent of mode. So the mode change is visible in `system/init` and the
+  hook input, not by the hook disappearing.)
+
+#### Effect summary
+
+| subtype | accepted | exact field(s) | effect observed |
+|---|---|---|---|
+| `set_model` | yes | `model` (optional; `"default"`/omit resets) | yes — next `system/init`/`assistant`/`result` report the new model |
+| `set_max_thinking_tokens` | yes | `max_thinking_tokens` (number\|null), `thinking_display?` (`"summarized"`/`"omitted"`/null) | accepted; no wire echo (uncertain) |
+| `set_permission_mode` | yes | `mode` (enum above), `ultraplan?` | yes — next `system/init.permissionMode` + `hook_callback.input.permission_mode` reflect it; response echoes `{mode}` |
+
+**Plan-5 Task 8 recommendation: implement all three now — they are verified
+end-to-end.** They share the §5 control envelope (`request_id` top-level, echoed
+in `response`), succeed mid-session over the existing keep-alive stdin (Plan 3
+model A), and require no new transport. Apply each on its own turn boundary and
+expect the change to take effect on the **next** user turn (the binary applies
+`set_model` to `mainLoopModelForSession`, not the in-flight turn). For UI
+confirmation: surface the new model/mode from the subsequent `system/init`
+(`model`, `permissionMode`). `set_max_thinking_tokens` is safe to expose too
+(accepted, session-scoped); just note its effect isn't echoed on the wire, so
+the daemon should treat the `control_response` `success` as the confirmation
+rather than waiting for a stdout reflection.
+
+Source driver: `scripts/spike/livesettings.mjs`.
