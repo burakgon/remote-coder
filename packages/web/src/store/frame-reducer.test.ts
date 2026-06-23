@@ -54,6 +54,19 @@ describe("reduceFrame", () => {
     expect(v.wireState).toBe("error");
   });
 
+  it("a question frame sets pendingQuestion and awaiting wireState", () => {
+    const frame: ServerFrame = { seq: 1, kind: "question", payload: { requestId: "rq", toolInput: {}, questions: [{ question: "Q", multiSelect: false, options: [{ label: "A" }] }] } };
+    const v = reduceFrame(emptyView(), frame);
+    expect(v.pendingQuestion?.requestId).toBe("rq");
+    expect(v.wireState).toBe("awaiting");
+  });
+
+  it("a result clears a pending question", () => {
+    let v = reduceFrame(emptyView(), { seq: 1, kind: "question", payload: { requestId: "rq", toolInput: {}, questions: [] } });
+    v = reduceFrame(v, { seq: 2, kind: "result", payload: { type: "result", result: "done", raw: {} } });
+    expect(v.pendingQuestion).toBeUndefined();
+  });
+
   it("ignores a replayed frame at or below lastSeq (delta-replay dedup)", () => {
     let v = emptyView();
     v = reduceFrame(v, ev(1, { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "A" } } }));

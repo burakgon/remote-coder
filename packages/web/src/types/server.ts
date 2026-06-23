@@ -2,7 +2,7 @@
 // session-hub.ts, fs-service.ts, claude-process.ts and @remote-coder/protocol). Kept as a
 // standalone type module so the browser bundle never imports the Node server package.
 
-export type ServerFrameKind = "event" | "permission" | "result" | "diagnostic" | "exit";
+export type ServerFrameKind = "event" | "permission" | "question" | "result" | "diagnostic" | "exit";
 
 export interface ServerFrame {
   seq: number;
@@ -46,6 +46,25 @@ export interface PermissionPayload {
   toolUseId?: string;
 }
 
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface QuestionSpec {
+  question: string;
+  header?: string;
+  multiSelect: boolean;
+  options: QuestionOption[];
+}
+
+export interface QuestionPayload {
+  requestId: string;
+  toolUseId?: string;
+  toolInput: unknown;
+  questions: QuestionSpec[];
+}
+
 export interface ResultPayload {
   type: "result";
   subtype?: string;
@@ -70,4 +89,5 @@ export type OutboundFrame =
       text?: string;
       images?: { mediaType: string; dataBase64: string }[];
     }
-  | { type: "permission"; requestId: string; decision: "allow" | "deny"; reason?: string };
+  | { type: "permission"; requestId: string; decision: "allow" | "deny"; reason?: string }
+  | { type: "answer"; requestId: string; toolInput: unknown; answers: Record<string, string | string[]> };

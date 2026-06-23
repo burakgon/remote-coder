@@ -3,6 +3,7 @@ import { ChatHeader } from "./ChatHeader";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { PermissionPrompt } from "./PermissionPrompt";
+import { QuestionPrompt } from "./QuestionPrompt";
 import { Button } from "../ui/Button";
 import { Mono } from "../ui/Mono";
 import { useStore } from "../store/store";
@@ -75,12 +76,36 @@ export function ChatView({ session, api, token }: ChatViewProps) {
     [send],
   );
 
+  // AskUserQuestion answering: answer the model's question (or skip, which denies the tool). Shares
+  // the same `answered` set as permissions so the prompt hides optimistically and never double-sends.
+  const answerQuestion = useCallback(
+    (requestId: string, toolInput: unknown, answers: Record<string, string | string[]>) => {
+      if (answeredRef.current.has(requestId)) return;
+      answeredRef.current.add(requestId);
+      setAnswered((prev) => new Set(prev).add(requestId));
+      send({ type: "answer", requestId, toolInput, answers });
+    },
+    [send],
+  );
+  const cancelQuestion = useCallback(
+    (requestId: string) => {
+      if (answeredRef.current.has(requestId)) return;
+      answeredRef.current.add(requestId);
+      setAnswered((prev) => new Set(prev).add(requestId));
+      send({ type: "permission", requestId, decision: "deny" });
+    },
+    [send],
+  );
+
   const pending = safeView.pendingPermission;
   const pendingTool = pending?.toolName;
   const pendingAnswered = pending !== undefined && answered.has(pending.requestId);
   // Auto-allow a pending permission whose tool is covered by an active rule (run as an effect so the
   // send happens after render, not during it).
   const isAutoAllowed = pending !== undefined && pendingTool !== undefined && autoAllow.has(pendingTool);
+
+  const pendingQuestion = safeView.pendingQuestion;
+  const questionAnswered = pendingQuestion !== undefined && answered.has(pendingQuestion.requestId);
   useEffect(() => {
     if (pending && isAutoAllowed) answer(pending.requestId, "allow");
   }, [pending, isAutoAllowed, answer]);
@@ -158,6 +183,18 @@ export function ChatView({ session, api, token }: ChatViewProps) {
               permission={pending}
               onAnswer={(decision) => answer(pending.requestId, decision)}
               onAlwaysAllow={(tool) => setAutoAllow((prev) => new Set(prev).add(tool))}
+            />
+          </div>
+        )}
+
+        {/* The pending AskUserQuestion. Hidden once answered (optimistic). Submitting sends an
+            `answer` frame; Skip denies the tool so the model proceeds with the denial. */}
+        {pendingQuestion && !questionAnswered && (
+          <div style={{ padding: "var(--sp-4)" }}>
+            <QuestionPrompt
+              question={pendingQuestion}
+              onAnswer={(answers) => answerQuestion(pendingQuestion.requestId, pendingQuestion.toolInput, answers)}
+              onCancel={() => cancelQuestion(pendingQuestion.requestId)}
             />
           </div>
         )}

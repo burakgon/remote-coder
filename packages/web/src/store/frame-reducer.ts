@@ -1,4 +1,4 @@
-import type { ContentBlock, DiagnosticPayload, PermissionPayload, ResultPayload, ServerFrame } from "../types/server";
+import type { ContentBlock, DiagnosticPayload, PermissionPayload, QuestionPayload, ResultPayload, ServerFrame } from "../types/server";
 import type { LiveWireState } from "../ui/LiveWire";
 
 export type TurnItem =
@@ -13,6 +13,7 @@ export interface SessionView {
   thinkingText: string;
   turns: TurnItem[];
   pendingPermission?: PermissionPayload;
+  pendingQuestion?: QuestionPayload;
   lastResult?: ResultPayload;
   diagnostics: DiagnosticPayload[];
   wireState: LiveWireState;
@@ -41,6 +42,11 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
 
   const next: SessionView = { ...view, lastSeq: Math.max(view.lastSeq, frame.seq) };
 
+  if (frame.kind === "question") {
+    next.pendingQuestion = frame.payload as QuestionPayload;
+    next.wireState = "awaiting";
+    return next;
+  }
   if (frame.kind === "permission") {
     next.pendingPermission = frame.payload as PermissionPayload;
     next.wireState = "awaiting";
@@ -54,6 +60,7 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     const r = frame.payload as ResultPayload;
     next.lastResult = r;
     next.pendingPermission = undefined;
+    next.pendingQuestion = undefined;
     next.liveText = "";
     next.thinkingText = "";
     next.wireState = r.isError ? "error" : "success";
