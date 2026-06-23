@@ -9,6 +9,8 @@ import { useStore } from "../store/store";
 import { useSessionSocket } from "../session/use-session-socket";
 import { wireStateForSession } from "../session/status";
 import { emptyView } from "../store/frame-reducer";
+import { SettingsPanel } from "../settings/SettingsPanel";
+import { loadDefaults, saveDefaults } from "../settings/defaults";
 import type { ApiClient } from "../api/client";
 import type { SessionMeta } from "../types/server";
 
@@ -22,6 +24,9 @@ export function ChatView({ session, api, token }: ChatViewProps) {
   const applyFrames = useStore((s) => s.applyFrames);
   const resetSession = useStore((s) => s.resetSession);
   const view = useStore((s) => s.views[session.id]);
+  const sessions = useStore((s) => s.sessions);
+  const setSessions = useStore((s) => s.setSessions);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Open the live socket (frames flow into the store via the hook).
   const { send } = useSessionSocket(session, token);
@@ -100,7 +105,7 @@ export function ChatView({ session, api, token }: ChatViewProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <ChatHeader session={session} wireState={wireState} />
+      <ChatHeader session={session} wireState={wireState} onOpenSettings={() => setSettingsOpen(true)} />
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -163,6 +168,22 @@ export function ChatView({ session, api, token }: ChatViewProps) {
           await api.uploadFile(session.cwd, file);
         }}
       />
+      {settingsOpen && (
+        <SettingsPanel
+          session={session}
+          defaults={loadDefaults()}
+          onSaveDefaults={(d) => {
+            saveDefaults(d);
+            setSettingsOpen(false);
+          }}
+          onStopSession={async (id) => {
+            await api.stopSession(id);
+            setSessions(sessions.map((s) => (s.id === id ? { ...s, status: "stopped" } : s)));
+            setSettingsOpen(false);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

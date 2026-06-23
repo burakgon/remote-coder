@@ -6,6 +6,7 @@ import { Mono } from "../ui/Mono";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { DirectoryPicker } from "../picker/DirectoryPicker";
 import { pushRecentDir } from "../picker/recents";
+import { loadDefaults, EFFORTS } from "../settings/defaults";
 import type { ApiClient } from "../api/client";
 import type { SessionMeta } from "../types/server";
 
@@ -16,14 +17,12 @@ export interface NewSessionWizardProps {
   onClose: () => void;
 }
 
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-type Effort = (typeof EFFORTS)[number];
-
 export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessionWizardProps) {
+  const seeded = loadDefaults();
   const [cwd, setCwd] = useState<string | undefined>();
-  const [effort, setEffort] = useState<Effort>("medium");
-  const [model, setModel] = useState("");
-  const [dangerouslySkip, setDangerouslySkip] = useState(false);
+  const [effort, setEffort] = useState<string>(seeded.effort);
+  const [model, setModel] = useState(seeded.model ?? "");
+  const [dangerouslySkip, setDangerouslySkip] = useState(seeded.dangerouslySkip);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -104,7 +103,7 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
             <span className="rc-wizard__field-label">Effort</span>
             <select
               value={effort}
-              onChange={(e) => setEffort(e.target.value as Effort)}
+              onChange={(e) => setEffort(e.target.value)}
               className="rc-wizard__control"
             >
               {EFFORTS.map((e) => (
