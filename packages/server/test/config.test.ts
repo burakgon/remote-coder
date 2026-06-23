@@ -73,3 +73,16 @@ test("buildClaudeArgs never includes -p/--print even with all options set", () =
   expect(args).not.toContain("-p");
   expect(args).not.toContain("--print");
 });
+
+test("resume emits --resume <id> and omits --session-id", () => {
+  const args = buildClaudeArgs({ sessionId: "sid-1", resume: true });
+  expect(args).toContain("--resume");
+  expect(args[args.indexOf("--resume") + 1]).toBe("sid-1");
+  expect(args).not.toContain("--session-id");
+});
+
+test("a fresh session emits --session-id and not --resume", () => {
+  const args = buildClaudeArgs({ sessionId: "sid-1" });
+  expect(args).toContain("--session-id");
+  expect(args).not.toContain("--resume");
+});

@@ -61,6 +61,20 @@ function emitSimpleTurn() {
   });
 }
 
+function emitWarmupThenReady() {
+  // Mimic --resume: a synthetic warm-up user turn + assistant reply the daemon must suppress.
+  send({
+    type: "user",
+    message: { role: "user", content: [{ type: "text", text: "Continue from where you left off." }] },
+    session_id: SESSION_ID,
+  });
+  send({
+    type: "assistant",
+    message: { role: "assistant", model: "claude-mock", content: [{ type: "text", text: "No response requested." }] },
+    session_id: SESSION_ID,
+  });
+}
+
 function emitToolUseAndPermissionRequest() {
   send({
     type: "assistant",
@@ -144,6 +158,7 @@ stdin.on("end", () => process.exit(0));
 function handle(msg) {
   if (msg.type === "control_request" && msg.request?.subtype === "initialize") {
     emitInitResponse(msg.request_id);
+    if (MODE === "resume") emitWarmupThenReady();
     if (MODE === "stderr") {
       process.stderr.write("auth expired → re-login on the host\n");
     }

@@ -27,6 +27,8 @@ export interface ClaudeProcessOptions {
   effort?: string;
   addDirs?: string[];
   dangerouslySkip?: boolean;
+  /** Resume an existing session via --resume <id> (re-attach after process death). Default false. */
+  resume?: boolean;
   /** Milliseconds to wait for the init control_response before rejecting start(). Default 30000. */
   startTimeoutMs?: number;
   /** Base environment to spawn with. ANTHROPIC_API_KEY is always deleted from a copy. Default process.env. */
@@ -56,11 +58,13 @@ export class ClaudeProcess extends EventEmitter {
   private started = false;
   private initRequestId?: string;
   private spawnPrefixArgs: string[] = [];
+  private suppressWarmup: boolean;
 
   constructor(opts: ClaudeProcessOptions) {
     super();
     this.opts = opts;
     this.sessionId = opts.sessionId;
+    this.suppressWarmup = opts.resume === true;
   }
 
   /** TEST ONLY: extra argv inserted before the claude args (used to run the mock script via node). */
@@ -83,6 +87,7 @@ export class ClaudeProcess extends EventEmitter {
       effort: this.opts.effort,
       addDirs: this.opts.addDirs,
       dangerouslySkip: this.opts.dangerouslySkip,
+      resume: this.opts.resume,
     });
     const args = [...this.spawnPrefixArgs, ...claudeArgs];
 
@@ -205,6 +210,14 @@ export class ClaudeProcess extends EventEmitter {
     }
     if (!ev) return;
 
+    if (this.suppressWarmup && this.isWarmupTurn(ev)) {
+      // --resume injects a synthetic "Continue from where you left off." user turn and a
+      // "No response requested." assistant reply (docs/protocol-notes.md §B). Drop both so
+      // they never reach subscribers. After the assistant half, the suppression window closes.
+      if (ev.type === "assistant") this.suppressWarmup = false;
+      return;
+    }
+
     this.emit("event", ev);
 
     if (ev.type === "control_request") {
@@ -227,6 +240,22 @@ export class ClaudeProcess extends EventEmitter {
       // stays alive for the next sendUserMessage; stdin is closed only in stop().
       this.emit("result", ev as ResultEvent);
     }
+  }
+
+  private isWarmupTurn(ev: InboundEvent): boolean {
+    const text = this.soleText(ev);
+    if (text === undefined) return false;
+    return text === "Continue from where you left off." || text === "No response requested.";
+  }
+
+  /** Extract the single text-block string of a user/assistant message, else undefined. */
+  private soleText(ev: InboundEvent): string | undefined {
+    if (ev.type !== "user" && ev.type !== "assistant") return undefined;
+    const message = (ev as { message?: { content?: unknown } }).message;
+    const content = message?.content;
+    if (!Array.isArray(content) || content.length !== 1) return undefined;
+    const block = content[0] as { type?: string; text?: string };
+    return block?.type === "text" && typeof block.text === "string" ? block.text : undefined;
   }
 }
 

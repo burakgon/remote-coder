@@ -18,6 +18,8 @@ export interface BuildClaudeArgsOptions {
   addDirs?: string[];
   /** When true, spawn with --dangerously-skip-permissions instead of --permission-mode default. */
   dangerouslySkip?: boolean;
+  /** When true, RESUME an existing session: emit --resume <sessionId> and omit --session-id. */
+  resume?: boolean;
 }
 
 /**
@@ -32,8 +34,15 @@ export function buildClaudeArgs(opts: BuildClaudeArgsOptions): string[] {
     "--verbose",
     "--include-partial-messages",
     "--include-hook-events",
-    "--session-id", opts.sessionId,
   ];
+
+  // Resume reuses the transcript for <sessionId>; a fresh session ASSIGNS it via --session-id.
+  // The binary rejects --resume together with --session-id for an existing id.
+  if (opts.resume) {
+    args.push("--resume", opts.sessionId);
+  } else {
+    args.push("--session-id", opts.sessionId);
+  }
 
   if (opts.dangerouslySkip) {
     args.push("--dangerously-skip-permissions");
