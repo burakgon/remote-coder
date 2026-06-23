@@ -34,3 +34,5 @@ export type { CreateServerResult } from "./transport.js";
 export { startServer } from "./start.js";
 export { HistoryService } from "./history-service.js";
 export type { HistoryServiceOptions } from "./history-service.js";
+export { openIdempotencyStore } from "./idempotency.js";
+export type { IdempotencyStore, OpenIdempotencyStoreOptions } from "./idempotency.js";
