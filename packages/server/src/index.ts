@@ -11,3 +11,5 @@ export {
   assertConfigAllowsStart,
 } from "./server-config.js";
 export type { ServerRuntimeConfig } from "./server-config.js";
+export { AuthGate, extractBearerToken } from "./auth.js";
+export type { AuthGateOptions, AuthCheckResult } from "./auth.js";
