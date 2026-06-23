@@ -1,6 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatHeader } from "./ChatHeader";
 import { MessageList } from "./MessageList";
+import { PermissionPrompt } from "./PermissionPrompt";
+import { Button } from "../ui/Button";
+import { Mono } from "../ui/Mono";
 import { useStore } from "../store/store";
 import { useSessionSocket } from "../session/use-session-socket";
 import { wireStateForSession } from "../session/status";
@@ -20,7 +23,7 @@ export function ChatView({ session, api, token }: ChatViewProps) {
   const view = useStore((s) => s.views[session.id]);
 
   // Open the live socket (frames flow into the store via the hook).
-  useSessionSocket(session, token);
+  const { send } = useSessionSocket(session, token);
 
   // Load REST history once per session id, replaying frames through the same reducer in a single
   // store update (one re-render). The reducer's seq-dedup makes any overlap with live frames a no-op.
@@ -43,6 +46,38 @@ export function ChatView({ session, api, token }: ChatViewProps) {
 
   const wireState = wireStateForSession(session, view);
   const safeView = view ?? emptyView();
+
+  // Client-side "Always allow" — a per-session set of tool names the user has chosen to auto-allow.
+  // When a future permission for such a tool arrives we answer `allow` for the user (with a visible
+  // indicator + a way to clear the rule). This lives in component state (this session, this device);
+  // it is intentionally NOT persisted — the gate is a security boundary and a fresh load re-prompts.
+  const [autoAllow, setAutoAllow] = useState<Set<string>>(() => new Set());
+  // requestIds we've already answered. Tracked in state so answering hides the prompt immediately
+  // (optimistic) rather than lingering until the next server frame clears `pendingPermission`; the
+  // ref guards against double-sending the same decision across re-renders / auto-allow.
+  const [answered, setAnswered] = useState<Set<string>>(() => new Set());
+  const answeredRef = useRef<Set<string>>(answered);
+  answeredRef.current = answered;
+
+  const answer = useCallback(
+    (requestId: string, decision: "allow" | "deny") => {
+      if (answeredRef.current.has(requestId)) return;
+      answeredRef.current.add(requestId);
+      setAnswered((prev) => new Set(prev).add(requestId));
+      send({ type: "permission", requestId, decision });
+    },
+    [send],
+  );
+
+  const pending = safeView.pendingPermission;
+  const pendingTool = pending?.toolName;
+  const pendingAnswered = pending !== undefined && answered.has(pending.requestId);
+  // Auto-allow a pending permission whose tool is covered by an active rule (run as an effect so the
+  // send happens after render, not during it).
+  const isAutoAllowed = pending !== undefined && pendingTool !== undefined && autoAllow.has(pendingTool);
+  useEffect(() => {
+    if (pending && isAutoAllowed) answer(pending.requestId, "allow");
+  }, [pending, isAutoAllowed, answer]);
 
   // Auto-scroll the log to the newest content as turns/streaming text grow — unless the user has
   // scrolled up to read history (then we leave their position alone). A small slack avoids
@@ -73,7 +108,54 @@ export function ChatView({ session, api, token }: ChatViewProps) {
         style={{ flex: 1, overflowY: "auto" }}
       >
         <MessageList view={safeView} />
-        {/* Task 7 renders the pending-permission prompt here; Task 8 adds the composer below. */}
+
+        {/* Active client-side auto-allow rules (per session) with a way to clear each one. */}
+        {autoAllow.size > 0 && (
+          <div
+            style={{
+              padding: "var(--sp-3) var(--sp-4)",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: "var(--sp-3)",
+              color: "var(--text-muted)",
+              fontSize: "var(--fs-sm)",
+            }}
+          >
+            <span>Auto-allow (this session):</span>
+            {[...autoAllow].map((tool) => (
+              <span key={tool} style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)" }}>
+                <Mono>{tool}</Mono>
+                <Button
+                  variant="ghost"
+                  aria-label={`Clear auto-allow for ${tool}`}
+                  onClick={() =>
+                    setAutoAllow((prev) => {
+                      const next = new Set(prev);
+                      next.delete(tool);
+                      return next;
+                    })
+                  }
+                >
+                  Clear
+                </Button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* The pending permission gate. Hidden once answered (optimistic) or while it is being
+            auto-allowed (a rule already covers it). */}
+        {pending && !isAutoAllowed && !pendingAnswered && (
+          <div style={{ padding: "var(--sp-4)" }}>
+            <PermissionPrompt
+              permission={pending}
+              onAnswer={(decision) => answer(pending.requestId, decision)}
+              onAlwaysAllow={(tool) => setAutoAllow((prev) => new Set(prev).add(tool))}
+            />
+          </div>
+        )}
+        {/* Task 8 adds the composer below. */}
       </div>
     </div>
   );

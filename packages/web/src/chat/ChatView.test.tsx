@@ -1,9 +1,10 @@
 import { render, screen, act, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatView } from "./ChatView";
 import { useStore } from "../store/store";
 import type { ApiClient } from "../api/client";
-import type { ServerFrame, SessionMeta } from "../types/server";
+import type { OutboundFrame, ServerFrame, SessionMeta } from "../types/server";
 
 // jsdom provides a real WebSocket constructor that attempts to connect to the fake host and then
 // fires async open/error/close events — those land outside act() and trigger the socket hook's
@@ -96,5 +97,140 @@ describe("ChatView", () => {
 
     const wire = await screen.findByRole("status");
     expect(wire).toHaveAttribute("data-state", "awaiting");
+  });
+});
+
+// A WebSocket stub that reaches OPEN and captures outbound frames so we can assert what ChatView
+// sends over the wire. It opens synchronously on the next microtask (flushed inside act()).
+const sentFrames: OutboundFrame[] = [];
+class CapturingWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  readonly OPEN = CapturingWebSocket.OPEN;
+  readyState = CapturingWebSocket.OPEN; // open immediately so send() forwards
+  onopen: (() => void) | null = null;
+  onmessage: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  constructor() {
+    queueMicrotask(() => this.onopen?.());
+  }
+  send(data: string) {
+    sentFrames.push(JSON.parse(data) as OutboundFrame);
+  }
+  close() {}
+}
+
+describe("ChatView — pending permission (allow/deny tool gate)", () => {
+  let realWS: typeof WebSocket;
+  beforeEach(() => {
+    sentFrames.length = 0;
+    realWS = globalThis.WebSocket;
+    globalThis.WebSocket = CapturingWebSocket as unknown as typeof WebSocket;
+  });
+  afterEach(() => {
+    globalThis.WebSocket = realWS;
+  });
+
+  async function mount(api: ApiClient) {
+    const utils = render(<ChatView session={session} api={api} token="t" />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    return utils;
+  }
+
+  function pushPermission(requestId: string, toolName: string, seq: number) {
+    act(() => {
+      useStore.getState().applyFrame(session.id, {
+        seq,
+        kind: "permission",
+        payload: { requestId, kind: "can_use_tool", toolName, toolInput: { file_path: "/tmp/x" } },
+      });
+    });
+  }
+
+  it("renders the pending permission prompt", async () => {
+    await mount(apiStub());
+    pushPermission("r1", "Write", 99);
+    expect(await screen.findByRole("region", { name: /permission request/i })).toBeInTheDocument();
+    expect(screen.getByText("Write")).toBeInTheDocument();
+  });
+
+  it("Allow sends {type:permission, decision:allow} and clears the pending prompt", async () => {
+    await mount(apiStub());
+    pushPermission("r1", "Write", 99);
+    await screen.findByRole("region", { name: /permission request/i });
+
+    await userEvent.click(screen.getByRole("button", { name: /^allow$/i }));
+
+    expect(sentFrames).toContainEqual({ type: "permission", requestId: "r1", decision: "allow" });
+    // The pending prompt clears once answered.
+    expect(screen.queryByRole("region", { name: /permission request/i })).not.toBeInTheDocument();
+  });
+
+  it("Deny sends decision:deny and clears the pending prompt", async () => {
+    await mount(apiStub());
+    pushPermission("r1", "Write", 99);
+    await screen.findByRole("region", { name: /permission request/i });
+
+    await userEvent.click(screen.getByRole("button", { name: /^deny$/i }));
+
+    expect(sentFrames).toContainEqual({ type: "permission", requestId: "r1", decision: "deny" });
+    expect(screen.queryByRole("region", { name: /permission request/i })).not.toBeInTheDocument();
+  });
+
+  it("Always allow: a later permission for the same tool is auto-allowed without showing the prompt", async () => {
+    await mount(apiStub());
+    pushPermission("r1", "Write", 99);
+    await screen.findByRole("region", { name: /permission request/i });
+
+    // Register the per-session rule (and answer the current request allow).
+    await userEvent.click(screen.getByRole("button", { name: /always allow/i }));
+    expect(sentFrames).toContainEqual({ type: "permission", requestId: "r1", decision: "allow" });
+
+    // A NEW permission for the same tool arrives — it must be auto-allowed, no prompt shown.
+    pushPermission("r2", "Write", 100);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sentFrames).toContainEqual({ type: "permission", requestId: "r2", decision: "allow" });
+    expect(screen.queryByRole("region", { name: /permission request/i })).not.toBeInTheDocument();
+  });
+
+  it("shows an active auto-allow indicator with a clear control; clearing re-prompts that tool", async () => {
+    await mount(apiStub());
+    pushPermission("r1", "Write", 99);
+    await screen.findByRole("region", { name: /permission request/i });
+    await userEvent.click(screen.getByRole("button", { name: /always allow/i }));
+
+    // The active rule is visible to the user.
+    expect(screen.getByText(/auto-allow/i)).toBeInTheDocument();
+    expect(screen.getByText(/write/i)).toBeInTheDocument();
+
+    // Clear the rule.
+    await userEvent.click(screen.getByRole("button", { name: /clear auto-allow for write/i }));
+    expect(screen.queryByText(/auto-allow/i)).not.toBeInTheDocument();
+
+    // A subsequent Write permission now prompts again (no longer auto-allowed).
+    pushPermission("r3", "Write", 101);
+    expect(await screen.findByRole("region", { name: /permission request/i })).toBeInTheDocument();
+  });
+
+  it("auto-allow is scoped to the tool: a different tool still prompts", async () => {
+    await mount(apiStub());
+    pushPermission("r1", "Write", 99);
+    await screen.findByRole("region", { name: /permission request/i });
+    await userEvent.click(screen.getByRole("button", { name: /always allow/i }));
+
+    // A different tool is NOT covered by the Write rule → it must still prompt.
+    pushPermission("r2", "Bash", 100);
+    const region = await screen.findByRole("region", { name: /permission request/i });
+    expect(region).toBeInTheDocument();
+    expect(screen.getByText("Bash")).toBeInTheDocument();
+    expect(sentFrames).not.toContainEqual({ type: "permission", requestId: "r2", decision: "allow" });
   });
 });
