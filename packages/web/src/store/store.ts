@@ -12,6 +12,7 @@ interface StoreState {
   setSessions: (sessions: SessionMeta[]) => void;
   setActive: (id: string | undefined) => void;
   applyFrame: (id: string, frame: ServerFrame) => void;
+  applyFrames: (id: string, frames: ServerFrame[]) => void;
   resetSession: (id: string) => void;
   viewFor: (id: string) => SessionView;
 }
@@ -28,6 +29,13 @@ export const useStore = create<StoreState>((set, get) => ({
     set((state) => {
       const current = state.views[id] ?? emptyView();
       return { views: { ...state.views, [id]: reduceFrame(current, frame) } };
+    }),
+  // Fold a batch of frames in a single store update (one re-render) — used to replay REST history.
+  applyFrames: (id, frames) =>
+    set((state) => {
+      let view = state.views[id] ?? emptyView();
+      for (const frame of frames) view = reduceFrame(view, frame);
+      return { views: { ...state.views, [id]: view } };
     }),
   resetSession: (id) => set((state) => ({ views: { ...state.views, [id]: emptyView() } })),
   viewFor: (id) => get().views[id] ?? emptyView(),

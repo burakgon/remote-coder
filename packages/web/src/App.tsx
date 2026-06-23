@@ -9,6 +9,7 @@ import { SessionList } from "./session/SessionList";
 import { wireStateForSession } from "./session/status";
 import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
+import { ChatView } from "./chat/ChatView";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -92,9 +93,18 @@ export function App() {
         onShowSessions={() => setSessionsOpen(true)}
         onHideSessions={() => setSessionsOpen(false)}
       >
-        <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)" }}>
-          {activeSessionId ? "Chat view lands in Task 6." : "Select or start a session."}
-        </div>
+        {activeSessionId ? (
+          (() => {
+            const active = sessions.find((s) => s.id === activeSessionId);
+            return active ? (
+              <ChatView session={active} api={api} token={token} />
+            ) : (
+              <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>Session not found.</div>
+            );
+          })()
+        ) : (
+          <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)" }}>Select or start a session.</div>
+        )}
       </AppLayout>
       {wizardOpen && (
         <NewSessionWizard
