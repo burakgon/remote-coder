@@ -51,6 +51,12 @@ export interface SessionHubOptions {
   now?: () => number;
   store?: SessionStore;
   history?: HistoryService;
+  /**
+   * Observe every emitted frame (push-trigger seam). Invoked AFTER the WS listener fan-out so a push
+   * dispatcher sees result/permission/question frames without coupling to the WS layer. Must never
+   * throw (it is wrapped in a try/catch here so a push failure can't unwind the claude emit).
+   */
+  onFrame?: (sessionId: string, frame: ServerFrame) => void;
 }
 
 export class SessionHub {
@@ -59,6 +65,7 @@ export class SessionHub {
   private readonly now: () => number;
   private readonly store?: SessionStore;
   private readonly history?: HistoryService;
+  private readonly onFrame?: (sessionId: string, frame: ServerFrame) => void;
   private readonly records = new Map<string, SessionRecord>();
   /**
    * Per-id in-flight resume promises (mirrors transport.ts's idempotency `inFlight` map). Guards the
@@ -76,6 +83,7 @@ export class SessionHub {
     this.now = opts.now ?? Date.now;
     this.store = opts.store;
     this.history = opts.history;
+    this.onFrame = opts.onFrame;
   }
 
   async createSession(opts: CreateSessionOptions): Promise<SessionMeta> {
@@ -105,6 +113,13 @@ export class SessionHub {
     const emit = (kind: ServerFrameKind, payload: unknown) => {
       const frame = record.buffer.push(kind, payload);
       for (const listener of record.listeners) listener(frame);
+      if (this.onFrame) {
+        try {
+          this.onFrame(record.meta.id, frame);
+        } catch {
+          // a push-dispatch error must never unwind the claude process emit (spec §10)
+        }
+      }
     };
     proc.on("event", (ev: InboundEvent) => emit("event", ev));
     proc.on("permission", (perm: PermissionEvent) => emit("permission", perm));

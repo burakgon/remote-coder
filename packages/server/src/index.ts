@@ -50,3 +50,5 @@ export { openIdempotencyStore } from "./idempotency.js";
 export type { IdempotencyStore, OpenIdempotencyStoreOptions } from "./idempotency.js";
 export { openPushStore } from "./push-store.js";
 export type { PushStore, PushSubscriptionRecord, OpenPushStoreOptions } from "./push-store.js";
+export { PushDispatcher } from "./push-dispatcher.js";
+export type { PushMessage, PushSendFn, PushDispatcherOptions } from "./push-dispatcher.js";
