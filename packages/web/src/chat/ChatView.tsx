@@ -108,7 +108,7 @@ export function ChatView({ session, api, token }: ChatViewProps) {
         aria-relevant="additions text"
         style={{ flex: 1, overflowY: "auto" }}
       >
-        <MessageList view={safeView} />
+        <MessageList view={safeView} downloadUrl={(path) => api.downloadUrl(path)} />
 
         {/* Active client-side auto-allow rules (per session) with a way to clear each one. */}
         {autoAllow.size > 0 && (

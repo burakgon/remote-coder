@@ -85,4 +85,60 @@ describe("MessageList", () => {
     expect(code).toBeInTheDocument();
     expect(code.closest("pre")).not.toBeNull();
   });
+
+  describe("inline images from user content blocks", () => {
+    it("renders an image content block as an <img> with a data URI (not raw HTML) and alt text", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "user",
+                blocks: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } }],
+              },
+            ],
+          })}
+        />,
+      );
+      const img = screen.getByRole("img");
+      // The src is a data: URI built from media_type + base64 — no raw HTML injection.
+      expect(img).toHaveAttribute("src", "data:image/png;base64,QUJD");
+      // Accessible alt text is present.
+      expect(img).toHaveAttribute("alt", "attachment");
+    });
+  });
+
+  describe("download chips from tool-result file paths", () => {
+    it("renders a download chip linking to the download URL when a downloadUrl builder is provided", () => {
+      const downloadUrl = (p: string) => `https://host/fs/download?path=${encodeURIComponent(p)}&token=tok`;
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [{ kind: "tool-result", toolUseId: "tu1", content: "File created at: /private/tmp/rc-spike/spike.txt" }],
+          })}
+          downloadUrl={downloadUrl}
+        />,
+      );
+      // The chip is a labeled, keyboard-operable link with a download attribute.
+      const link = screen.getByRole("link", { name: /spike\.txt/i });
+      expect(link).toHaveAttribute(
+        "href",
+        "https://host/fs/download?path=%2Fprivate%2Ftmp%2Frc-spike%2Fspike.txt&token=tok",
+      );
+      expect(link).toHaveAttribute("download");
+    });
+
+    it("renders no chips when no downloadUrl builder is provided (download disabled)", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [{ kind: "tool-result", toolUseId: "tu1", content: "File created at: /private/tmp/rc-spike/spike.txt" }],
+          })}
+        />,
+      );
+      expect(screen.queryByRole("link")).toBeNull();
+      // The raw text still renders.
+      expect(screen.getByText(/spike\.txt/i)).toBeInTheDocument();
+    });
+  });
 });

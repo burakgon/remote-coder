@@ -1,9 +1,11 @@
 import { Mono } from "../ui/Mono";
 import { Markdown } from "./Markdown";
+import { imageBlockSrc, extractFilePaths } from "./content-images";
+import { FileChip } from "./FileChip";
 import type { SessionView, TurnItem } from "../store/frame-reducer";
 import type { ContentBlock } from "../types/server";
 
-function Turn({ item }: { item: TurnItem }) {
+function Turn({ item, downloadUrl }: { item: TurnItem; downloadUrl?: (path: string) => string }) {
   switch (item.kind) {
     case "assistant-text":
       return (
@@ -19,12 +21,22 @@ function Turn({ item }: { item: TurnItem }) {
           <Mono muted>{summarizeInput(item.input)}</Mono>
         </div>
       );
-    case "tool-result":
+    case "tool-result": {
+      const text = stringify(item.content);
+      const paths = downloadUrl ? extractFilePaths(text) : [];
       return (
-        <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>
-          <Mono muted>{stringify(item.content)}</Mono>
+        <div style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", display: "grid", gap: "var(--sp-2)" }}>
+          <Mono muted>{text}</Mono>
+          {paths.length > 0 && (
+            <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+              {paths.map((p) => (
+                <FileChip key={p} path={p} href={downloadUrl!(p)} />
+              ))}
+            </div>
+          )}
         </div>
       );
+    }
     case "user":
       return (
         <div style={{ color: "var(--text)", borderLeft: "2px solid var(--border)", paddingLeft: "var(--sp-3)" }}>
@@ -56,13 +68,14 @@ function Turn({ item }: { item: TurnItem }) {
 
 export interface MessageListProps {
   view: SessionView;
+  downloadUrl?: (path: string) => string;
 }
 
-export function MessageList({ view }: MessageListProps) {
+export function MessageList({ view, downloadUrl }: MessageListProps) {
   return (
     <div style={{ display: "grid", gap: "var(--sp-4)", padding: "var(--sp-4)" }}>
       {view.turns.map((item, i) => (
-        <Turn key={i} item={item} />
+        <Turn key={i} item={item} downloadUrl={downloadUrl} />
       ))}
       {view.thinkingText && <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{view.thinkingText}</div>}
       {view.liveText && (
@@ -99,9 +112,12 @@ function renderBlocks(blocks: ContentBlock[]) {
     b.type === "text" ? (
       <div key={i}>{b.text}</div>
     ) : (
-      <div key={i} style={{ color: "var(--text-muted)" }}>
-        [image]
-      </div>
+      <img
+        key={i}
+        src={imageBlockSrc(b)}
+        alt="attachment"
+        style={{ maxWidth: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
+      />
     ),
   );
 }
