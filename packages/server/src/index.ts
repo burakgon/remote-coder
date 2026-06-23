@@ -17,3 +17,11 @@ export { FsService } from "./fs-service.js";
 export type { DirEntry, DirListing, FsServiceOptions } from "./fs-service.js";
 export { ReplayBuffer, isCriticalKind } from "./replay-buffer.js";
 export type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
+export { SessionHub } from "./session-hub.js";
+export type {
+  SessionHubOptions,
+  SessionMeta,
+  SessionStatus,
+  FrameListener,
+  Subscription,
+} from "./session-hub.js";
