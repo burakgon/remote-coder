@@ -15,4 +15,8 @@ describe("wireStateForSession", () => {
     expect(wireStateForSession(meta("running"), { wireState: "awaiting" })).toBe("awaiting");
     expect(wireStateForSession(meta("running"), undefined)).toBe("idle");
   });
+  it("maps a dormant (post-restart) session to idle", () => {
+    expect(wireStateForSession(meta("dormant"), { wireState: "streaming" })).toBe("idle");
+    expect(wireStateForSession(meta("dormant"), undefined)).toBe("idle");
+  });
 });

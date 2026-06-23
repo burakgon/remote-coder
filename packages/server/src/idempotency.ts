@@ -41,6 +41,7 @@ export function openIdempotencyStore(opts: OpenIdempotencyStoreOptions): Idempot
   }
 
   const db = new Database(opts.dbPath);
+  db.pragma("journal_mode = WAL"); // parity with the session store (concurrent reader/writer safety)
   db.exec(
     `CREATE TABLE IF NOT EXISTS idempotency (key TEXT PRIMARY KEY, session_id TEXT NOT NULL, at INTEGER NOT NULL)`,
   );

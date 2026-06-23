@@ -18,7 +18,7 @@ test("applySettings sends controls and mirrors model/effort into the session met
   hub = new SessionHub(manager);
   const meta = await hub.createSession({ cwd: process.cwd(), model: "claude-mock" });
 
-  const updated = hub.applySettings(meta.id, { model: "claude-opus-4-8", maxThinkingTokens: 8000, effort: "high", permissionMode: "acceptEdits" });
+  const updated = await hub.applySettings(meta.id, { model: "claude-opus-4-8", maxThinkingTokens: 8000, effort: "high", permissionMode: "acceptEdits" });
   expect(updated.model).toBe("claude-opus-4-8");
   expect(updated.effort).toBe("high");
   // getSession reflects the mutation.

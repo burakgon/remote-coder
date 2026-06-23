@@ -16,7 +16,7 @@ export interface SessionMeta {
   model?: string;
   effort?: string;
   dangerouslySkip: boolean;
-  status: "running" | "errored" | "stopped";
+  status: "running" | "dormant" | "errored" | "stopped";
   createdAt: number;
 }
 

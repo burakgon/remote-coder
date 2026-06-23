@@ -228,7 +228,7 @@ test("WS: ?since=N delta replay sends only frames with seq > N", async () => {
   });
 
   // Pick a cutoff in the middle of the buffer; reconnect with ?since=cutoff.
-  const all = hub.getHistory(id);
+  const all = await hub.getHistory(id);
   expect(all.length).toBeGreaterThan(1);
   const cutoff = all[Math.floor(all.length / 2)].seq;
 

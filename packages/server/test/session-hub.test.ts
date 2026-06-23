@@ -76,16 +76,18 @@ test("reconnect replay: a late subscriber receives buffered frames including the
   expect(replayed.some((f) => f.kind === "result")).toBe(true);
   expect(replayed.length).toBeGreaterThan(0);
 
-  // getHistory mirrors the buffer.
-  expect(hub.getHistory(meta.id).some((f) => f.kind === "result")).toBe(true);
+  // getHistory mirrors the buffer (now async — the jsonl fallback only kicks in when empty).
+  expect((await hub.getHistory(meta.id)).some((f) => f.kind === "result")).toBe(true);
   hub.stopSession(meta.id);
 });
 
 test("unknown ids throw on hub operations", async () => {
   const { hub } = hubFor("simple");
-  expect(() => hub.sendMessage("nope", "x")).toThrow();
-  expect(() => hub.answerPermission("nope", "r", "allow")).toThrow();
-  expect(() => hub.getHistory("nope")).toThrow();
+  // sendMessage/answerPermission/getHistory are async now — they REJECT for an unknown id.
+  await expect(hub.sendMessage("nope", "x")).rejects.toThrow();
+  await expect(hub.answerPermission("nope", "r", "allow")).rejects.toThrow();
+  await expect(hub.getHistory("nope")).rejects.toThrow();
+  // subscribe is still synchronous.
   expect(() => hub.subscribe("nope", () => {})).toThrow();
 });
 

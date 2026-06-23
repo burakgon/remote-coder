@@ -1,4 +1,5 @@
 import { loadConfig } from "./config.js";
+import { resolveDataDir } from "./data-dir.js";
 import type { ServerConfig } from "./config.js";
 
 export interface ServerRuntimeConfig {
@@ -12,6 +13,8 @@ export interface ServerRuntimeConfig {
   fsRoot: string;
   /** Max bytes accepted for an upload. Default 25 MiB. */
   maxUploadBytes: number;
+  /** Host data dir for the SQLite DB + access token file. */
+  dataDir: string;
   /**
    * Trust X-Forwarded-* (passed to Fastify as `trustProxy`). Default false.
    * Set true when running behind a reverse proxy (Caddy/Cloudflare) so `request.ip` is the
@@ -42,13 +45,16 @@ function parseIntOption(
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv): ServerRuntimeConfig {
-  const port = parseIntOption(env.PORT, 4280, "PORT", { min: 1, max: 65535 });
+  // PORT 0 is a legitimate value: it tells the OS to pick a free ephemeral port (used in tests
+  // and for "let the OS choose"). Only a value ABOVE 65535 (or below 0) is a configuration error.
+  const port = parseIntOption(env.PORT, 4280, "PORT", { min: 0, max: 65535 });
   const maxUploadBytes = parseIntOption(env.MAX_UPLOAD_BYTES, 26214400, "MAX_UPLOAD_BYTES", { min: 1 });
   const cfg: ServerRuntimeConfig = {
     port,
     bindAddress: env.BIND_ADDRESS ?? "127.0.0.1",
     fsRoot: env.FS_ROOT ?? env.HOME ?? process.cwd(),
     maxUploadBytes,
+    dataDir: resolveDataDir(env),
     claude: loadConfig(env),
   };
   if (env.ACCESS_TOKEN) cfg.accessToken = env.ACCESS_TOKEN;

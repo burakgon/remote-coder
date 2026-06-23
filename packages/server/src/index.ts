@@ -31,7 +31,7 @@ export type { SessionStore, StoredSession, StoredStatus, OpenSessionStoreOptions
 export { resolveDataDir, ensureDataDir, resolveAccessToken } from "./data-dir.js";
 export type { ResolveAccessTokenOptions } from "./data-dir.js";
 export { createServer } from "./transport.js";
-export type { CreateServerResult } from "./transport.js";
+export type { CreateServerResult, CreateServerDeps } from "./transport.js";
 export { startServer } from "./start.js";
 export { HistoryService } from "./history-service.js";
 export type { HistoryServiceOptions } from "./history-service.js";

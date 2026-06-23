@@ -4,8 +4,10 @@ import type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
 import type { CreateSessionOptions } from "./session-manager.js";
 import type { ClaudeProcess, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
 import type { ContentBlock, HookPermissionDecision, InboundEvent, ResultEvent } from "@remote-coder/protocol";
+import type { SessionStore } from "./session-store.js";
+import type { HistoryService } from "./history-service.js";
 
-export type SessionStatus = "running" | "errored" | "stopped";
+export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
 
 export interface SessionMeta {
   id: string;
@@ -36,23 +38,35 @@ interface SessionRecord {
   meta: SessionMeta;
   buffer: ReplayBuffer;
   listeners: Set<FrameListener>;
+  /**
+   * SECURITY: the original `tool_input` the CLI sent with each AskUserQuestion, keyed by requestId,
+   * captured when the hub emitted the "question" frame. answerQuestion uses THIS value — never a
+   * client-echoed one — so a client cannot smuggle a tampered tool_input back into the CLI.
+   */
+  questionToolInputs: Map<string, unknown>;
 }
 
 export interface SessionHubOptions {
   replayCapacity?: number;
   now?: () => number;
+  store?: SessionStore;
+  history?: HistoryService;
 }
 
 export class SessionHub {
   private readonly manager: SessionManager;
   private readonly replayCapacity: number;
   private readonly now: () => number;
+  private readonly store?: SessionStore;
+  private readonly history?: HistoryService;
   private readonly records = new Map<string, SessionRecord>();
 
   constructor(manager: SessionManager, opts: SessionHubOptions = {}) {
     this.manager = manager;
     this.replayCapacity = opts.replayCapacity ?? 200;
     this.now = opts.now ?? Date.now;
+    this.store = opts.store;
+    this.history = opts.history;
   }
 
   async createSession(opts: CreateSessionOptions): Promise<SessionMeta> {
@@ -70,9 +84,11 @@ export class SessionHub {
       meta,
       buffer: new ReplayBuffer(this.replayCapacity),
       listeners: new Set(),
+      questionToolInputs: new Map(),
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
+    this.persist(meta);
     return meta;
   }
 
@@ -83,7 +99,12 @@ export class SessionHub {
     };
     proc.on("event", (ev: InboundEvent) => emit("event", ev));
     proc.on("permission", (perm: PermissionEvent) => emit("permission", perm));
-    proc.on("question", (q: QuestionEvent) => emit("question", q));
+    proc.on("question", (q: QuestionEvent) => {
+      // SECURITY: remember the CLI's original tool_input for this requestId so answerQuestion
+      // replays IT (not a client-echoed value) back into the CLI.
+      record.questionToolInputs.set(q.requestId, q.toolInput);
+      emit("question", q);
+    });
     proc.on("result", (result: ResultEvent) => emit("result", result));
     proc.on("diagnostic", (diag: DiagnosticEvent) => emit("diagnostic", diag));
     // CRITICAL: Node's EventEmitter throws on an "error" event with no listener.
@@ -107,8 +128,21 @@ export class SessionHub {
     return this.records.get(id)?.meta;
   }
 
-  getHistory(id: string): ServerFrame[] {
-    return this.require(id).buffer.snapshot();
+  /**
+   * Conversation history for a session. Live/buffered frames win; for a dormant session whose
+   * buffer is empty (e.g. just rehydrated after a restart) project the on-disk jsonl transcript
+   * into event-kind frames so history survives a process restart.
+   */
+  async getHistory(id: string): Promise<ServerFrame[]> {
+    const record = this.require(id);
+    const buffered = record.buffer.snapshot();
+    if (buffered.length > 0 || !this.history) return buffered;
+    const turns = await this.history.read(record.meta.cwd, id);
+    return turns.map((t, i) => ({
+      seq: i + 1,
+      kind: "event" as const,
+      payload: { type: t.type, message: t.message, raw: t },
+    }));
   }
 
   /** Live subscriber count for a session (0 if unknown). Lets the WS layer assert no leak. */
@@ -129,26 +163,44 @@ export class SessionHub {
     };
   }
 
-  sendMessage(id: string, content: string | ContentBlock[]): void {
-    this.require(id);
+  async sendMessage(id: string, content: string | ContentBlock[]): Promise<void> {
+    await this.ensureLive(id);
     this.manager.sendMessage(id, content);
+    this.store?.touch(id, this.now());
   }
 
-  answerPermission(id: string, requestId: string, decision: HookPermissionDecision, reason?: string): void {
-    this.require(id);
+  async answerPermission(id: string, requestId: string, decision: HookPermissionDecision, reason?: string): Promise<void> {
+    await this.ensureLive(id);
     this.manager.answerPermission(id, requestId, decision, reason);
   }
 
-  answerQuestion(id: string, requestId: string, toolInput: unknown, answers: Record<string, string | string[]>): void {
-    this.require(id);
-    this.manager.answerQuestion(id, requestId, toolInput, answers);
+  /**
+   * Answer an AskUserQuestion. SECURITY: the `_clientToolInput` argument is IGNORED — we replay the
+   * tool_input the CLI originally sent for this requestId (remembered in `record.questionToolInputs`)
+   * so a client cannot tamper with what goes back to the CLI. Falls back to the client value only if
+   * (impossibly) no remembered input exists for the requestId.
+   */
+  async answerQuestion(
+    id: string,
+    requestId: string,
+    _clientToolInput: unknown,
+    answers: Record<string, string | string[]>,
+  ): Promise<void> {
+    await this.ensureLive(id);
+    const record = this.require(id);
+    const remembered = record.questionToolInputs.has(requestId)
+      ? record.questionToolInputs.get(requestId)
+      : _clientToolInput;
+    this.manager.answerQuestion(id, requestId, remembered, answers);
+    record.questionToolInputs.delete(requestId);
   }
 
   /**
    * Apply live settings to a running session: send each provided control to the CLI and mirror the
    * change into the in-memory SessionMeta so a subsequent getSession reflects it.
    */
-  applySettings(id: string, settings: LiveSettings): SessionMeta {
+  async applySettings(id: string, settings: LiveSettings): Promise<SessionMeta> {
+    await this.ensureLive(id);
     const record = this.require(id);
     if (settings.model !== undefined) {
       this.manager.setModel(id, settings.model);
@@ -161,6 +213,7 @@ export class SessionHub {
     if (settings.permissionMode !== undefined) {
       this.manager.setPermissionMode(id, settings.permissionMode);
     }
+    this.persist(record.meta);
     return record.meta;
   }
 
@@ -168,12 +221,65 @@ export class SessionHub {
     const record = this.records.get(id);
     if (!record) return;
     record.meta.status = "stopped";
+    this.persist(record.meta);
     this.manager.stopSession(id);
   }
 
   /** Stop every live session — used by the server's onClose hook so no child `claude` is left running. */
   stopAll(): void {
     for (const id of this.records.keys()) this.stopSession(id);
+  }
+
+  /** Write the session's current meta to the durable store (no-op when no store is configured). */
+  private persist(meta: SessionMeta): void {
+    this.store?.upsert({
+      id: meta.id,
+      cwd: meta.cwd,
+      model: meta.model,
+      effort: meta.effort,
+      dangerouslySkip: meta.dangerouslySkip,
+      status: meta.status,
+      createdAt: meta.createdAt,
+      lastActivityAt: this.now(),
+    });
+  }
+
+  /** Rehydrate DORMANT session metas from the store at boot (no live process is spawned). */
+  loadFromStore(): void {
+    if (!this.store) return;
+    for (const s of this.store.list()) {
+      if (this.records.has(s.id)) continue;
+      const meta: SessionMeta = {
+        id: s.id,
+        cwd: s.cwd,
+        model: s.model,
+        effort: s.effort,
+        dangerouslySkip: s.dangerouslySkip,
+        status: "dormant",
+        createdAt: s.createdAt,
+      };
+      this.records.set(s.id, {
+        meta,
+        buffer: new ReplayBuffer(this.replayCapacity),
+        listeners: new Set(),
+        questionToolInputs: new Map(),
+      });
+    }
+  }
+
+  /** Ensure a record has a LIVE process; resume a dormant/dead one in its stored cwd. */
+  private async ensureLive(id: string): Promise<void> {
+    const record = this.require(id);
+    if (this.manager.getSession(id)) return; // already live
+    const session = await this.manager.resumeSession(id, {
+      cwd: record.meta.cwd,
+      model: record.meta.model,
+      effort: record.meta.effort,
+      dangerouslySkip: record.meta.dangerouslySkip,
+    });
+    record.meta.status = "running";
+    this.attach(session.process, record);
+    this.persist(record.meta);
   }
 
   private require(id: string): SessionRecord {

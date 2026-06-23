@@ -10,6 +10,16 @@ import { buildImageBlock } from "@remote-coder/protocol";
 import type { ContentBlock, HookPermissionDecision } from "@remote-coder/protocol";
 import type { SessionManager } from "./session-manager.js";
 import type { ServerRuntimeConfig } from "./server-config.js";
+import type { SessionStore } from "./session-store.js";
+import type { HistoryService } from "./history-service.js";
+import type { IdempotencyStore } from "./idempotency.js";
+import type { SessionMeta } from "./session-hub.js";
+
+export interface CreateServerDeps {
+  store?: SessionStore;
+  history?: HistoryService;
+  idempotency?: IdempotencyStore;
+}
 
 export interface CreateServerResult {
   app: FastifyInstance;
@@ -28,8 +38,12 @@ interface CreateSessionBody {
 export function createServer(
   config: ServerRuntimeConfig,
   sessionManager: SessionManager,
+  deps: CreateServerDeps = {},
 ): CreateServerResult {
-  const hub = new SessionHub(sessionManager);
+  const hub = new SessionHub(sessionManager, { store: deps.store, history: deps.history });
+  hub.loadFromStore();
+  // Per-idempotency-key in-flight lock: two simultaneous same-key POSTs must yield ONE session.
+  const inFlight = new Map<string, Promise<SessionMeta>>();
   const authGate = new AuthGate({ token: config.accessToken });
   const fsService = new FsService({ root: config.fsRoot });
   // trustProxy makes request.ip honour X-Forwarded-For behind a reverse proxy, so the
@@ -123,13 +137,44 @@ export function createServer(
       reply.code(400).send({ error: "cwd is required" });
       return;
     }
-    const session = await hub.createSession({
+    const idemKey = request.headers["idempotency-key"];
+    const key = typeof idemKey === "string" ? idemKey : undefined;
+
+    if (key && deps.idempotency) {
+      // Committed hit: a previous create with this key already produced a (still-known) session.
+      const existingId = deps.idempotency.lookup(key, Date.now());
+      if (existingId) {
+        const existing = hub.getSession(existingId);
+        if (existing) {
+          reply.code(200).send({ session: existing });
+          return;
+        }
+      }
+      // In-flight hit: a concurrent same-key create is mid-spawn — await IT instead of spawning
+      // a second process, so two simultaneous same-key requests collapse to ONE session.
+      const pending = inFlight.get(key);
+      if (pending) {
+        const session = await pending;
+        reply.code(200).send({ session });
+        return;
+      }
+    }
+
+    const createPromise = hub.createSession({
       cwd: body.cwd,
       model: body.model,
       effort: body.effort,
       addDirs: body.addDirs,
       dangerouslySkip: body.dangerouslySkip,
     });
+    if (key && deps.idempotency) inFlight.set(key, createPromise);
+    let session: SessionMeta;
+    try {
+      session = await createPromise;
+    } finally {
+      if (key && deps.idempotency) inFlight.delete(key);
+    }
+    if (key && deps.idempotency) deps.idempotency.remember(key, session.id, Date.now());
     reply.code(201).send({ session });
   });
 
@@ -143,7 +188,7 @@ export function createServer(
       reply.code(404).send({ error: "session not found" });
       return;
     }
-    return { session: meta, history: hub.getHistory(request.params.id) };
+    return { session: meta, history: await hub.getHistory(request.params.id) };
   });
 
   app.post<{ Params: { id: string } }>("/sessions/:id/stop", async (request, reply) => {
@@ -245,9 +290,11 @@ function contentDisposition(filename: string): string {
 }
 
 function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unknown>): void {
+  // The hub methods are async (a dormant session may resume first). They are fire-and-forget here:
+  // a rejected resume must never throw into the WS message handler, so each is `.catch`-guarded.
   if (msg.type === "user") {
     const blocks = toContentBlocks(msg);
-    if (blocks.length > 0) hub.sendMessage(id, blocks);
+    if (blocks.length > 0) void hub.sendMessage(id, blocks).catch(() => {});
     return;
   }
   if (msg.type === "permission") {
@@ -256,11 +303,37 @@ function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unkn
       msg.decision === "allow" || msg.decision === "deny" ? (msg.decision as HookPermissionDecision) : undefined;
     if (requestId && decision) {
       const reason = typeof msg.reason === "string" ? msg.reason : undefined;
-      hub.answerPermission(id, requestId, decision, reason);
+      void hub.answerPermission(id, requestId, decision, reason).catch(() => {});
     }
     return;
   }
+  if (msg.type === "answer") {
+    const requestId = typeof msg.requestId === "string" ? msg.requestId : undefined;
+    const answers = isAnswerMap(msg.answers) ? msg.answers : undefined;
+    // NOTE: msg.toolInput is IGNORED by the hub (it replays the server-remembered tool_input).
+    if (requestId && answers) void hub.answerQuestion(id, requestId, msg.toolInput, answers).catch(() => {});
+    return;
+  }
+  if (msg.type === "settings") {
+    const settings: { model?: string; maxThinkingTokens?: number; effort?: string; permissionMode?: string } = {};
+    if (typeof msg.model === "string") settings.model = msg.model;
+    if (typeof msg.maxThinkingTokens === "number") settings.maxThinkingTokens = msg.maxThinkingTokens;
+    if (typeof msg.effort === "string") settings.effort = msg.effort;
+    if (typeof msg.permissionMode === "string") settings.permissionMode = msg.permissionMode;
+    void hub.applySettings(id, settings).catch(() => {});
+    return;
+  }
   // unknown frame types are ignored
+}
+
+/** Accept only a flat record of question -> string | string[]. */
+function isAnswerMap(v: unknown): v is Record<string, string | string[]> {
+  if (typeof v !== "object" || v === null) return false;
+  for (const val of Object.values(v as Record<string, unknown>)) {
+    const ok = typeof val === "string" || (Array.isArray(val) && val.every((x) => typeof x === "string"));
+    if (!ok) return false;
+  }
+  return true;
 }
 
 /** A content block is only forwarded if it is a well-formed text or image block. */

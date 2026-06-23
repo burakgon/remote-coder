@@ -14,9 +14,8 @@ afterEach(async () => {
 });
 
 // Cross-task driver: the inbound `answer` client frame is recognized by transport.ts's
-// handleClientFrame, which is wired in Task 11. Until then this fails at the WS layer
-// (the `answer` frame is ignored). Skipped here; un-skip and re-run green at the end of Task 11.
-test.skip("AskUserQuestion: question frame -> answer frame -> model reflects the choice", async () => {
+// handleClientFrame, which is wired in Task 11. Un-skipped in Task 11 once `answer` is wired.
+test("AskUserQuestion: question frame -> answer frame -> model reflects the choice", async () => {
   const config: ServerRuntimeConfig = {
     port: 0, bindAddress: "127.0.0.1", accessToken: TOKEN,
     fsRoot: process.cwd(), maxUploadBytes: 26214400, claude: { claudeBin: process.execPath },
