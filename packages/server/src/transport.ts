@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
+import multipart from "@fastify/multipart";
+import { FsService } from "./fs-service.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import { SessionHub } from "./session-hub.js";
@@ -29,9 +31,13 @@ export function createServer(
 ): CreateServerResult {
   const hub = new SessionHub(sessionManager);
   const authGate = new AuthGate({ token: config.accessToken });
+  const fsService = new FsService({ root: config.fsRoot });
   // trustProxy makes request.ip honour X-Forwarded-For behind a reverse proxy, so the
   // per-client auth lockout keys on the real client IP (see Task 4's proxy caveat).
   const app = Fastify({ logger: false, trustProxy: config.trustProxy ?? false });
+
+  // Multipart uploads, capped at the configured size.
+  app.register(multipart, { limits: { fileSize: config.maxUploadBytes } });
 
   // Global token gate — applies to BOTH REST routes AND the WebSocket upgrade request
   // (a Fastify global preHandler runs for the WS route's GET upgrade and a 401 there
@@ -137,6 +143,69 @@ export function createServer(
     }
     hub.stopSession(request.params.id);
     return { ok: true };
+  });
+
+  app.get<{ Querystring: { path?: string } }>("/fs/list", async (request, reply) => {
+    try {
+      const target = request.query.path ?? config.fsRoot;
+      return await fsService.listDirectory(target);
+    } catch (err) {
+      reply.code(400).send({ error: (err as Error).message });
+    }
+  });
+
+  app.get<{ Querystring: { path?: string } }>("/fs/download", async (request, reply) => {
+    if (!request.query.path) {
+      reply.code(400).send({ error: "path is required" });
+      return;
+    }
+    try {
+      const file = await fsService.readFileForDownload(request.query.path);
+      reply
+        .header("content-disposition", `attachment; filename="${file.filename}"`)
+        .header("content-type", "application/octet-stream")
+        .send(file.data);
+    } catch (err) {
+      const message = (err as Error).message;
+      if (message.includes("outside the allowed root")) {
+        reply.code(400).send({ error: message });
+      } else {
+        reply.code(404).send({ error: message });
+      }
+    }
+  });
+
+  app.post<{ Querystring: { dir?: string } }>("/fs/upload", async (request, reply) => {
+    const targetDir = request.query.dir ?? config.fsRoot;
+    let data;
+    try {
+      data = await request.file();
+    } catch (err) {
+      reply.code(400).send({ error: (err as Error).message });
+      return;
+    }
+    if (!data) {
+      reply.code(400).send({ error: "no file field in the upload" });
+      return;
+    }
+    let buffer: Buffer;
+    try {
+      buffer = await data.toBuffer();
+    } catch (err) {
+      // @fastify/multipart throws when the per-file limit is exceeded.
+      reply.code(413).send({ error: (err as Error).message });
+      return;
+    }
+    if (data.file.truncated) {
+      reply.code(413).send({ error: "file exceeds the upload size limit" });
+      return;
+    }
+    try {
+      const written = await fsService.writeUploadedFile(targetDir, data.filename, buffer);
+      reply.code(201).send({ path: written.path });
+    } catch (err) {
+      reply.code(400).send({ error: (err as Error).message });
+    }
   });
 
   return { app, hub, authGate };
