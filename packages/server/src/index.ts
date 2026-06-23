@@ -30,6 +30,8 @@ export { openSessionStore } from "./session-store.js";
 export type { SessionStore, StoredSession, StoredStatus, OpenSessionStoreOptions } from "./session-store.js";
 export { resolveDataDir, ensureDataDir, resolveAccessToken } from "./data-dir.js";
 export type { ResolveAccessTokenOptions } from "./data-dir.js";
+export { resolveVapidKeys } from "./vapid.js";
+export type { VapidKeys, ResolveVapidKeysOptions } from "./vapid.js";
 export { createServer } from "./transport.js";
 export type { CreateServerResult, CreateServerDeps } from "./transport.js";
 export {

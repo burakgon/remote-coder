@@ -20,11 +20,13 @@
     "@fastify/static": "^9.1.3",
     "@fastify/websocket": "^11.0.1",
     "@fastify/multipart": "^10.0.0",
-    "better-sqlite3": "^11.3.0"
+    "better-sqlite3": "^11.3.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "ws": "^8.18.0",
     "@types/ws": "^8.5.12",
-    "@types/better-sqlite3": "^7.6.11"
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/web-push": "^3.6.4"
   }
 }
