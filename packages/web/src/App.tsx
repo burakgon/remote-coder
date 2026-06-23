@@ -1,20 +1,87 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LoginScreen } from "./auth/LoginScreen";
-import { loadToken, saveToken } from "./auth/token-store";
+import { loadToken, saveToken, clearToken } from "./auth/token-store";
+import { createApiClient, ApiError } from "./api/client";
+import { API_BASE_URL } from "./config";
+import { useStore } from "./store/store";
+import { AppLayout } from "./AppLayout";
+import { SessionList } from "./session/SessionList";
+import { wireStateForSession } from "./session/status";
+
+type Phase = "login" | "validating" | "ready";
 
 export function App() {
-  const [token, setToken] = useState<string | undefined>(() => loadToken());
+  const [token, setTokenState] = useState<string | undefined>(() => loadToken());
+  const [phase, setPhase] = useState<Phase>(token === undefined ? "login" : "validating");
+  const [loginError, setLoginError] = useState<string | undefined>();
+  const { sessions, setSessions, setToken, activeSessionId, setActive, views } = useStore();
 
-  if (token === undefined) {
+  const api = useMemo(
+    () => createApiClient({ baseUrl: API_BASE_URL, getToken: () => (token === "" ? undefined : token) }),
+    [token],
+  );
+
+  useEffect(() => {
+    if (token === undefined) return;
+    setToken(token);
+    let cancelled = false;
+    setPhase("validating");
+    api
+      .listSessions()
+      .then((s) => {
+        if (cancelled) return;
+        setSessions(s);
+        setPhase("ready");
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          clearToken();
+          setTokenState(undefined);
+          setLoginError("Invalid token (401). Check the access token and try again.");
+          setPhase("login");
+        } else {
+          // network/other error: still enter the app; the list is empty and can be retried.
+          setPhase("ready");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, api, setSessions, setToken]);
+
+  if (phase === "login" || token === undefined) {
     return (
       <LoginScreen
+        initialError={loginError}
         onAuthenticated={(t) => {
           saveToken(t);
-          setToken(t);
+          setLoginError(undefined);
+          setTokenState(t);
         }}
       />
     );
   }
-  // Task 4 replaces this with the real session-list + chat layout.
-  return <div>connected</div>;
+
+  if (phase === "validating") {
+    return <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>Connecting…</div>;
+  }
+
+  const list = (
+    <SessionList
+      sessions={sessions}
+      activeId={activeSessionId}
+      onSelect={(id) => setActive(id)}
+      onNew={() => { /* Task 5 opens the new-session wizard */ }}
+      viewWireState={(id) => wireStateForSession(sessions.find((s) => s.id === id) ?? { id, cwd: "", dangerouslySkip: false, status: "running", createdAt: 0 }, views[id])}
+    />
+  );
+
+  return (
+    <AppLayout sessionList={list}>
+      <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)", padding: "var(--sp-5)" }}>
+        {activeSessionId ? "Chat view lands in Task 6." : "Select or start a session."}
+      </div>
+    </AppLayout>
+  );
 }
