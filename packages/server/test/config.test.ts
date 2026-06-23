@@ -67,3 +67,9 @@ test("buildClaudeArgs never includes -p or --print", () => {
   expect(args).not.toContain("-p");
   expect(args).not.toContain("--print");
 });
+
+test("buildClaudeArgs never includes -p/--print even with all options set", () => {
+  const args = buildClaudeArgs({ sessionId: "s", dangerouslySkip: true, effort: "high", model: "opus", addDirs: ["/a", "/b"] });
+  expect(args).not.toContain("-p");
+  expect(args).not.toContain("--print");
+});
