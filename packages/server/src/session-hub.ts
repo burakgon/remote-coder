@@ -101,6 +101,11 @@ export class SessionHub {
     return this.require(id).buffer.snapshot();
   }
 
+  /** Live subscriber count for a session (0 if unknown). Lets the WS layer assert no leak. */
+  subscriberCount(id: string): number {
+    return this.records.get(id)?.listeners.size ?? 0;
+  }
+
   subscribe(id: string, listener: FrameListener, sinceSeq?: number): Subscription {
     const record = this.require(id);
     // Replay first (spec §10), then go live.

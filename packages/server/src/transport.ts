@@ -1,7 +1,11 @@
 import Fastify from "fastify";
+import websocket from "@fastify/websocket";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { WebSocket } from "ws";
 import { SessionHub } from "./session-hub.js";
 import { AuthGate, extractBearerToken } from "./auth.js";
+import { buildImageBlock } from "@remote-coder/protocol";
+import type { ContentBlock, HookPermissionDecision } from "@remote-coder/protocol";
 import type { SessionManager } from "./session-manager.js";
 import type { ServerRuntimeConfig } from "./server-config.js";
 
@@ -44,6 +48,58 @@ export function createServer(
     }
   });
 
+  // WebSocket support. Registered synchronously; routes are added below.
+  app.register(websocket);
+
+  // Handshake auth is handled by the GLOBAL preHandler (it runs for the upgrade GET and
+  // reads ?token= too). By the time this handler runs, the token is already validated;
+  // we only reject an unknown session here.
+  app.register(async (wsScope) => {
+    wsScope.get<{ Params: { id: string } }>(
+      "/sessions/:id/ws",
+      { websocket: true },
+      (socket: WebSocket, request: FastifyRequest<{ Params: { id: string } }>) => {
+        const id = request.params.id;
+
+        if (!hub.getSession(id)) {
+          socket.close(4404, "session not found");
+          return;
+        }
+
+        // SessionHub fan-out is SYNCHRONOUS: a throw from socket.send() (e.g. the socket is
+        // closing) would unwind the hub's listener loop straight into the ClaudeProcess emit.
+        // Guard the send and, on ANY failure, unsubscribe + close so the throw never escapes
+        // the hub callback.
+        const subscription = hub.subscribe(id, (frame) => {
+          if (socket.readyState !== socket.OPEN) return;
+          try {
+            socket.send(JSON.stringify(frame));
+          } catch {
+            subscription.unsubscribe();
+            try {
+              socket.close();
+            } catch {
+              // socket already torn down — nothing more to do
+            }
+          }
+        });
+
+        socket.on("message", (raw: Buffer) => {
+          let msg: Record<string, unknown>;
+          try {
+            msg = JSON.parse(raw.toString());
+          } catch {
+            return; // ignore malformed client frames
+          }
+          handleClientFrame(hub, id, msg);
+        });
+
+        socket.on("close", () => subscription.unsubscribe());
+        socket.on("error", () => subscription.unsubscribe());
+      },
+    );
+  });
+
   app.post<{ Body: CreateSessionBody }>("/sessions", async (request, reply) => {
     const body = request.body;
     if (!body || typeof body.cwd !== "string") {
@@ -84,4 +140,60 @@ export function createServer(
   });
 
   return { app, hub, authGate };
+}
+
+function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unknown>): void {
+  if (msg.type === "user") {
+    const blocks = toContentBlocks(msg);
+    if (blocks.length > 0) hub.sendMessage(id, blocks);
+    return;
+  }
+  if (msg.type === "permission") {
+    const requestId = typeof msg.requestId === "string" ? msg.requestId : undefined;
+    const decision =
+      msg.decision === "allow" || msg.decision === "deny" ? (msg.decision as HookPermissionDecision) : undefined;
+    if (requestId && decision) {
+      const reason = typeof msg.reason === "string" ? msg.reason : undefined;
+      hub.answerPermission(id, requestId, decision, reason);
+    }
+    return;
+  }
+  // unknown frame types are ignored
+}
+
+/** A content block is only forwarded if it is a well-formed text or image block. */
+function isValidContentBlock(b: unknown): b is ContentBlock {
+  if (typeof b !== "object" || b === null) return false;
+  const block = b as Record<string, unknown>;
+  if (block.type === "text") return typeof block.text === "string";
+  if (block.type === "image") {
+    const src = block.source as Record<string, unknown> | undefined;
+    return (
+      typeof src === "object" &&
+      src !== null &&
+      src.type === "base64" &&
+      typeof src.media_type === "string" &&
+      typeof src.data === "string"
+    );
+  }
+  return false;
+}
+
+/** Build a content-block array from a flexible inbound `user` frame. Never forwards arbitrary JSON. */
+function toContentBlocks(msg: Record<string, unknown>): ContentBlock[] {
+  // Explicit `blocks` array: keep only well-formed text/image blocks (don't cast raw client JSON
+  // straight into serializeUserMessage -> claude stdin).
+  if (Array.isArray(msg.blocks)) return msg.blocks.filter(isValidContentBlock);
+  const blocks: ContentBlock[] = [];
+  const text =
+    typeof msg.content === "string" ? msg.content : typeof msg.text === "string" ? msg.text : undefined;
+  if (text) blocks.push({ type: "text", text });
+  if (Array.isArray(msg.images)) {
+    for (const img of msg.images as { mediaType?: string; dataBase64?: string }[]) {
+      if (img && typeof img.mediaType === "string" && typeof img.dataBase64 === "string") {
+        blocks.push(buildImageBlock(img.mediaType, img.dataBase64));
+      }
+    }
+  }
+  return blocks;
 }
