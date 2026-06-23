@@ -6,11 +6,15 @@ import { fileURLToPath } from "node:url";
 import { build } from "vite";
 import { beforeAll, describe, expect, it } from "vitest";
 
-// The service worker is generated at `vite build`; we can't unit-test its runtime, so instead
-// we run the real build once and assert on the emitted artifacts: that the SW + manifest are
-// emitted, that the manifest carries the right name/theme/icons, and — critically — that the
-// SW precaches ONLY the static shell and never the live API or WebSocket (which would serve
-// stale/unauthorized data and break sessions).
+// The service worker is built at `vite build` (now via `injectManifest`: our hand-written
+// `src/sw.ts` is the SW, and vite-plugin-pwa injects the precache manifest at `self.__WB_MANIFEST`).
+// We can't unit-test its runtime, so instead we run the real build once and assert on the emitted
+// artifacts: that the SW + manifest are emitted, that the custom push/notificationclick handlers
+// shipped, that the manifest carries the right name/theme/icons, and — critically — that the SW
+// precaches ONLY the static shell and never the live API or WebSocket (which would serve
+// stale/unauthorized data and break sessions). The API navigation-fallback denial now lives
+// server-side (`@fastify/static` + the server's API path denylist); the web-side mirror
+// (`apiNavigationDenylist`) is covered by `sw-exclusions.test.ts`.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webRoot = resolve(here, "../..");
@@ -33,21 +37,28 @@ beforeAll(async () => {
 
 describe("vite build PWA artifacts", () => {
   it("emits a service worker that precaches the app shell", () => {
-    expect(sw).toContain("precacheAndRoute");
+    // injectManifest injects the precache list (revision-stamped entries) at __WB_MANIFEST;
+    // the shell (index.html + icons) is precached just as the old generateSW config did.
+    expect(sw).toMatch(/revision:/);
     expect(sw).toMatch(/index\.html/);
     expect(sw).toMatch(/icon-512\.svg/);
   });
 
+  it("ships the custom Web Push handlers (push + notificationclick)", () => {
+    // The whole reason for switching to injectManifest: our hand-written SW owns these handlers,
+    // which generateSW could not host.
+    expect(sw).toMatch(/addEventListener\(["']push["']/);
+    expect(sw).toMatch(/addEventListener\(["']notificationclick["']/);
+    expect(sw).toMatch(/showNotification/);
+  });
+
   it("does NOT precache or intercept the live API or the WebSocket", () => {
-    // /sessions and /fs appear ONLY inside the navigation-fallback denylist, never as a
-    // precached URL or a cache route. Assert there is no precached URL for them and no ws route.
+    // The critical safety invariant (preserved from Plan 4): /sessions and /fs are never a
+    // precached URL or a cache route, and the WebSocket is never matched by a fetch route.
     expect(sw).not.toMatch(/url:\s*["'][^"']*\/sessions/);
     expect(sw).not.toMatch(/url:\s*["'][^"']*\/fs/);
     expect(sw).not.toMatch(/ws:\/\//);
     expect(sw).not.toMatch(/wss:\/\//);
-    // The denylist IS present (the fallback is explicitly denied for the API).
-    expect(sw).toMatch(/denylist/);
-    expect(sw).toMatch(/\^\\\/sessions|\/\^\\\/sessions|\\\/sessions/);
   });
 
   it("emits a manifest with the right name, theme, and icons", () => {

@@ -4,7 +4,7 @@
     "composite": false,
     "noEmit": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
