@@ -6,7 +6,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import { SessionHub } from "./session-hub.js";
 import { AuthGate, extractBearerToken } from "./auth.js";
-import { registerStatic, isPublicPath } from "./static-routes.js";
+import { registerStatic, isPublicForRequest } from "./static-routes.js";
 import { buildImageBlock } from "@remote-coder/protocol";
 import type { ContentBlock, HookPermissionDecision } from "@remote-coder/protocol";
 import type { SessionManager } from "./session-manager.js";
@@ -63,7 +63,10 @@ export function createServer(
   app.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     // Public static shell (HTML/JS/CSS/icons/manifest/sw + SPA navigations) loads WITHOUT a token
     // so the login screen can render and THEN authenticate. API/WS/health/push stay gated below.
-    if (isPublicPath(request.url.split("?")[0] ?? "/")) return;
+    // CRITICAL: gate on the DECODED path (and reject encoded separators) so this matches the path
+    // Fastify's router actually routes — otherwise `GET /%73essions` (=/sessions) would look public
+    // here yet reach the protected handler, bypassing the token check. See isPublicForRequest.
+    if (isPublicForRequest(request.url)) return;
     // No token configured (loopback dev): allow. Non-loopback w/o token is blocked at startup.
     if (!config.accessToken) return;
     // `?token=a&token=b` parses to an array — only a single string is a usable token.
