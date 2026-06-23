@@ -7,6 +7,8 @@ import {
   serializeHookPermissionResponse,
   serializeCanUseToolResponse,
   classifyPermissionRequest,
+  classifyQuestionRequest,
+  serializeHookQuestionAnswer,
   ProtocolParseError,
 } from "@remote-coder/protocol";
 import type {
@@ -16,6 +18,7 @@ import type {
   ContentBlock,
   HookPermissionDecision,
   CanUseToolResult,
+  QuestionSpec,
 } from "@remote-coder/protocol";
 import { buildClaudeArgs } from "./config.js";
 
@@ -41,6 +44,13 @@ export interface PermissionEvent {
   toolName?: string;
   toolInput?: unknown;
   toolUseId?: string;
+}
+
+export interface QuestionEvent {
+  requestId: string;
+  toolUseId?: string;
+  toolInput: unknown;
+  questions: QuestionSpec[];
 }
 
 export interface DiagnosticEvent {
@@ -160,6 +170,11 @@ export class ClaudeProcess extends EventEmitter {
     this.write(serializeCanUseToolResponse(requestId, result));
   }
 
+  /** Answer an AskUserQuestion: allow + the chosen answers merged into the tool input. */
+  answerQuestion(requestId: string, toolInput: unknown, answers: Record<string, string | string[]>): void {
+    this.write(serializeHookQuestionAnswer(requestId, toolInput, answers));
+  }
+
   stop(): void {
     if (!this.child || this.child.killed) return;
     // Keep-alive teardown: close stdin first so the child can exit cleanly, then kill.
@@ -221,6 +236,16 @@ export class ClaudeProcess extends EventEmitter {
     this.emit("event", ev);
 
     if (ev.type === "control_request") {
+      const question = classifyQuestionRequest(ev as ControlRequestEvent);
+      if (question) {
+        this.emit("question", {
+          requestId: question.requestId,
+          toolUseId: question.toolUseId,
+          toolInput: question.toolInput,
+          questions: question.questions,
+        } satisfies QuestionEvent);
+        return;
+      }
       const info = classifyPermissionRequest(ev as ControlRequestEvent);
       if (info) {
         const perm: PermissionEvent = {
@@ -264,18 +289,21 @@ export class ClaudeProcess extends EventEmitter {
 export interface ClaudeProcess {
   on(event: "event", listener: (ev: InboundEvent) => void): this;
   on(event: "permission", listener: (perm: PermissionEvent) => void): this;
+  on(event: "question", listener: (q: QuestionEvent) => void): this;
   on(event: "result", listener: (result: ResultEvent) => void): this;
   on(event: "diagnostic", listener: (diag: DiagnosticEvent) => void): this;
   on(event: "exit", listener: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): this;
   on(event: "error", listener: (err: Error) => void): this;
   once(event: "event", listener: (ev: InboundEvent) => void): this;
   once(event: "permission", listener: (perm: PermissionEvent) => void): this;
+  once(event: "question", listener: (q: QuestionEvent) => void): this;
   once(event: "result", listener: (result: ResultEvent) => void): this;
   once(event: "diagnostic", listener: (diag: DiagnosticEvent) => void): this;
   once(event: "exit", listener: (info: { code: number | null; signal: NodeJS.Signals | null }) => void): this;
   once(event: "error", listener: (err: Error) => void): this;
   emit(event: "event", ev: InboundEvent): boolean;
   emit(event: "permission", perm: PermissionEvent): boolean;
+  emit(event: "question", q: QuestionEvent): boolean;
   emit(event: "result", result: ResultEvent): boolean;
   emit(event: "diagnostic", diag: DiagnosticEvent): boolean;
   emit(event: "exit", info: { code: number | null; signal: NodeJS.Signals | null }): boolean;

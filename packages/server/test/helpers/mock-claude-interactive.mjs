@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Deterministic interactive mock of `claude` over stream-json stdio.
 // Speaks the protocol from docs/protocol-notes.md so tests never need the real binary.
-// Mode via env MOCK_MODE: "simple" (default) | "permission".
+// Mode via env MOCK_MODE: "simple" (default) | "permission" | "question" | "resume" | "stderr".
 import { stdin, stdout, env } from "node:process";
 
 const MODE = env.MOCK_MODE ?? "simple";
@@ -135,6 +135,44 @@ function emitPermissionResult(decision) {
   }
 }
 
+function emitQuestionRequest() {
+  send({
+    type: "control_request",
+    request_id: "q-req-0001",
+    request: {
+      subtype: "hook_callback",
+      callback_id: "hook_0",
+      tool_use_id: "toolu_q_0001",
+      input: {
+        session_id: SESSION_ID,
+        cwd: "/mock/cwd",
+        permission_mode: "default",
+        hook_event_name: "PreToolUse",
+        tool_name: "AskUserQuestion",
+        tool_input: {
+          questions: [
+            { question: "Which language?", header: "Language", multiSelect: false, options: [{ label: "TypeScript", description: "TS" }, { label: "Python", description: "Py" }] },
+          ],
+        },
+        tool_use_id: "toolu_q_0001",
+      },
+    },
+  });
+}
+
+function emitQuestionResult(answers) {
+  const picked = answers?.["Which language?"] ?? "(none)";
+  send({
+    type: "user",
+    message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_q_0001", content: `Selected: ${picked}` }] },
+    session_id: SESSION_ID,
+  });
+  send({
+    type: "result", subtype: "success", is_error: false, result: `You picked ${picked}`,
+    session_id: SESSION_ID, total_cost_usd: 0, permission_denials: [],
+  });
+}
+
 let buffer = "";
 stdin.setEncoding("utf8");
 stdin.on("data", (chunk) => {
@@ -166,11 +204,17 @@ function handle(msg) {
   }
   if (msg.type === "user") {
     if (MODE === "permission") emitToolUseAndPermissionRequest();
+    else if (MODE === "question") emitQuestionRequest();
     else emitSimpleTurn();
     return;
   }
   if (msg.type === "control_response") {
-    const decision = msg.response?.response?.hookSpecificOutput?.permissionDecision;
+    const out = msg.response?.response?.hookSpecificOutput;
+    const decision = out?.permissionDecision;
+    if (out?.updatedInput?.answers) {
+      emitQuestionResult(out.updatedInput.answers);
+      return;
+    }
     emitPermissionResult(decision === "allow" ? "allow" : "deny");
     return;
   }

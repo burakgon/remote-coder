@@ -1,4 +1,4 @@
-export type ServerFrameKind = "event" | "permission" | "result" | "diagnostic" | "exit";
+export type ServerFrameKind = "event" | "permission" | "question" | "result" | "diagnostic" | "exit";
 
 export interface ServerFrame {
   seq: number;
@@ -7,7 +7,7 @@ export interface ServerFrame {
 }
 
 export function isCriticalKind(kind: ServerFrameKind): boolean {
-  return kind === "permission" || kind === "result";
+  return kind === "permission" || kind === "question" || kind === "result";
 }
 
 /**

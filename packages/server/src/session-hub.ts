@@ -2,7 +2,7 @@ import { SessionManager } from "./session-manager.js";
 import { ReplayBuffer } from "./replay-buffer.js";
 import type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
 import type { CreateSessionOptions } from "./session-manager.js";
-import type { ClaudeProcess, PermissionEvent, DiagnosticEvent } from "./claude-process.js";
+import type { ClaudeProcess, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
 import type { ContentBlock, HookPermissionDecision, InboundEvent, ResultEvent } from "@remote-coder/protocol";
 
 export type SessionStatus = "running" | "errored" | "stopped";
@@ -74,6 +74,7 @@ export class SessionHub {
     };
     proc.on("event", (ev: InboundEvent) => emit("event", ev));
     proc.on("permission", (perm: PermissionEvent) => emit("permission", perm));
+    proc.on("question", (q: QuestionEvent) => emit("question", q));
     proc.on("result", (result: ResultEvent) => emit("result", result));
     proc.on("diagnostic", (diag: DiagnosticEvent) => emit("diagnostic", diag));
     // CRITICAL: Node's EventEmitter throws on an "error" event with no listener.
@@ -127,6 +128,11 @@ export class SessionHub {
   answerPermission(id: string, requestId: string, decision: HookPermissionDecision, reason?: string): void {
     this.require(id);
     this.manager.answerPermission(id, requestId, decision, reason);
+  }
+
+  answerQuestion(id: string, requestId: string, toolInput: unknown, answers: Record<string, string | string[]>): void {
+    this.require(id);
+    this.manager.answerQuestion(id, requestId, toolInput, answers);
   }
 
   stopSession(id: string): void {

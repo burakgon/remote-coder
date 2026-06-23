@@ -47,3 +47,80 @@ export function classifyPermissionRequest(
   }
   return null;
 }
+
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+export interface QuestionSpec {
+  question: string;
+  header?: string;
+  multiSelect: boolean;
+  options: QuestionOption[];
+}
+
+/**
+ * Detect an AskUserQuestion hook_callback (docs/protocol-notes.md §A). The questions live at
+ * request.input.tool_input.questions[]. Returns null for any other tool / control subtype.
+ */
+export function classifyQuestionRequest(
+  ev: ControlRequestEvent,
+): { requestId: string; toolUseId?: string; toolInput: unknown; questions: QuestionSpec[] } | null {
+  if (ev.subtype !== "hook_callback") return null;
+  const input = (ev.request.input ?? {}) as Record<string, unknown>;
+  if (input.tool_name !== "AskUserQuestion") return null;
+  const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+  const rawQuestions = Array.isArray(toolInput.questions) ? toolInput.questions : [];
+  const questions: QuestionSpec[] = rawQuestions.map((q) => {
+    const obj = (q ?? {}) as Record<string, unknown>;
+    const rawOptions = Array.isArray(obj.options) ? obj.options : [];
+    return {
+      question: typeof obj.question === "string" ? obj.question : "",
+      header: typeof obj.header === "string" ? obj.header : undefined,
+      multiSelect: obj.multiSelect === true,
+      options: rawOptions.map((o) => {
+        const oo = (o ?? {}) as Record<string, unknown>;
+        return {
+          label: typeof oo.label === "string" ? oo.label : "",
+          description: typeof oo.description === "string" ? oo.description : undefined,
+        };
+      }),
+    };
+  });
+  return {
+    requestId: ev.requestId,
+    toolUseId: typeof ev.request.tool_use_id === "string" ? ev.request.tool_use_id : undefined,
+    toolInput,
+    questions,
+  };
+}
+
+/**
+ * Answer an AskUserQuestion: an allow control_response whose hookSpecificOutput.updatedInput
+ * merges the chosen answers (question text -> chosen option label[s]) into the original tool input.
+ * The model then runs the tool with the answers pre-filled (docs/protocol-notes.md §A).
+ */
+export function serializeHookQuestionAnswer(
+  requestId: string,
+  originalToolInput: unknown,
+  answers: Record<string, string | string[]>,
+  reason = "",
+): string {
+  const baseInput = (originalToolInput ?? {}) as Record<string, unknown>;
+  return JSON.stringify({
+    type: "control_response",
+    response: {
+      subtype: "success",
+      request_id: requestId,
+      response: {
+        async: false,
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          permissionDecisionReason: reason,
+          updatedInput: { ...baseInput, answers },
+        },
+      },
+    },
+  });
+}

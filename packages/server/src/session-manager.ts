@@ -104,6 +104,10 @@ export class SessionManager {
     this.require(id).process.answerPermission(requestId, decision, reason);
   }
 
+  answerQuestion(id: string, requestId: string, toolInput: unknown, answers: Record<string, string | string[]>): void {
+    this.require(id).process.answerQuestion(requestId, toolInput, answers);
+  }
+
   stopSession(id: string): void {
     const session = this.sessions.get(id);
     if (!session) return;
