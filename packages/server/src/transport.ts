@@ -279,7 +279,11 @@ export function createServer(
       reply.code(404).send({ error: "session not found" });
       return;
     }
-    return { session: meta, history: await hub.getHistory(request.params.id) };
+    // `history` is the FULL transcript (every user + assistant turn, correctly typed) when one exists;
+    // `sinceSeq` is the replay buffer's current max seq, so the client connects the WS with
+    // `?since=sinceSeq` to receive ONLY new live frames (no re-render of the shown history).
+    const { history, sinceSeq } = await hub.getHistory(request.params.id);
+    return { session: meta, history, sinceSeq };
   });
 
   // Close a session: stop its live process AND remove it from the list + store (transcript untouched,

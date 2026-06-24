@@ -59,3 +59,40 @@ test("since(seq) returns only frames after the given seq", () => {
   expect(buf.since(1).map((f) => f.seq)).toEqual([2, 3]);
   expect(buf.since(3)).toEqual([]);
 });
+
+test("stream_event frames are NOT retained for replay but still get a real seq (emitted live)", () => {
+  const buf = new ReplayBuffer(200);
+  const a = buf.push("event", { type: "assistant", message: { content: [] } }); // retained
+  const s1 = buf.push("event", { type: "stream_event", event: { type: "content_block_delta" } }); // transient
+  const s2 = buf.push("event", { type: "stream_event", event: { type: "content_block_delta" } }); // transient
+  const r = buf.push("result", { ok: true }); // retained
+
+  // Each push still assigns a contiguous seq (so live ordering + ?since= deltas stay correct)...
+  expect([a.seq, s1.seq, s2.seq, r.seq]).toEqual([1, 2, 3, 4]);
+  expect(buf.maxSeq()).toBe(4);
+
+  // ...but the transient stream_event frames are NOT kept in the buffer (so they can't evict content).
+  const snap = buf.snapshot();
+  expect(snap.map((f) => f.seq)).toEqual([1, 4]);
+  expect(snap.some((f) => (f.payload as { type?: string }).type === "stream_event")).toBe(false);
+
+  // A reconnect with ?since= still gets the retained frames after the cutoff (the transient ones are
+  // gone, which is intended — the final assistant/result carry the full content).
+  expect(buf.since(1).map((f) => f.seq)).toEqual([4]);
+});
+
+test("a flood of stream_event frames never evicts real content from the buffer", () => {
+  const buf = new ReplayBuffer(2); // tiny capacity to prove eviction would bite if they were retained
+  const a = buf.push("event", { type: "assistant", message: { content: [] } });
+  for (let i = 0; i < 500; i++) {
+    buf.push("event", { type: "stream_event", event: { type: "content_block_delta", i } });
+  }
+  const r = buf.push("result", { ok: true });
+  // Despite 500 stream deltas, the assistant + result content both survive (deltas were never retained).
+  expect(buf.snapshot().map((f) => f.seq)).toEqual([a.seq, r.seq]);
+  expect(buf.maxSeq()).toBe(r.seq);
+});
+
+test("maxSeq() is 0 before any push", () => {
+  expect(new ReplayBuffer().maxSeq()).toBe(0);
+});

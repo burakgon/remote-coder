@@ -227,10 +227,11 @@ test("WS: ?since=N delta replay sends only frames with seq > N", async () => {
     setTimeout(() => reject(new Error("no result over ws (since setup)")), 6000);
   });
 
-  // Pick a cutoff in the middle of the buffer; reconnect with ?since=cutoff.
-  const all = await hub.getHistory(id);
+  // Pick a cutoff in the middle of the buffer; reconnect with ?since=cutoff. getHistory now returns
+  // { history, sinceSeq }; with no HistoryService wired, history mirrors the (retained) buffer.
+  const all = (await hub.getHistory(id)).history;
   expect(all.length).toBeGreaterThan(1);
-  const cutoff = all[Math.floor(all.length / 2)].seq;
+  const cutoff = all[Math.floor(all.length / 2)]!.seq;
 
   await new Promise<void>((resolve, reject) => {
     const q = `?token=${encodeURIComponent(TOKEN)}&since=${cutoff}`;

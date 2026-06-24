@@ -55,6 +55,17 @@ interface StoreState {
   addSession: (session: SessionMeta) => void;
   applyFrame: (id: string, frame: ServerFrame) => void;
   applyFrames: (id: string, frames: ServerFrame[]) => void;
+  /**
+   * Load the authoritative reopen history for a session: REPLACE the view by folding the transcript
+   * `frames` (every user + assistant turn, correctly typed) into a fresh view, then set `lastSeq` to
+   * the server's `sinceSeq` — NOT to the transcript frames' display seqs. The display history and the
+   * WS seq space are decoupled: the transcript frames carry 1-based DISPLAY seqs (used only to render
+   * them in order), while `sinceSeq` is the replay buffer's max seq the WS resumes from. The reducer
+   * then dedups live frames against `sinceSeq` — buffer frames (seq ≤ sinceSeq) are no-ops, live
+   * frames (seq > sinceSeq) append cleanly — so a reopen shows the full transcript with no double
+   * display and no dropped live updates. Does NOT reorder the rail (replaying history isn't activity).
+   */
+  loadHistory: (id: string, frames: ServerFrame[], sinceSeq: number) => void;
   /** Optimistically append the user's own message to the view on send (claude does not echo the
    * typed user text back as a render-able turn, so without this the sender never sees their message). */
   appendUserMessage: (id: string, blocks: ContentBlock[]) => void;
@@ -113,6 +124,38 @@ export const useStore = create<StoreState>((set, get) => ({
     set((state) => {
       let view = state.views[id] ?? emptyView();
       for (const frame of frames) view = reduceFrame(view, frame);
+      return { views: { ...state.views, [id]: view } };
+    }),
+  loadHistory: (id, frames, sinceSeq) =>
+    set((state) => {
+      // Fold the transcript frames into a FRESH view so the reopen is authoritative for the history —
+      // it replaces anything the WS may have replayed (e.g. an incomplete buffer snapshot). The
+      // transcript frames carry DISPLAY seqs; we then set lastSeq to the WS `sinceSeq` so live frames
+      // are deduped against the WS seq space, not the display one.
+      let view = emptyView();
+      for (const frame of frames) view = reduceFrame(view, frame);
+      view = { ...view, lastSeq: sinceSeq };
+
+      // Race guard: if live frames (seq > sinceSeq) already arrived for this session BEFORE the history
+      // resolved (e.g. an early WS frame, or a poll seeding a live delta), DON'T clobber that live
+      // state. Carry the current view's streaming/pending fields and its higher lastSeq forward, and
+      // keep any extra turns it accumulated beyond the transcript so nothing live is dropped.
+      const current = state.views[id];
+      if (current && current.lastSeq > sinceSeq) {
+        const extraTurns = current.turns.slice(view.turns.length);
+        view = {
+          ...view,
+          turns: [...view.turns, ...extraTurns],
+          liveText: current.liveText,
+          thinkingText: current.thinkingText,
+          pendingPermission: current.pendingPermission,
+          pendingQuestion: current.pendingQuestion,
+          lastResult: current.lastResult,
+          wireState: current.wireState,
+          seenUserUuids: new Set([...view.seenUserUuids, ...current.seenUserUuids]),
+          lastSeq: current.lastSeq,
+        };
+      }
       return { views: { ...state.views, [id]: view } };
     }),
   appendUserMessage: (id, blocks) =>

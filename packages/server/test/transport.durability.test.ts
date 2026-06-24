@@ -158,3 +158,77 @@ test("GET /sessions/:id reads jsonl history for a dormant session after a restar
   expect(history.every((f) => f.kind === "event")).toBe(true);
   expect(history.map((f) => f.payload.type)).toEqual(["user", "assistant"]);
 });
+
+test("GET /sessions/:id returns the FULL transcript (incl. user) + sinceSeq even when the buffer is non-empty", async () => {
+  // Reopen bug regression: the live replay buffer never holds the user's own typed messages and is
+  // capacity-bounded, so reading IT as history truncated long conversations and dropped every user
+  // message. The on-disk transcript is the source of truth — it must win over a non-empty buffer, and
+  // the response must carry a `sinceSeq` (the buffer's max seq) so the client resumes the WS from there.
+  const claudeHome = join(dir, "home");
+  const sessionCwd = join(dir, "work");
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { encodeProjectDir } = await import("@remote-coder/protocol");
+  await mkdir(sessionCwd, { recursive: true });
+
+  const store = openSessionStore({ dbPath: join(dir, "s.db") });
+  current = createServer(configFor(), managerFor(), { store, history: new HistoryService({ claudeHome }) });
+
+  // Create a LIVE session and drive a full turn so the replay buffer holds real frames (non-empty).
+  const created = await current.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+    payload: { cwd: sessionCwd },
+  });
+  const id = created.json().session.id as string;
+  await new Promise<void>((resolve, reject) => {
+    const sub = current!.hub.subscribe(id, (f) => {
+      if (f.kind === "result") {
+        sub.unsubscribe();
+        resolve();
+      }
+    });
+    current!.hub.sendMessage(id, "hi").catch(reject);
+    setTimeout(() => reject(new Error("no result frame")), 6000);
+  });
+  // The buffer is now non-empty AND has a max seq > 0.
+  const buffered = await current.hub.getHistory(id);
+  expect(buffered.sinceSeq).toBeGreaterThan(0);
+
+  // Write a richer transcript on disk (a user turn the buffer never holds + an assistant turn).
+  const projDir = join(claudeHome, ".claude", "projects", encodeProjectDir(sessionCwd));
+  await mkdir(projDir, { recursive: true });
+  await writeFile(
+    join(projDir, `${id}.jsonl`),
+    [
+      JSON.stringify({
+        type: "user",
+        uuid: "u-1",
+        message: { role: "user", content: [{ type: "text", text: "what did I ask earlier?" }] },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "a-1",
+        message: { role: "assistant", content: [{ type: "text", text: "you asked about reopening" }] },
+      }),
+    ].join("\n") + "\n",
+    "utf8",
+  );
+
+  const res = await current.app.inject({
+    method: "GET",
+    url: `/sessions/${id}`,
+    headers: { authorization: `Bearer ${TOKEN}` },
+  });
+  expect(res.statusCode).toBe(200);
+  const body = res.json() as {
+    history: { kind: string; payload: { type: string; message: { content: { text: string }[] } } }[];
+    sinceSeq: number;
+  };
+  // History is the TRANSCRIPT (not the capped/user-less buffer): both turns, correctly attributed.
+  expect(body.history).toHaveLength(2);
+  expect(body.history.map((f) => f.payload.type)).toEqual(["user", "assistant"]);
+  expect(body.history[0]?.payload.message.content[0]?.text).toBe("what did I ask earlier?");
+  // And a sinceSeq (the buffer's max seq) so the client connects the WS for only NEW frames.
+  expect(body.sinceSeq).toBeGreaterThan(0);
+});

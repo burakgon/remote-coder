@@ -44,7 +44,9 @@ const history: ServerFrame[] = [
 function apiStub(): ApiClient {
   return {
     listSessions: vi.fn(),
-    getSession: vi.fn(async () => ({ session, history })),
+    // sinceSeq = the buffer's max seq; the WS resumes from here. The pushed permission/question frames
+    // below use seq 99/100 (> sinceSeq) so they apply as new live frames.
+    getSession: vi.fn(async () => ({ session, history, sinceSeq: 2 })),
     createSession: vi.fn(),
     stopSession: vi.fn(),
     listDir: vi.fn(),
@@ -80,6 +82,50 @@ describe("ChatView", () => {
     // Every replayed frame is applied in a single store update, flushed inside act() above.
     expect(screen.getByText(/all set/i)).toBeInTheDocument();
     expect(screen.getByText(/hello from history/i)).toBeInTheDocument();
+  });
+
+  it("on open, loads the FULL transcript (user + assistant in order) and sets lastSeq = sinceSeq", async () => {
+    // Reopen bug regression: the user's OWN typed messages must survive a reopen (the buffer never held
+    // them), correctly attributed, in order — and lastSeq must be the server's sinceSeq so the WS
+    // resumes from there without re-rendering the shown history.
+    const reopenHistory: ServerFrame[] = [
+      { seq: 1, kind: "event", payload: { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "what did I ask?" }] } } },
+      { seq: 2, kind: "event", payload: { type: "assistant", uuid: "a1", message: { content: [{ type: "text", text: "you asked X" }] } } },
+    ];
+    const api = {
+      ...apiStub(),
+      getSession: vi.fn(async () => ({ session, history: reopenHistory, sinceSeq: 9 })),
+    } as unknown as ApiClient;
+    await renderSettled(api);
+
+    // The user's own message is shown ("You"), correctly attributed, before the assistant's reply.
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("what did I ask?")).toBeInTheDocument();
+    expect(screen.getByText("you asked X")).toBeInTheDocument();
+    const turns = useStore.getState().viewFor(session.id).turns;
+    expect(turns[0]).toEqual({ kind: "user", blocks: [{ type: "text", text: "what did I ask?" }] });
+    expect(turns[1]).toEqual({ kind: "assistant-text", text: "you asked X" });
+    // lastSeq is the server's sinceSeq (the WS resume point), NOT the transcript display seqs (1, 2).
+    expect(useStore.getState().viewFor(session.id).lastSeq).toBe(9);
+
+    // A live frame at/under sinceSeq is a no-op; a new one (seq > sinceSeq) appends without duplicating.
+    act(() => {
+      useStore.getState().applyFrame(session.id, {
+        seq: 5,
+        kind: "event",
+        payload: { type: "assistant", message: { content: [{ type: "text", text: "stale replay" }] } },
+      });
+    });
+    expect(screen.queryByText("stale replay")).not.toBeInTheDocument();
+    act(() => {
+      useStore.getState().applyFrame(session.id, {
+        seq: 10,
+        kind: "event",
+        payload: { type: "assistant", message: { content: [{ type: "text", text: "new live reply" }] } },
+      });
+    });
+    expect(screen.getByText("new live reply")).toBeInTheDocument();
+    expect(useStore.getState().viewFor(session.id).turns).toHaveLength(3);
   });
 
   it("shows the session cwd in the header", async () => {

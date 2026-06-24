@@ -431,20 +431,43 @@ export class SessionHub {
   }
 
   /**
-   * Conversation history for a session. Live/buffered frames win; for a dormant session whose
-   * buffer is empty (e.g. just rehydrated after a restart) project the on-disk jsonl transcript
-   * into event-kind frames so history survives a process restart.
+   * Conversation history for a session, plus the seq to resume the live WS from.
+   *
+   * The on-disk jsonl transcript is the SOURCE OF TRUTH for a reopen: it holds BOTH the user's typed
+   * messages (`type:"user"`) and Claude's (`type:"assistant"`), complete and correctly attributed.
+   * The in-memory replay buffer does NOT — it's capacity-bounded (older content is evicted) and, in
+   * `--input-format stream-json`, Claude never echoes the user's own messages back as events, so they
+   * are NOWHERE in the buffer. Reading the buffer as history therefore truncated long conversations
+   * and dropped every user message. So:
+   *
+   *  - When a transcript exists, `history` is built from the FULL transcript (1-based display seqs,
+   *    independent of the WS seq space) — every turn, in order, correctly typed.
+   *  - `sinceSeq` is the buffer's CURRENT max seq. The client connects the WS with `?since=sinceSeq`
+   *    so it replays only NEW frames (seq > sinceSeq) — nothing already shown in the transcript history
+   *    is re-rendered, and live frames apply cleanly with no double-display and no dropped updates.
+   *  - When there is NO transcript yet (a brand-new session), fall back to the buffer snapshot, whose
+   *    frames already carry real WS seqs, so `sinceSeq` is the buffer's max seq.
    */
-  async getHistory(id: string): Promise<ServerFrame[]> {
+  async getHistory(id: string): Promise<{ history: ServerFrame[]; sinceSeq: number }> {
     const record = this.require(id);
-    const buffered = record.buffer.snapshot();
-    if (buffered.length > 0 || !this.history) return buffered;
-    const turns = await this.history.read(record.meta.cwd, id);
-    return turns.map((t, i) => ({
-      seq: i + 1,
-      kind: "event" as const,
-      payload: { type: t.type, message: t.message, raw: t },
-    }));
+    const sinceSeq = record.buffer.maxSeq();
+    if (this.history) {
+      const turns = await this.history.read(record.meta.cwd, id);
+      if (turns.length > 0) {
+        const history = turns.map<ServerFrame>((t, i) => ({
+          // Display seqs are 1-based and contiguous, DISTINCT from the buffer/WS seq space: the client
+          // renders these as history but resumes the WS from `sinceSeq` (the buffer's max), so the two
+          // seq spaces never collide.
+          seq: i + 1,
+          kind: "event",
+          payload: { type: t.type, message: t.message, uuid: t.uuid, raw: t },
+        }));
+        return { history, sinceSeq };
+      }
+    }
+    // No transcript (brand-new session, or no HistoryService configured): the buffer is all we have.
+    // Its frames already carry real WS seqs, so the client resumes the WS from the same `sinceSeq`.
+    return { history: record.buffer.snapshot(), sinceSeq };
   }
 
   /** Live subscriber count for a session (0 if unknown). Lets the WS layer assert no leak. */

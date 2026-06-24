@@ -25,7 +25,10 @@ export interface ApiClient {
   listSessions(): Promise<SessionMeta[]>;
   /** Past, resumable conversations (recent-first). Optionally scoped to a `cwd`. */
   getResumable(cwd?: string): Promise<ResumableSession[]>;
-  getSession(id: string): Promise<{ session: SessionMeta; history: ServerFrame[] }>;
+  /** Reopen a session: `history` is the FULL transcript (every user + assistant turn, correctly
+   * typed); `sinceSeq` is the replay buffer's max seq — connect the WS with `?since=sinceSeq` so it
+   * replays only NEW frames (no re-render of the shown history). */
+  getSession(id: string): Promise<{ session: SessionMeta; history: ServerFrame[]; sinceSeq: number }>;
   createSession(body: CreateSessionBody): Promise<SessionMeta>;
   /** Close a session: DELETE /sessions/:id → 204 (no body). Removes it from the list + store while
    * keeping the transcript (still resumable via /resume). Idempotent server-side, so deleting an
@@ -102,7 +105,12 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       return body.sessions;
     },
     async getSession(id) {
-      return req<{ session: SessionMeta; history: ServerFrame[] }>(`/sessions/${id}`, { headers: headers() });
+      const body = await req<{ session: SessionMeta; history: ServerFrame[]; sinceSeq?: number }>(
+        `/sessions/${id}`,
+        { headers: headers() },
+      );
+      // sinceSeq is the WS-resume seq; default to 0 (full replay) if an older server omits it.
+      return { session: body.session, history: body.history, sinceSeq: body.sinceSeq ?? 0 };
     },
     async createSession(body) {
       const created = await req<{ session: SessionMeta }>("/sessions", {

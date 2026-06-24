@@ -34,7 +34,7 @@ export interface ChatViewProps {
 }
 
 export function ChatView({ session, api, token, onSlashCommand, onClose, onShowSessions, needsYou }: ChatViewProps) {
-  const applyFrames = useStore((s) => s.applyFrames);
+  const loadHistory = useStore((s) => s.loadHistory);
   const resetSession = useStore((s) => s.resetSession);
   const view = useStore((s) => s.views[session.id]);
   const sessions = useStore((s) => s.sessions);
@@ -48,27 +48,36 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
     void currentPushState().then(setPushState);
   }, []);
 
-  // Open the live socket (frames flow into the store via the hook).
-  const { send } = useSessionSocket(session, token);
-
-  // Load REST history once per session id, replaying frames through the same reducer in a single
-  // store update (one re-render). The reducer's seq-dedup makes any overlap with live frames a no-op.
+  // Load the FULL transcript history BEFORE opening the live socket, so the socket resumes from the
+  // server's `sinceSeq` (set as the view's lastSeq) rather than re-replaying the buffer. `historyLoaded`
+  // gates the WS connect so the first connection already carries `?since=sinceSeq` — the buffer frames
+  // (seq ≤ sinceSeq) are skipped and only NEW live frames (seq > sinceSeq) arrive, with no double
+  // display and no dropped updates. A load failure still flips the gate so live frames flow over WS.
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    setHistoryLoaded(false);
     resetSession(session.id);
     api
       .getSession(session.id)
-      .then(({ history }) => {
+      .then(({ history, sinceSeq }) => {
         if (cancelled) return;
-        applyFrames(session.id, history);
+        loadHistory(session.id, history, sinceSeq);
       })
       .catch(() => {
-        // history load failure is non-fatal; live frames still arrive over WS
+        // history load failure is non-fatal; live frames still arrive over WS (full replay)
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [session.id, api, applyFrames, resetSession]);
+  }, [session.id, api, loadHistory, resetSession]);
+
+  // Open the live socket AFTER history loads (frames flow into the store via the hook). Gating on
+  // `historyLoaded` guarantees the socket's `getSince` reads the lastSeq = sinceSeq we just set.
+  const { send } = useSessionSocket(session, token, historyLoaded);
 
   const wireState = wireStateForSession(session, view);
   const safeView = view ?? emptyView();

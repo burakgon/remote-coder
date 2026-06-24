@@ -72,8 +72,11 @@ test("reconnect replay: a late subscriber receives buffered frames including the
   expect(replayed.some((f) => f.kind === "result")).toBe(true);
   expect(replayed.length).toBeGreaterThan(0);
 
-  // getHistory mirrors the buffer (now async — the jsonl fallback only kicks in when empty).
-  expect((await hub.getHistory(meta.id)).some((f) => f.kind === "result")).toBe(true);
+  // getHistory now returns { history, sinceSeq }. With no HistoryService wired it mirrors the buffer,
+  // and sinceSeq is the buffer's max seq (so the WS resumes from there).
+  const history = await hub.getHistory(meta.id);
+  expect(history.history.some((f) => f.kind === "result")).toBe(true);
+  expect(history.sinceSeq).toBeGreaterThan(0);
   hub.stopSession(meta.id);
 });
 

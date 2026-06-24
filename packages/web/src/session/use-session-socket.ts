@@ -9,12 +9,18 @@ import type { OutboundFrame, SessionMeta } from "../types/server";
 export function useSessionSocket(
   session: SessionMeta,
   token: string | undefined,
+  /** Gate the connection until the REST history has loaded, so the socket's `getSince` reads the
+   * lastSeq (= the server's sinceSeq) ChatView just set — the first connect carries `?since=sinceSeq`
+   * and the buffer isn't re-replayed over the already-rendered transcript. Defaults to true so any
+   * other caller (and existing behaviour) connects immediately. */
+  enabled = true,
 ): { send: (f: OutboundFrame) => void; status: SocketStatus } {
   const applyFrame = useStore((s) => s.applyFrame);
   const [status, setStatus] = useState<SocketStatus>("connecting");
   const socketRef = useRef<SessionSocket | undefined>(undefined);
 
   useEffect(() => {
+    if (!enabled) return;
     const url = wsUrl(API_BASE_URL, session.id, { token: token || undefined });
     const socket = createSessionSocket({
       url,
@@ -31,7 +37,7 @@ export function useSessionSocket(
       socket.close();
       socketRef.current = undefined;
     };
-  }, [session.id, token, applyFrame]);
+  }, [session.id, token, applyFrame, enabled]);
 
   // Stable `send` identity (reads the latest socket via the ref) so consumers' callbacks that close
   // over `send` — e.g. ChatView's `answer` and its auto-allow effect — don't churn every render.

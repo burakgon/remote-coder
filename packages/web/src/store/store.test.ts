@@ -141,6 +141,60 @@ describe("useStore", () => {
     expect(s.views["s1"]).toBeUndefined();
   });
 
+  it("loadHistory renders the transcript (user + assistant, in order) and sets lastSeq = sinceSeq", () => {
+    // Display frames carry 1-based DISPLAY seqs; the buffer's max seq is 7 (sinceSeq). lastSeq must be
+    // set to sinceSeq (the WS seq space), NOT the display frames' seqs, so live frames dedup correctly.
+    const history: ServerFrame[] = [
+      ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "my question" }] } }),
+      ev(2, { type: "assistant", uuid: "a1", message: { content: [{ type: "text", text: "my answer" }] } }),
+    ];
+    useStore.getState().loadHistory("s1", history, 7);
+    const view = useStore.getState().viewFor("s1");
+    // The user's OWN message survives the reopen, correctly attributed, in order before the assistant's.
+    expect(view.turns).toEqual([
+      { kind: "user", blocks: [{ type: "text", text: "my question" }] },
+      { kind: "assistant-text", text: "my answer" },
+    ]);
+    // lastSeq is the server's sinceSeq, decoupled from the display seqs (1, 2).
+    expect(view.lastSeq).toBe(7);
+  });
+
+  it("after loadHistory, a live frame (seq > sinceSeq) appends and a frame (seq <= sinceSeq) is a no-op", () => {
+    const history: ServerFrame[] = [
+      ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "hi" }] } }),
+    ];
+    useStore.getState().loadHistory("s1", history, 5);
+    expect(useStore.getState().viewFor("s1").turns).toHaveLength(1);
+
+    // A frame at/under sinceSeq (already represented by the transcript / replayed buffer) is dropped.
+    useStore.getState().applyFrame("s1", ev(5, { type: "assistant", message: { content: [{ type: "text", text: "stale" }] } }));
+    expect(useStore.getState().viewFor("s1").turns).toHaveLength(1);
+
+    // A genuinely NEW live frame (seq > sinceSeq) appends once, no duplication.
+    useStore.getState().applyFrame("s1", ev(6, { type: "assistant", message: { content: [{ type: "text", text: "live reply" }] } }));
+    const turns = useStore.getState().viewFor("s1").turns;
+    expect(turns).toHaveLength(2);
+    expect(turns.at(-1)).toEqual({ kind: "assistant-text", text: "live reply" });
+    expect(useStore.getState().viewFor("s1").lastSeq).toBe(6);
+  });
+
+  it("loadHistory preserves live state that already arrived (seq > sinceSeq) instead of clobbering it", () => {
+    // Race: a live stream delta arrives BEFORE the transcript history resolves. loadHistory must not
+    // wipe it — the live frame's seq (3) is past sinceSeq (2), so its liveText/lastSeq are carried over.
+    useStore.getState().applyFrame(
+      "s1",
+      ev(3, { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "streaming" } } }),
+    );
+    const history: ServerFrame[] = [
+      ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "q" }] } }),
+    ];
+    useStore.getState().loadHistory("s1", history, 2);
+    const view = useStore.getState().viewFor("s1");
+    expect(view.turns).toEqual([{ kind: "user", blocks: [{ type: "text", text: "q" }] }]);
+    expect(view.liveText).toBe("streaming"); // live state preserved
+    expect(view.lastSeq).toBe(3); // the higher live seq wins
+  });
+
   it("resetSession clears a session view; viewFor returns an empty view for unknown ids", () => {
     const { applyFrame, resetSession, viewFor } = useStore.getState();
     applyFrame(
