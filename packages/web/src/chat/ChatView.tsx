@@ -82,6 +82,15 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
   const wireState = wireStateForSession(session, view);
   const safeView = view ?? emptyView();
 
+  // "Running" = a turn is actively in flight (thinking / streaming / running a tool). This drives the
+  // composer's Stop button. It reads the live VIEW wire state (the session's own activity), NOT the
+  // meta-derived wireState — an `awaiting` permission/question is deliberately NOT "running" (the user
+  // should answer, not stop), and it must work even for the live session you're connected to.
+  const running =
+    safeView.wireState === "thinking" ||
+    safeView.wireState === "streaming" ||
+    safeView.wireState === "running-tool";
+
   // Client-side "Always allow" — a per-session set of tool names the user has chosen to auto-allow.
   // When a future permission for such a tool arrives we answer `allow` for the user (with a visible
   // indicator + a way to clear the rule). This lives in component state (this session, this device);
@@ -237,6 +246,8 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
           await api.uploadFile(session.cwd, file);
         }}
         onSlashCommand={onSlashCommand}
+        running={running}
+        onStop={() => send({ type: "interrupt" })}
       />
       {settingsOpen && (
         <SettingsPanel

@@ -13,6 +13,7 @@ export {
   serializeSetModel,
   serializeSetMaxThinkingTokens,
   serializeSetPermissionMode,
+  serializeInterrupt,
 } from "./serialize.js";
 export type { QuestionSpec, QuestionOption } from "./serialize.js";
 export { replayFixture, type ReplayOptions } from "./mock-claude.js";

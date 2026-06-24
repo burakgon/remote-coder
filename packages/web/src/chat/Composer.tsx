@@ -20,6 +20,14 @@ export interface ComposerProps {
   /** A client-action slash command (e.g. `/resume`) was chosen. The composer clears itself; the host
    * runs the UI action (opening a popup) rather than sending the text to claude. */
   onSlashCommand?: (name: string) => void;
+  /**
+   * TRUE while a turn is actively running (thinking/streaming/running-tool) — NOT while awaiting a
+   * permission/question. When true the primary control becomes a STOP button (in place of Send) that
+   * calls {@link onStop}. Idle/awaiting keep the normal Send.
+   */
+  running?: boolean;
+  /** STOP the running turn (interrupt). Called when the Stop button is tapped while `running`. */
+  onStop?: () => void;
   disabled?: boolean;
   /**
    * Initial composer contents. Optional and defaulting to empty — production (`ChatView`) never
@@ -49,6 +57,8 @@ export function Composer({
   onSend,
   onUploadFile,
   onSlashCommand,
+  running,
+  onStop,
   disabled,
   initialText,
   initialImages,
@@ -56,8 +66,14 @@ export function Composer({
   const [text, setText] = useState(initialText ?? "");
   const [images, setImages] = useState<PendingImage[]>(initialImages ?? []);
   const [error, setError] = useState<string | undefined>();
+  // Local "stopping" latch: tapping Stop reflects immediately (the button disables + relabels) while
+  // the interrupt round-trips and the aborted `result` settles the wire back to idle. Reset whenever the
+  // session leaves the running state (the turn ended — by the interrupt or on its own).
+  const [stopping, setStopping] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  if (!running && stopping) setStopping(false);
 
   const slashMatches = matchSlash(text);
   const canSend = (text.trim().length > 0 || images.length > 0) && !disabled;
@@ -89,6 +105,12 @@ export function Composer({
     setText("");
     setImages([]);
     setError(undefined);
+  }
+
+  function stop() {
+    if (stopping) return; // already requested — don't double-send the interrupt
+    setStopping(true);
+    onStop?.();
   }
 
   async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
@@ -330,29 +352,59 @@ export function Composer({
         >
           <Icon name="paperclip" size={19} />
         </button>
-        {/* Send — the ONE violet primary affordance in the composer (gradient + pop glow). */}
-        <button
-          type="button"
-          onClick={send}
-          disabled={!canSend}
-          aria-label="Send"
-          style={{
-            width: "var(--tap-min)",
-            height: "var(--tap-min)",
-            flex: "none",
-            display: "grid",
-            placeItems: "center",
-            borderRadius: "var(--radius)",
-            border: 0,
-            background: "linear-gradient(180deg, var(--accent-2), var(--accent))",
-            color: "var(--on-accent)",
-            boxShadow: canSend ? "var(--shadow-pop)" : "none",
-            cursor: canSend ? "pointer" : "default",
-            opacity: canSend ? 1 : 0.5,
-          }}
-        >
-          <Icon name="arrow-up" size={19} />
-        </button>
+        {/* Primary control. While a turn is RUNNING (thinking/streaming/running-tool) this is a STOP
+            button — a neutral square in an error/neutral tint (NOT the violet Send) that interrupts
+            the turn. Idle/awaiting it is the normal violet Send. */}
+        {running ? (
+          <button
+            type="button"
+            onClick={stop}
+            disabled={stopping}
+            aria-label={stopping ? "Stopping" : "Stop"}
+            title={stopping ? "Stopping…" : "Stop"}
+            style={{
+              width: "var(--tap-min)",
+              height: "var(--tap-min)",
+              flex: "none",
+              display: "grid",
+              placeItems: "center",
+              borderRadius: "var(--radius)",
+              // Neutral/err-tinted surface — deliberately NOT the violet Send gradient, so Stop reads as
+              // a distinct, calm-but-clear "halt", not the primary positive action.
+              background: "var(--surface-2)",
+              border: "1px solid var(--err)",
+              color: "var(--err)",
+              cursor: stopping ? "default" : "pointer",
+              opacity: stopping ? 0.6 : 1,
+            }}
+          >
+            <Icon name="stop" size={16} />
+          </button>
+        ) : (
+          /* Send — the ONE violet primary affordance in the composer (gradient + pop glow). */
+          <button
+            type="button"
+            onClick={send}
+            disabled={!canSend}
+            aria-label="Send"
+            style={{
+              width: "var(--tap-min)",
+              height: "var(--tap-min)",
+              flex: "none",
+              display: "grid",
+              placeItems: "center",
+              borderRadius: "var(--radius)",
+              border: 0,
+              background: "linear-gradient(180deg, var(--accent-2), var(--accent))",
+              color: "var(--on-accent)",
+              boxShadow: canSend ? "var(--shadow-pop)" : "none",
+              cursor: canSend ? "pointer" : "default",
+              opacity: canSend ? 1 : 0.5,
+            }}
+          >
+            <Icon name="arrow-up" size={19} />
+          </button>
+        )}
       </div>
     </div>
   );

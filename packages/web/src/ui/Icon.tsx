@@ -34,7 +34,8 @@ export type IconName =
   | "power"
   | "sliders"
   | "branch"
-  | "history";
+  | "history"
+  | "stop";
 
 export interface IconProps {
   name: IconName;
@@ -193,6 +194,8 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="M12 8v4l3 2" />
     </>
   ),
+  // A rounded square — the universal STOP / interrupt glyph (filled via currentColor for a solid block).
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />,
 };
 
 export function Icon({ name, size = 17, label, className, style }: IconProps) {

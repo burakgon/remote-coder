@@ -48,6 +48,7 @@ export function parseLine(line: string): InboundEvent | null {
         sessionId: str(obj.session_id),
         totalCostUsd: typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : undefined,
         permissionDenials: Array.isArray(obj.permission_denials) ? obj.permission_denials : undefined,
+        terminalReason: str(obj.terminal_reason),
         raw: obj,
       };
     case "control_request": {

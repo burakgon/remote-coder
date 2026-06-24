@@ -246,6 +246,25 @@ function handle(msg) {
     });
     return;
   }
+  if (msg.type === "control_request" && msg.request?.subtype === "interrupt") {
+    // LIVE-VALIDATED interrupt: ack with a success control_response, then end the turn with a `result`
+    // whose subtype is error_during_execution and terminal_reason is aborted_streaming.
+    send({
+      type: "control_response",
+      response: { subtype: "success", request_id: msg.request_id, response: { ok: true } },
+    });
+    send({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      terminal_reason: "aborted_streaming",
+      result: "Interrupted by user",
+      session_id: SESSION_ID,
+      total_cost_usd: 0,
+      permission_denials: [],
+    });
+    return;
+  }
   if (msg.type === "user") {
     if (MODE === "permission") emitToolUseAndPermissionRequest();
     else if (MODE === "question") emitQuestionRequest();

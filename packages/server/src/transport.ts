@@ -559,6 +559,16 @@ function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unkn
     if (requestId) void hub.answerQuestion(id, requestId, msg.toolInput, answers).catch(() => {});
     return;
   }
+  if (msg.type === "interrupt") {
+    // STOP the current turn without killing the process. Synchronous + safe (a no-op for a non-live
+    // session); guarded so an unknown-id throw can't escape the WS message handler.
+    try {
+      hub.interrupt(id);
+    } catch {
+      // unknown/torn-down session — ignore (the WS would already be closing for an unknown id)
+    }
+    return;
+  }
   if (msg.type === "settings") {
     const settings: { model?: string; maxThinkingTokens?: number; effort?: string; permissionMode?: string } = {};
     if (typeof msg.model === "string") settings.model = msg.model;

@@ -59,6 +59,22 @@ test("parses a control_response: requestId + subtype nested under response", () 
   expect(parseLine(line)).toMatchObject({ type: "control_response", requestId: "r1", subtype: "success" });
 });
 
+test("parses an aborted (interrupted) result: terminalReason + error subtype carried through", () => {
+  const line = JSON.stringify({
+    type: "result",
+    subtype: "error_during_execution",
+    is_error: true,
+    terminal_reason: "aborted_streaming",
+    session_id: "s1",
+  });
+  expect(parseLine(line)).toMatchObject({
+    type: "result",
+    subtype: "error_during_execution",
+    isError: true,
+    terminalReason: "aborted_streaming",
+  });
+});
+
 test("unknown type becomes UnknownEvent and keeps raw", () => {
   const ev = parseLine(JSON.stringify({ type: "brand_new", x: 1 }));
   expect(ev?.type).toBe("unknown");

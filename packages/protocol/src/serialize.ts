@@ -188,3 +188,13 @@ export function serializeSetMaxThinkingTokens(
 export function serializeSetPermissionMode(mode: string, opts: { requestId?: string } = {}): string {
   return controlRequest({ subtype: "set_permission_mode", mode }, opts.requestId);
 }
+
+/**
+ * Client -> CLI: interrupt (STOP) the current turn. LIVE-VALIDATED: sending an `interrupt` control_request
+ * on the CLI's stdin aborts the in-flight turn — Claude stops mid-output, replies with a success
+ * control_response, and the turn ends with a `result` whose subtype is `error_during_execution` and
+ * `terminal_reason` is `aborted_streaming`. The session stays open for the next user message.
+ */
+export function serializeInterrupt(requestId?: string): string {
+  return controlRequest({ subtype: "interrupt" }, requestId);
+}

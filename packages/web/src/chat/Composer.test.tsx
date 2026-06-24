@@ -159,6 +159,31 @@ describe("Composer", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("shows Send (not Stop) when idle and Stop (not Send) while running", () => {
+    const { rerender } = render(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} />);
+    // Idle: Send is present, Stop is not.
+    expect(screen.getByRole("button", { name: /^send$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^stop$/i })).not.toBeInTheDocument();
+
+    // Running: the primary control becomes Stop, and Send is gone.
+    rerender(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} running onStop={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^stop$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^send$/i })).not.toBeInTheDocument();
+  });
+
+  it("tapping Stop while running calls onStop and reflects 'stopping' immediately", async () => {
+    const onStop = vi.fn();
+    render(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} running onStop={onStop} />);
+    const stop = screen.getByRole("button", { name: /^stop$/i });
+    await userEvent.click(stop);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    // Immediately reflects "stopping": the button relabels and disables (no double-send).
+    const stopping = screen.getByRole("button", { name: /stopping/i });
+    expect(stopping).toBeDisabled();
+    await userEvent.click(stopping);
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes the image / file / send controls as icon BUTTONS reachable by their aria-labels", () => {
     // Phase 2 replaced the text Image/File/Send buttons with icon buttons. They must stay real
     // <button>s named by aria-label (a11y + so screen readers and these tests can reach them).

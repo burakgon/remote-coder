@@ -153,6 +153,46 @@ describe("reduceFrame", () => {
     expect(v.wireState).toBe("error");
   });
 
+  it("a user-interrupted (aborted) result is STOPPED not error: wireState=idle, turn marked stopped", () => {
+    let v = emptyView();
+    // Mid-stream, then the interrupt's aborted result lands.
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "stream_event",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Work" } },
+      }),
+    );
+    expect(v.wireState).toBe("streaming");
+    v = reduceFrame(v, {
+      seq: 2,
+      kind: "result",
+      payload: {
+        type: "result",
+        subtype: "error_during_execution",
+        isError: true,
+        terminalReason: "aborted_streaming",
+        result: "Interrupted by user",
+        raw: {},
+      },
+    });
+    // Calm STOP, not a red error: wire returns to idle so the user can type the next message.
+    expect(v.wireState).toBe("idle");
+    expect(v.liveText).toBe("");
+    expect(v.turns.at(-1)).toMatchObject({ kind: "result", stopped: true });
+  });
+
+  it("an aborted result identified by subtype alone (no terminal_reason) is still stopped", () => {
+    let v = emptyView();
+    v = reduceFrame(v, {
+      seq: 1,
+      kind: "result",
+      payload: { type: "result", subtype: "error_during_execution", isError: true, raw: {} },
+    });
+    expect(v.wireState).toBe("idle");
+    expect(v.turns.at(-1)).toMatchObject({ kind: "result", stopped: true });
+  });
+
   it("a question frame sets pendingQuestion and awaiting wireState", () => {
     const frame: ServerFrame = {
       seq: 1,

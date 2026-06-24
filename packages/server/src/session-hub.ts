@@ -560,6 +560,18 @@ export class SessionHub {
   }
 
   /**
+   * Interrupt (STOP) the current turn of a session WITHOUT killing the process. Only meaningful while a
+   * turn is actually running, so it targets the LIVE process only: a dormant/dead session has nothing to
+   * abort and is a no-op (we never resume just to interrupt). The CLI ends the aborted turn with a
+   * `result` (terminal_reason "aborted_streaming") that flows through the normal `result` path, so the
+   * wire settles to idle/stopped and the session stays open for the next message.
+   */
+  interrupt(id: string): void {
+    this.require(id); // throw for an unknown id (consistent with the other hub ops)
+    if (this.manager.getSession(id)) this.manager.interrupt(id);
+  }
+
+  /**
    * Close a session: stop its live `claude` process (if any), then REMOVE it from the in-memory list
    * AND the durable store. Idempotent — closing an unknown id is a no-op. The claude transcript
    * `.jsonl` is NOT touched (claude owns it; the session stays resumable via the /resume flow +

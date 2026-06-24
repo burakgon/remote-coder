@@ -1,5 +1,10 @@
 import { expect, test } from "vitest";
-import { serializeSetModel, serializeSetMaxThinkingTokens, serializeSetPermissionMode } from "../src/index.js";
+import {
+  serializeSetModel,
+  serializeSetMaxThinkingTokens,
+  serializeSetPermissionMode,
+  serializeInterrupt,
+} from "../src/index.js";
 
 test("serializeSetModel builds a set_model control_request", () => {
   const obj = JSON.parse(serializeSetModel("claude-opus-4-8"));
@@ -30,6 +35,19 @@ test("serializeSetMaxThinkingTokens accepts null to clear the budget", () => {
 test("serializeSetPermissionMode builds a set_permission_mode control_request", () => {
   const obj = JSON.parse(serializeSetPermissionMode("acceptEdits"));
   expect(obj.request).toEqual({ subtype: "set_permission_mode", mode: "acceptEdits" });
+});
+
+test("serializeInterrupt builds an interrupt control_request", () => {
+  const obj = JSON.parse(serializeInterrupt());
+  expect(obj.type).toBe("control_request");
+  expect(typeof obj.request_id).toBe("string");
+  expect(obj.request).toEqual({ subtype: "interrupt" });
+});
+
+test("serializeInterrupt honors an explicit requestId", () => {
+  const obj = JSON.parse(serializeInterrupt("stop-1"));
+  expect(obj.request_id).toBe("stop-1");
+  expect(obj.request).toEqual({ subtype: "interrupt" });
 });
 
 test("an explicit requestId is honored", () => {

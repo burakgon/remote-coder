@@ -27,6 +27,24 @@ describe("MessageList", () => {
     expect(screen.getByText(/0\.0123/)).toBeInTheDocument();
   });
 
+  it("renders an interrupted turn as a calm 'stopped' marker, not a red error", () => {
+    render(
+      <MessageList
+        view={viewWith({
+          turns: [
+            { kind: "assistant-text", text: "Working on it…" },
+            // An aborted turn carries isError:true at the protocol level but is calm — `stopped` wins.
+            { kind: "result", result: "Interrupted by user", isError: true, stopped: true, totalCostUsd: 0 },
+          ],
+        })}
+      />,
+    );
+    // Reads "stopped" — not "error", and not the raw "Interrupted by user" CLI text.
+    expect(screen.getByText("stopped")).toBeInTheDocument();
+    expect(screen.queryByText("error")).not.toBeInTheDocument();
+    expect(screen.queryByText(/interrupted by user/i)).not.toBeInTheDocument();
+  });
+
   it("renders in-flight streaming liveText", () => {
     render(<MessageList view={viewWith({ liveText: "streaming tokens…", wireState: "streaming" })} />);
     expect(screen.getByText(/streaming tokens/i)).toBeInTheDocument();

@@ -34,6 +34,12 @@ export interface ResultEvent {
   sessionId?: string;
   totalCostUsd?: number;
   permissionDenials?: unknown[];
+  /**
+   * How the turn terminated, when the CLI reports it. A user-initiated STOP (interrupt) ends the turn
+   * with `terminal_reason:"aborted_streaming"` (and `subtype:"error_during_execution"`). Surfaced here
+   * so the UI can render an aborted turn as a calm "Stopped" marker rather than a scary error.
+   */
+  terminalReason?: string;
   raw: unknown;
 }
 export interface ControlRequestEvent {

@@ -13,6 +13,7 @@ import {
   serializeSetModel,
   serializeSetMaxThinkingTokens,
   serializeSetPermissionMode,
+  serializeInterrupt,
   ProtocolParseError,
 } from "@remote-coder/protocol";
 import type {
@@ -208,6 +209,16 @@ export class ClaudeProcess extends EventEmitter {
 
   setPermissionMode(mode: string): void {
     this.write(serializeSetPermissionMode(mode));
+  }
+
+  /**
+   * Interrupt (STOP) the current turn without killing the process. Writes an `interrupt` control_request
+   * on the CLI's stdin; the CLI aborts the in-flight turn and ends it with a `result` whose
+   * `terminal_reason` is `aborted_streaming` (which already flows through the existing `result` handler,
+   * settling state). The session stays open and accepts the next user message.
+   */
+  interrupt(): void {
+    this.write(serializeInterrupt());
   }
 
   stop(): void {

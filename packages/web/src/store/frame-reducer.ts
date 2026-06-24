@@ -14,7 +14,7 @@ export type TurnItem =
   | { kind: "tool-use"; id: string; name: string; input: unknown }
   | { kind: "tool-result"; toolUseId: string; content: unknown }
   | { kind: "user"; blocks: ContentBlock[] }
-  | { kind: "result"; result?: string; isError?: boolean; totalCostUsd?: number }
+  | { kind: "result"; result?: string; isError?: boolean; totalCostUsd?: number; stopped?: boolean }
   | { kind: "attachment"; id: string; path: string; name: string; caption?: string; isImage: boolean };
 
 export interface SessionView {
@@ -93,15 +93,19 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
   }
   if (frame.kind === "result") {
     const r = frame.payload as ResultPayload;
+    // A user-initiated STOP (interrupt) ends the turn with terminal_reason "aborted_streaming" (and
+    // subtype "error_during_execution"). That is NOT a real error — render it as a calm "Stopped"
+    // marker and return the wire to idle (so the user can type the next message), never the red error.
+    const stopped = r.terminalReason === "aborted_streaming" || r.subtype === "error_during_execution";
     next.lastResult = r;
     next.pendingPermission = undefined;
     next.pendingQuestion = undefined;
     next.liveText = "";
     next.thinkingText = "";
-    next.wireState = r.isError ? "error" : "success";
+    next.wireState = stopped ? "idle" : r.isError ? "error" : "success";
     next.turns = [
       ...view.turns,
-      { kind: "result", result: r.result, isError: r.isError, totalCostUsd: r.totalCostUsd },
+      { kind: "result", result: r.result, isError: r.isError, totalCostUsd: r.totalCostUsd, stopped },
     ];
     return next;
   }

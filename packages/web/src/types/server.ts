@@ -109,6 +109,12 @@ export interface ResultPayload {
   sessionId?: string;
   totalCostUsd?: number;
   permissionDenials?: unknown[];
+  /**
+   * How the turn ended, when the CLI reports it. A user-initiated STOP (interrupt) ends the turn with
+   * `terminal_reason:"aborted_streaming"` (and `subtype:"error_during_execution"`); the reducer reads
+   * this to render the turn as a calm "Stopped" marker rather than a red error.
+   */
+  terminalReason?: string;
   raw: unknown;
 }
 
@@ -149,4 +155,6 @@ export type OutboundFrame =
       toolInput?: unknown;
       answers: Record<string, string | string[]>;
     }
-  | { type: "settings"; model?: string; maxThinkingTokens?: number; effort?: string; permissionMode?: string };
+  | { type: "settings"; model?: string; maxThinkingTokens?: number; effort?: string; permissionMode?: string }
+  // STOP the running turn (interrupt). No payload — the server interrupts the session the WS is for.
+  | { type: "interrupt" };

@@ -145,6 +145,11 @@ export class SessionManager {
     this.require(id).process.setPermissionMode(mode);
   }
 
+  /** Interrupt (STOP) the current turn of a live session (does not kill the process). */
+  interrupt(id: string): void {
+    this.require(id).process.interrupt();
+  }
+
   stopSession(id: string): void {
     const session = this.sessions.get(id);
     if (!session) return;

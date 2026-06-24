@@ -321,8 +321,17 @@ function ToolCluster({ steps }: { steps: ToolStep[] }) {
   );
 }
 
-/** A subtle, muted turn-end marker: a hairline rule + "done · $cost" (or an error state). */
+/**
+ * A subtle, muted turn-end marker: a hairline rule + "done · $cost" (or an error state). A
+ * user-initiated STOP (`item.stopped`) renders as a CALM neutral "stopped" — a stop glyph in muted
+ * text, never the red error tint — because aborting a turn is intentional, not a failure.
+ */
 function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> }) {
+  // "stopped" wins over isError: an aborted turn carries the protocol error flags but is calm, not red.
+  const tone = item.stopped ? "stopped" : item.isError ? "error" : "done";
+  const color =
+    tone === "stopped" ? "var(--text-muted)" : tone === "error" ? "var(--err)" : "var(--ok)";
+  const icon: IconName = tone === "stopped" ? "stop" : tone === "error" ? "alert" : "check";
   return (
     <div
       style={{
@@ -335,12 +344,14 @@ function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> })
       }}
     >
       <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
-      <span style={{ color: item.isError ? "var(--err)" : "var(--ok)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-        <Icon name={item.isError ? "alert" : "check"} size={13} />
-        {item.isError ? "error" : "done"}
+      <span style={{ color, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <Icon name={icon} size={13} />
+        {tone}
       </span>
-      {item.result ? <span style={{ color: "var(--text-muted)" }}>· {item.result}</span> : null}
-      {item.totalCostUsd !== undefined && (
+      {/* A stopped turn's `result` text is the CLI's internal "aborted" string — suppress it so the
+          marker reads simply "stopped" (the user knows why). Cost still shows when present. */}
+      {!item.stopped && item.result ? <span style={{ color: "var(--text-muted)" }}>· {item.result}</span> : null}
+      {item.totalCostUsd !== undefined && item.totalCostUsd > 0 && (
         <span style={{ color: "var(--text-muted)" }}>· ${item.totalCostUsd.toFixed(4)}</span>
       )}
       <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
