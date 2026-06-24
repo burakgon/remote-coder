@@ -99,7 +99,9 @@ function Turn({ item, downloadUrl }: { item: TurnItem; downloadUrl?: (path: stri
             gap: "var(--sp-1)",
           }}
         >
-          <span style={{ color: "var(--accent)", fontSize: "var(--fs-sm)", fontFamily: "var(--font-display)" }}>You</span>
+          <span style={{ color: "var(--accent)", fontSize: "var(--fs-sm)", fontFamily: "var(--font-display)" }}>
+            You
+          </span>
           {renderBlocks(item.blocks)}
         </div>
       );
@@ -123,7 +125,61 @@ function Turn({ item, downloadUrl }: { item: TurnItem; downloadUrl?: (path: stri
           )}
         </div>
       );
+    case "attachment":
+      return <Attachment item={item} downloadUrl={downloadUrl} />;
   }
+}
+
+/**
+ * Claude proactively SENT a file/image to the chat (the mcp-send tool → `attachment` frame). Render it
+ * as a clearly-labeled "from claude" card: an image previews inline wrapped in a download link; any
+ * other file shows a download chip. The bytes load from the fsRoot-confined /fs/download endpoint via
+ * the `downloadUrl` builder; without one we degrade to name + caption (no broken link / image).
+ */
+function Attachment({
+  item,
+  downloadUrl,
+}: {
+  item: Extract<TurnItem, { kind: "attachment" }>;
+  downloadUrl?: (path: string) => string;
+}) {
+  const href = downloadUrl?.(item.path);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: "var(--sp-2)",
+        padding: "var(--sp-3)",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-sm)",
+      }}
+    >
+      <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", fontFamily: "var(--font-display)" }}>
+        <span aria-hidden>📎</span> Claude sent you a file
+      </span>
+      {href && item.isImage ? (
+        <a href={href} download title={item.path} style={{ display: "block", width: "fit-content", maxWidth: "100%" }}>
+          <img
+            src={href}
+            alt={item.name}
+            style={{
+              maxWidth: "min(100%, 360px)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+              display: "block",
+            }}
+          />
+        </a>
+      ) : href ? (
+        <FileChip path={item.path} href={href} />
+      ) : (
+        // No download URL: still surface the file name so the user knows what was sent.
+        <Mono>{item.name}</Mono>
+      )}
+      {item.caption && <div style={{ color: "var(--text)", fontSize: "var(--fs-sm)" }}>{item.caption}</div>}
+    </div>
+  );
 }
 
 export interface MessageListProps {
@@ -137,9 +193,7 @@ export function MessageList({ view, downloadUrl }: MessageListProps) {
     // Without it a grid item's default `min-width: auto` lets a wide child (a table, a long code
     // line) grow the track to its natural width, overflowing the whole view to the right forever.
     // With min-0, wide children stay clipped to the column and scroll inside their own overflow box.
-    <div
-      style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "var(--sp-4)", padding: "var(--sp-4)" }}
-    >
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "var(--sp-4)", padding: "var(--sp-4)" }}>
       {view.turns.map((item, i) => (
         <Turn key={i} item={item} downloadUrl={downloadUrl} />
       ))}

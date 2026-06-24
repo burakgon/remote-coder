@@ -116,6 +116,23 @@ describe("reduceFrame", () => {
     expect(v.pendingQuestion).toBeUndefined();
   });
 
+  it("turns an attachment frame into an attachment turn (Claude sent a file)", () => {
+    const frame: ServerFrame = {
+      seq: 1,
+      kind: "attachment",
+      payload: { id: "att-1", path: "/r/a.png", name: "a.png", caption: "here", isImage: true },
+    };
+    const v = reduceFrame(emptyView(), frame);
+    expect(v.turns.at(-1)).toEqual({
+      kind: "attachment",
+      id: "att-1",
+      path: "/r/a.png",
+      name: "a.png",
+      caption: "here",
+      isImage: true,
+    });
+  });
+
   it("ignores a replayed frame at or below lastSeq (delta-replay dedup)", () => {
     let v = emptyView();
     v = reduceFrame(

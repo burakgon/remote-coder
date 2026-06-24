@@ -1,4 +1,4 @@
-export type ServerFrameKind = "event" | "permission" | "question" | "result" | "diagnostic" | "exit";
+export type ServerFrameKind = "event" | "permission" | "question" | "result" | "diagnostic" | "exit" | "attachment";
 
 export interface ServerFrame {
   seq: number;
@@ -7,7 +7,8 @@ export interface ServerFrame {
 }
 
 export function isCriticalKind(kind: ServerFrameKind): boolean {
-  return kind === "permission" || kind === "question" || kind === "result";
+  // attachment is critical: a file Claude sent must survive a WS reconnect (like permission/result).
+  return kind === "permission" || kind === "question" || kind === "result" || kind === "attachment";
 }
 
 /**

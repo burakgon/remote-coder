@@ -71,6 +71,19 @@ export async function startServer(
   const url = await result.app.listen({ port: config.port, host: config.bindAddress });
   // The deep-link origin in pushes uses the listen URL (handles port 0). Patch the dispatcher baseUrl.
   dispatcher.setBaseUrl(url);
+
+  // mcp-send wiring: now that listen() resolved the real port, give the manager the LOOPBACK base URL
+  // (the spawned mcp-send.js POSTs back to 127.0.0.1, never the public bind), this deploy's token, and
+  // the resolved path to dist/mcp-send.js. Every create/resume spawn then loads the send server so
+  // claude can deliver files/images to the chat. The script path is resolved relative to THIS module
+  // so it works wherever the server is installed.
+  const { port: listenPort } = result.app.server.address() as { port: number };
+  manager.setAttachConfig({
+    baseUrl: `http://127.0.0.1:${listenPort}`,
+    token: token ?? "",
+    mcpScriptPath: fileURLToPath(new URL("./mcp-send.js", import.meta.url)),
+  });
+
   return { ...result, url, token, tokenGenerated: generated };
 }
 

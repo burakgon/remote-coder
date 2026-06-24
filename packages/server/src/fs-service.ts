@@ -32,6 +32,28 @@ export interface FsServiceOptions {
   root: string;
 }
 
+/**
+ * The wire shape of an `attachment` server frame's payload (Claude sent a file to the chat).
+ * Carries only the PATH — the web fetches the bytes via /fs/download — so a large file never
+ * bloats the WS frame. Mirrored on the client in packages/web/src/types/server.ts.
+ */
+export interface AttachmentPayload {
+  id: string;
+  path: string;
+  name: string;
+  caption?: string;
+  isImage: boolean;
+}
+
+/** Extensions rendered inline as images (lowercased, no dot). */
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"]);
+
+function isImagePath(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1) return false;
+  return IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
+}
+
 export class FsService {
   private readonly root: string;
 
@@ -116,6 +138,18 @@ export class FsService {
     const real = await this.realWithinRoot(file);
     const data = await readFile(real);
     return { filename: basename(file), data };
+  }
+
+  /**
+   * Validate that `target` is a real in-root file and describe it for an attachment frame WITHOUT
+   * reading its bytes. Reuses the same resolveWithinRoot + realpath defense as readFileForDownload so
+   * a traversal/symlink-escape path throws FsError("forbidden") and a missing path FsError("not-found").
+   */
+  async describeForAttachment(target: string): Promise<{ name: string; isImage: boolean }> {
+    const file = this.resolveWithinRoot(target);
+    await this.realWithinRoot(file);
+    const name = basename(file);
+    return { name, isImage: isImagePath(name) };
   }
 
   async writeUploadedFile(targetDir: string, filename: string, data: Buffer): Promise<{ path: string }> {

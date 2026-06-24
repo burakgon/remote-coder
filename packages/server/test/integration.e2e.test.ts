@@ -100,6 +100,63 @@ test("full flow: create -> WS subscribe -> message -> events+result -> permissio
   expect(history.json().history.some((f: ServerFrame) => f.kind === "result")).toBe(true);
 }, 20000); // subprocess-driven WS flow; allow headroom over the in-test budgets under full-suite load
 
+test("attach: POST /sessions/:id/attach pushes an attachment frame to a live WS subscriber", async () => {
+  const config = configFor();
+  const manager = new SessionManager(config.claude, {
+    spawnPrefixArgs: [MOCK],
+    baseEnv: { ...process.env, MOCK_MODE: "simple" },
+    startTimeoutMs: 5000,
+  });
+  current = createServer(config, manager);
+  const httpUrl = await current.app.listen({ port: 0, host: "127.0.0.1" });
+  const wsBase = httpUrl.replace(/^http/, "ws");
+
+  // A real in-root file the attach path can validate (fsRoot is process.cwd()).
+  const filePath = fileURLToPath(import.meta.url); // this test file — guaranteed inside cwd
+
+  const created = await current.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: { authorization: `Bearer ${TOKEN}` },
+    payload: { cwd: process.cwd() },
+  });
+  expect(created.statusCode).toBe(201);
+  const id = created.json().session.id;
+
+  await new Promise<void>((resolve, reject) => {
+    let triggered = false;
+    const ws = new WebSocket(`${wsBase}/sessions/${id}/ws?token=${TOKEN}`);
+    ws.on("open", () => {
+      // POST the attach once the socket is subscribed so the frame arrives live.
+      triggered = true;
+      void current!.app
+        .inject({
+          method: "POST",
+          url: `/sessions/${id}/attach`,
+          headers: { authorization: `Bearer ${TOKEN}` },
+          payload: { path: filePath, caption: "the test file", kind: "file" },
+        })
+        .then((res) => {
+          if (res.statusCode !== 200) reject(new Error(`attach failed: ${res.statusCode} ${res.body}`));
+        });
+    });
+    ws.on("message", (raw: Buffer) => {
+      const frame: ServerFrame = JSON.parse(raw.toString());
+      if (frame.kind === "attachment") {
+        const p = frame.payload as { name: string; caption?: string; isImage: boolean; path: string };
+        expect(p.path).toBe(filePath);
+        expect(p.name).toBe("integration.e2e.test.ts");
+        expect(p.caption).toBe("the test file");
+        expect(p.isImage).toBe(false);
+        ws.close();
+        resolve();
+      }
+    });
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error(triggered ? "attach: no attachment frame" : "attach: ws never opened")), 8000);
+  });
+}, 15000);
+
 test("startServer refuses a non-loopback bind without a token", async () => {
   const { startServer } = await import("../src/index.js");
   await expect(

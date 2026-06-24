@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { SessionManager, createServer } from "../src/index.js";
-import type { ServerRuntimeConfig, CreateServerResult } from "../src/index.js";
+import type { ServerRuntimeConfig, CreateServerResult, ServerFrame } from "../src/index.js";
 
 const MOCK = fileURLToPath(new URL("./helpers/mock-claude-interactive.mjs", import.meta.url));
 const TOKEN = "test-token";
@@ -145,4 +145,131 @@ test("POST /fs/upload rejects a file over the size cap with 413", async () => {
     payload: body,
   });
   expect(res.statusCode).toBe(413);
+});
+
+/** Create a session via REST and return its id (the mock claude starts immediately). */
+async function createSession(result: CreateServerResult): Promise<string> {
+  const created = await result.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: auth,
+    payload: { cwd: root, dangerouslySkip: false },
+  });
+  expect(created.statusCode).toBe(201);
+  return created.json().session.id as string;
+}
+
+test("POST /sessions/:id/attach pushes an attachment frame for a valid in-root image", async () => {
+  current = makeServer();
+  writeFileSync(join(root, "shot.png"), "img-bytes");
+  const id = await createSession(current);
+
+  const frames: ServerFrame[] = [];
+  const sub = current.hub.subscribe(id, (f) => frames.push(f));
+
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/attach`,
+    headers: auth,
+    payload: { path: join(root, "shot.png"), caption: "here you go", kind: "image" },
+  });
+  sub.unsubscribe();
+
+  expect(res.statusCode).toBe(200);
+  const json = res.json();
+  expect(json.ok).toBe(true);
+  expect(typeof json.id).toBe("string");
+
+  const frame = frames.find((f) => f.kind === "attachment");
+  expect(frame).toBeDefined();
+  const payload = frame!.payload as {
+    id: string;
+    path: string;
+    name: string;
+    caption?: string;
+    isImage: boolean;
+  };
+  expect(payload.id).toBe(json.id);
+  expect(payload.path).toBe(join(root, "shot.png"));
+  expect(payload.name).toBe("shot.png");
+  expect(payload.isImage).toBe(true);
+  expect(payload.caption).toBe("here you go");
+
+  current.hub.stopSession(id);
+});
+
+test("POST /sessions/:id/attach with kind=file marks a non-image file isImage:false", async () => {
+  current = makeServer();
+  const id = await createSession(current);
+  const frames: ServerFrame[] = [];
+  const sub = current.hub.subscribe(id, (f) => frames.push(f));
+
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/attach`,
+    headers: auth,
+    payload: { path: join(root, "readme.md"), kind: "file" },
+  });
+  sub.unsubscribe();
+
+  expect(res.statusCode).toBe(200);
+  const frame = frames.find((f) => f.kind === "attachment");
+  expect((frame!.payload as { isImage: boolean }).isImage).toBe(false);
+  expect((frame!.payload as { caption?: string }).caption).toBeUndefined();
+  current.hub.stopSession(id);
+});
+
+test("POST /sessions/:id/attach returns 403 for a traversal/outside path and pushes NO frame", async () => {
+  current = makeServer();
+  const id = await createSession(current);
+  const frames: ServerFrame[] = [];
+  const sub = current.hub.subscribe(id, (f) => frames.push(f));
+
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/attach`,
+    headers: auth,
+    payload: { path: "../../etc/hosts" },
+  });
+  sub.unsubscribe();
+
+  expect(res.statusCode).toBe(403);
+  expect(frames.some((f) => f.kind === "attachment")).toBe(false);
+  current.hub.stopSession(id);
+});
+
+test("POST /sessions/:id/attach returns 404 for a missing in-root file", async () => {
+  current = makeServer();
+  const id = await createSession(current);
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/attach`,
+    headers: auth,
+    payload: { path: join(root, "nope.txt") },
+  });
+  expect(res.statusCode).toBe(404);
+  current.hub.stopSession(id);
+});
+
+test("POST /sessions/:id/attach returns 404 for an unknown session", async () => {
+  current = makeServer();
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/does-not-exist/attach`,
+    headers: auth,
+    payload: { path: join(root, "readme.md") },
+  });
+  expect(res.statusCode).toBe(404);
+});
+
+test("POST /sessions/:id/attach is token-gated (401 without auth)", async () => {
+  current = makeServer();
+  const id = await createSession(current);
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/attach`,
+    payload: { path: join(root, "readme.md") },
+  });
+  expect(res.statusCode).toBe(401);
+  current.hub.stopSession(id);
 });

@@ -84,6 +84,34 @@ test("buildClaudeArgs never includes -p/--print even with all options set", () =
   expect(args).not.toContain("--print");
 });
 
+test("buildClaudeArgs adds --mcp-config (inline JSON) with the send server env when attach is provided", () => {
+  const args = buildClaudeArgs({
+    sessionId: "sid-9",
+    attach: {
+      baseUrl: "http://127.0.0.1:4280",
+      token: "tok-9",
+      mcpScriptPath: "/abs/dist/mcp-send.js",
+    },
+  });
+  const i = args.indexOf("--mcp-config");
+  expect(i).toBeGreaterThanOrEqual(0);
+  const json = JSON.parse(args[i + 1]);
+  expect(json.mcpServers["remote-coder"]).toEqual({
+    command: process.execPath,
+    args: ["/abs/dist/mcp-send.js"],
+    env: {
+      RC_BASE_URL: "http://127.0.0.1:4280",
+      RC_SESSION_ID: "sid-9",
+      RC_TOKEN: "tok-9",
+    },
+  });
+});
+
+test("buildClaudeArgs emits NO --mcp-config when attach is absent (additive, unchanged spawn)", () => {
+  const args = buildClaudeArgs({ sessionId: "sid-9" });
+  expect(args).not.toContain("--mcp-config");
+});
+
 test("resume emits --resume <id> and omits --session-id", () => {
   const args = buildClaudeArgs({ sessionId: "sid-1", resume: true });
   expect(args).toContain("--resume");

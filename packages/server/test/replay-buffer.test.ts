@@ -10,12 +10,23 @@ test("push assigns monotonic seq starting at 1 and snapshot preserves order", ()
   expect(buf.snapshot().map((f) => f.seq)).toEqual([1, 2]);
 });
 
-test("isCriticalKind marks permission and result critical only", () => {
+test("isCriticalKind marks permission, result, question and attachment critical only", () => {
   expect(isCriticalKind("permission")).toBe(true);
   expect(isCriticalKind("result")).toBe(true);
+  expect(isCriticalKind("question")).toBe(true);
+  expect(isCriticalKind("attachment")).toBe(true);
   expect(isCriticalKind("event")).toBe(false);
   expect(isCriticalKind("diagnostic")).toBe(false);
   expect(isCriticalKind("exit")).toBe(false);
+});
+
+test("an attachment frame is NEVER evicted even under heavy non-critical churn (file survives reconnect)", () => {
+  const buf = new ReplayBuffer(1);
+  buf.push("attachment", { id: "att-1", path: "/r/a.png", name: "a.png", isImage: true });
+  for (let i = 0; i < 50; i++) buf.push("event", { i });
+  const atts = buf.snapshot().filter((f) => f.kind === "attachment");
+  expect(atts).toHaveLength(1);
+  expect((atts[0].payload as { id: string }).id).toBe("att-1");
 });
 
 test("over-capacity eviction drops oldest NON-critical frames only", () => {

@@ -1,4 +1,5 @@
 import type {
+  AttachmentPayload,
   ContentBlock,
   DiagnosticPayload,
   PermissionPayload,
@@ -13,7 +14,8 @@ export type TurnItem =
   | { kind: "tool-use"; id: string; name: string; input: unknown }
   | { kind: "tool-result"; toolUseId: string; content: unknown }
   | { kind: "user"; blocks: ContentBlock[] }
-  | { kind: "result"; result?: string; isError?: boolean; totalCostUsd?: number };
+  | { kind: "result"; result?: string; isError?: boolean; totalCostUsd?: number }
+  | { kind: "attachment"; id: string; path: string; name: string; caption?: string; isImage: boolean };
 
 export interface SessionView {
   liveText: string;
@@ -82,6 +84,16 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     next.turns = [
       ...view.turns,
       { kind: "result", result: r.result, isError: r.isError, totalCostUsd: r.totalCostUsd },
+    ];
+    return next;
+  }
+  if (frame.kind === "attachment") {
+    // Claude sent a file/image to the chat — append it as its own turn so the message list renders
+    // it inline (image) or as a download chip (file). Does not change the live wire state.
+    const a = frame.payload as AttachmentPayload;
+    next.turns = [
+      ...view.turns,
+      { kind: "attachment", id: a.id, path: a.path, name: a.name, caption: a.caption, isImage: a.isImage },
     ];
     return next;
   }

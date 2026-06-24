@@ -2,7 +2,7 @@
 // session-hub.ts, fs-service.ts, claude-process.ts and @remote-coder/protocol). Kept as a
 // standalone type module so the browser bundle never imports the Node server package.
 
-export type ServerFrameKind = "event" | "permission" | "question" | "result" | "diagnostic" | "exit";
+export type ServerFrameKind = "event" | "permission" | "question" | "result" | "diagnostic" | "exit" | "attachment";
 
 export interface ServerFrame {
   seq: number;
@@ -80,6 +80,19 @@ export interface ResultPayload {
 export interface DiagnosticPayload {
   source: "stderr" | "parser";
   message: string;
+}
+
+/**
+ * Claude sent a file/image to the chat (server-side mirror: packages/server/src/fs-service.ts).
+ * Carries only the PATH — the web fetches the bytes via /fs/download (the `downloadUrl` builder) so a
+ * large file never bloats the WS frame. `isImage` decides inline-image vs download-chip rendering.
+ */
+export interface AttachmentPayload {
+  id: string;
+  path: string;
+  name: string;
+  caption?: string;
+  isImage: boolean;
 }
 
 export type OutboundFrame =

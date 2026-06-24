@@ -18,4 +18,14 @@ export default defineConfig([
     tsconfig: "tsconfig.build.json",
     banner: { js: "#!/usr/bin/env node" },
   },
+  {
+    // Runnable stdio MCP server: spawned as claude's MCP subprocess (via --mcp-config) so claude can
+    // send files/images to the chat. Emits dist/mcp-send.js as a standalone node script.
+    entry: ["src/mcp-send.ts"],
+    format: ["esm"],
+    dts: false, // not imported as a library; the test imports the source directly
+    clean: false,
+    tsconfig: "tsconfig.build.json",
+    banner: { js: "#!/usr/bin/env node" },
+  },
 ]);

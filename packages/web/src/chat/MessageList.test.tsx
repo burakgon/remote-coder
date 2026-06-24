@@ -182,4 +182,83 @@ describe("MessageList", () => {
       expect(screen.getByRole("link")).toHaveAttribute("download");
     });
   });
+
+  describe("claude proactively SENDS a file/image (attachment turn from the mcp-send tool)", () => {
+    const downloadUrl = (p: string) => `https://host/fs/download?path=${encodeURIComponent(p)}&token=tok`;
+
+    it("renders an image attachment inline as an <img> wrapped in a download link", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [{ kind: "attachment", id: "a1", path: "/Users/me/shot.png", name: "shot.png", isImage: true }],
+          })}
+          downloadUrl={downloadUrl}
+        />,
+      );
+      const img = screen.getByRole("img");
+      expect(img).toHaveAttribute("src", "https://host/fs/download?path=%2FUsers%2Fme%2Fshot.png&token=tok");
+      const link = screen.getByRole("link");
+      expect(link).toHaveAttribute("href", "https://host/fs/download?path=%2FUsers%2Fme%2Fshot.png&token=tok");
+      expect(link).toHaveAttribute("download");
+    });
+
+    it("renders a non-image attachment as a download chip link", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [{ kind: "attachment", id: "a2", path: "/Users/me/report.pdf", name: "report.pdf", isImage: false }],
+          })}
+          downloadUrl={downloadUrl}
+        />,
+      );
+      expect(screen.queryByRole("img")).toBeNull();
+      const link = screen.getByRole("link", { name: /report\.pdf/i });
+      expect(link).toHaveAttribute("href", "https://host/fs/download?path=%2FUsers%2Fme%2Freport.pdf&token=tok");
+      expect(link).toHaveAttribute("download");
+    });
+
+    it("renders the caption when present", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "attachment",
+                id: "a3",
+                path: "/Users/me/x.png",
+                name: "x.png",
+                caption: "your requested chart",
+                isImage: true,
+              },
+            ],
+          })}
+          downloadUrl={downloadUrl}
+        />,
+      );
+      expect(screen.getByText(/your requested chart/i)).toBeInTheDocument();
+    });
+
+    it("degrades gracefully without a downloadUrl — shows the name/caption, no broken link", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "attachment",
+                id: "a4",
+                path: "/Users/me/y.pdf",
+                name: "y.pdf",
+                caption: "a doc",
+                isImage: false,
+              },
+            ],
+          })}
+        />,
+      );
+      expect(screen.queryByRole("link")).toBeNull();
+      expect(screen.queryByRole("img")).toBeNull();
+      expect(screen.getByText(/y\.pdf/i)).toBeInTheDocument();
+      expect(screen.getByText(/a doc/i)).toBeInTheDocument();
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import multipart from "@fastify/multipart";
@@ -222,6 +223,50 @@ export function createServer(
     hub.stopSession(request.params.id);
     return { ok: true };
   });
+
+  // Claude sends a file/image to the chat: the mcp-send stdio server (spawned as claude's subprocess)
+  // POSTs here on a send_image/send_file tool call. The path is fsRoot+realpath-validated (no traversal,
+  // no symlink escape — same defense as /fs/download); on success an `attachment` frame is pushed to the
+  // session over the existing WS (live + buffered for reconnect). Token-gated by the global preHandler.
+  app.post<{ Params: { id: string }; Body: { path?: string; caption?: string; kind?: "image" | "file" } }>(
+    "/sessions/:id/attach",
+    async (request, reply) => {
+      const meta = hub.getSession(request.params.id);
+      if (!meta) {
+        reply.code(404).send({ error: "session not found" });
+        return;
+      }
+      const body = request.body;
+      if (!body || typeof body.path !== "string") {
+        reply.code(400).send({ error: "path is required" });
+        return;
+      }
+      const caption = typeof body.caption === "string" ? body.caption : undefined;
+      let described: { name: string; isImage: boolean };
+      try {
+        described = await fsService.describeForAttachment(body.path);
+      } catch (err) {
+        if (err instanceof FsError) {
+          reply.code(err.code === "forbidden" ? 403 : 404).send({ error: err.message });
+        } else {
+          reply.code(404).send({ error: (err as Error).message });
+        }
+        return;
+      }
+      // kind=image forces inline image rendering even for an unknown extension; kind=file forces a
+      // download chip. Absent → infer from the extension (describeForAttachment.isImage).
+      const isImage = body.kind === "image" ? true : body.kind === "file" ? false : described.isImage;
+      const id = randomUUID();
+      hub.pushAttachment(request.params.id, {
+        id,
+        path: body.path,
+        name: described.name,
+        caption,
+        isImage,
+      });
+      reply.code(200).send({ ok: true, id });
+    },
+  );
 
   // Web Push opt-in routes (spec §1). The whole `/push/*` namespace is token-gated by the global
   // preHandler (it is in API_PATH_DENYLIST), including GET /push/vapid — the PWA already holds the

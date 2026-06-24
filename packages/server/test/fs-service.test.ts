@@ -79,6 +79,37 @@ test("a missing file throws FsError with code not-found", async () => {
   await expect(svc.readFileForDownload(join(root, "nope.txt"))).rejects.toMatchObject({ code: "not-found" });
 });
 
+test("describeForAttachment returns name + isImage for an in-root file (image by extension)", async () => {
+  writeFileSync(join(root, "shot.PNG"), "img-bytes");
+  const fs = new FsService({ root });
+  const png = await fs.describeForAttachment(join(root, "shot.PNG"));
+  expect(png).toEqual({ name: "shot.PNG", isImage: true });
+  const txt = await fs.describeForAttachment(join(root, "notes.txt"));
+  expect(txt).toEqual({ name: "notes.txt", isImage: false });
+});
+
+test("describeForAttachment marks common raster/vector extensions as images", async () => {
+  const fs = new FsService({ root });
+  for (const ext of ["jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"]) {
+    writeFileSync(join(root, `a.${ext}`), "x");
+    const d = await fs.describeForAttachment(join(root, `a.${ext}`));
+    expect(d.isImage).toBe(true);
+  }
+});
+
+test("describeForAttachment blocks traversal (forbidden) and a missing file (not-found)", async () => {
+  const fs = new FsService({ root });
+  await expect(fs.describeForAttachment("../../etc/passwd")).rejects.toMatchObject({ code: "forbidden" });
+  await expect(fs.describeForAttachment(join(root, "nope.txt"))).rejects.toMatchObject({ code: "not-found" });
+});
+
+test("describeForAttachment rejects a symlink that escapes root (realpath defense)", async () => {
+  writeFileSync(join(outside, "secret.png"), "TOP SECRET");
+  symlinkSync(join(outside, "secret.png"), join(root, "esc.png"));
+  const fs = new FsService({ root });
+  await expect(fs.describeForAttachment(join(root, "esc.png"))).rejects.toMatchObject({ code: "forbidden" });
+});
+
 test("buildImageBlockFromUpload returns a protocol image block", () => {
   const fs = new FsService({ root });
   const block = fs.buildImageBlockFromUpload("image/png", Buffer.from("PNGDATA"));

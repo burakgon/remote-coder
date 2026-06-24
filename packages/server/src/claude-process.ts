@@ -24,6 +24,7 @@ import type {
   QuestionSpec,
 } from "@remote-coder/protocol";
 import { buildClaudeArgs } from "./config.js";
+import type { AttachSpawnOptions } from "./config.js";
 
 export interface ClaudeProcessOptions {
   claudeBin: string;
@@ -39,6 +40,8 @@ export interface ClaudeProcessOptions {
   startTimeoutMs?: number;
   /** Base environment to spawn with. ANTHROPIC_API_KEY is always deleted from a copy. Default process.env. */
   env?: NodeJS.ProcessEnv;
+  /** When set, load the mcp-send server so claude can send files/images to the chat. */
+  attach?: AttachSpawnOptions;
 }
 
 export interface PermissionEvent {
@@ -101,6 +104,7 @@ export class ClaudeProcess extends EventEmitter {
       addDirs: this.opts.addDirs,
       dangerouslySkip: this.opts.dangerouslySkip,
       resume: this.opts.resume,
+      attach: this.opts.attach,
     });
     const args = [...this.spawnPrefixArgs, ...claudeArgs];
 

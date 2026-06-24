@@ -77,6 +77,35 @@ test("reconnect replay: a late subscriber receives buffered frames including the
   hub.stopSession(meta.id);
 });
 
+test("pushAttachment emits an attachment frame to live subscribers and buffers it for replay", async () => {
+  const { hub } = hubFor("simple");
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  const live: ServerFrame[] = [];
+  const sub = hub.subscribe(meta.id, (f) => live.push(f));
+  const payload = { id: "att-1", path: "/r/a.png", name: "a.png", caption: "look", isImage: true };
+  hub.pushAttachment(meta.id, payload);
+  sub.unsubscribe();
+
+  const frame = live.find((f) => f.kind === "attachment");
+  expect(frame).toBeDefined();
+  expect(frame!.payload).toEqual(payload);
+  expect(typeof frame!.seq).toBe("number");
+
+  // Buffered: a fresh (reconnecting) subscriber replays it.
+  const replayed: ServerFrame[] = [];
+  const sub2 = hub.subscribe(meta.id, (f) => replayed.push(f));
+  sub2.unsubscribe();
+  expect(replayed.some((f) => f.kind === "attachment")).toBe(true);
+
+  hub.stopSession(meta.id);
+});
+
+test("pushAttachment throws for an unknown session id", () => {
+  const { hub } = hubFor("simple");
+  expect(() => hub.pushAttachment("nope", { id: "x", path: "/p", name: "p", isImage: false })).toThrow();
+});
+
 test("unknown ids throw on hub operations", async () => {
   const { hub } = hubFor("simple");
   // sendMessage/answerPermission/getHistory are async now — they REJECT for an unknown id.

@@ -3,6 +3,7 @@ import { ReplayBuffer } from "./replay-buffer.js";
 import type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
 import type { CreateSessionOptions } from "./session-manager.js";
 import type { ClaudeProcess, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
+import type { AttachmentPayload } from "./fs-service.js";
 import type { ContentBlock, HookPermissionDecision, InboundEvent, ResultEvent } from "@remote-coder/protocol";
 import type { SessionStore } from "./session-store.js";
 import type { HistoryService } from "./history-service.js";
@@ -111,18 +112,36 @@ export class SessionHub {
     return meta;
   }
 
-  private attach(proc: ClaudeProcess, record: SessionRecord): void {
-    const emit = (kind: ServerFrameKind, payload: unknown) => {
-      const frame = record.buffer.push(kind, payload);
-      for (const listener of record.listeners) listener(frame);
-      if (this.onFrame) {
-        try {
-          this.onFrame(record.meta.id, frame);
-        } catch {
-          // a push-dispatch error must never unwind the claude process emit (spec §10)
-        }
+  /**
+   * Push a frame into a session's buffer and fan it out to live subscribers + the onFrame seam.
+   * The single seq/emit/replay path shared by claude-driven frames AND server-injected ones
+   * (e.g. an attachment): a frame pushed here is delivered live AND buffered for reconnect.
+   */
+  private emitFrame(record: SessionRecord, kind: ServerFrameKind, payload: unknown): ServerFrame {
+    const frame = record.buffer.push(kind, payload);
+    for (const listener of record.listeners) listener(frame);
+    if (this.onFrame) {
+      try {
+        this.onFrame(record.meta.id, frame);
+      } catch {
+        // a push-dispatch error must never unwind the claude process emit (spec §10)
       }
-    };
+    }
+    return frame;
+  }
+
+  /**
+   * Inject an `attachment` frame (Claude sent a file to the chat via the mcp-send tool, relayed by
+   * POST /sessions/:id/attach). Goes through the SAME seq/emit/replay-buffer path as claude frames,
+   * so connected clients get it live AND it survives a WS reconnect (attachment is a critical kind).
+   */
+  pushAttachment(id: string, payload: AttachmentPayload): ServerFrame {
+    const record = this.require(id);
+    return this.emitFrame(record, "attachment", payload);
+  }
+
+  private attach(proc: ClaudeProcess, record: SessionRecord): void {
+    const emit = (kind: ServerFrameKind, payload: unknown) => this.emitFrame(record, kind, payload);
     proc.on("event", (ev: InboundEvent) => emit("event", ev));
     proc.on("permission", (perm: PermissionEvent) => emit("permission", perm));
     proc.on("question", (q: QuestionEvent) => {

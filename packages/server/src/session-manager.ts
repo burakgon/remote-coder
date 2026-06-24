@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ClaudeProcess } from "./claude-process.js";
-import type { ServerConfig } from "./config.js";
+import type { ServerConfig, AttachSpawnOptions } from "./config.js";
 import type { ContentBlock, HookPermissionDecision } from "@remote-coder/protocol";
 
 export interface CreateSessionOptions {
@@ -28,10 +28,21 @@ export class SessionManager {
   private readonly config: ServerConfig;
   private readonly deps: SessionManagerDeps;
   private readonly sessions = new Map<string, Session>();
+  /**
+   * mcp-send wiring applied to every spawned/resumed claude (so it can send files to the chat). Set
+   * late by start.ts AFTER listen() resolves the real loopback URL (port 0 → OS-chosen port). When
+   * undefined, spawns are exactly as before — the feature is additive.
+   */
+  private attach?: AttachSpawnOptions;
 
   constructor(config: ServerConfig, deps: SessionManagerDeps = {}) {
     this.config = config;
     this.deps = deps;
+  }
+
+  /** Provide (or clear) the mcp-send spawn config used for all subsequent create/resume spawns. */
+  setAttachConfig(attach: AttachSpawnOptions | undefined): void {
+    this.attach = attach;
   }
 
   async createSession(opts: CreateSessionOptions): Promise<Session> {
@@ -46,6 +57,7 @@ export class SessionManager {
       dangerouslySkip: opts.dangerouslySkip,
       startTimeoutMs: this.deps.startTimeoutMs,
       env: this.deps.baseEnv,
+      attach: this.attach,
     });
     if (this.deps.spawnPrefixArgs) proc.setSpawnPrefixArgsForTest(this.deps.spawnPrefixArgs);
 
@@ -80,6 +92,7 @@ export class SessionManager {
       resume: true,
       startTimeoutMs: this.deps.startTimeoutMs,
       env: this.deps.baseEnv,
+      attach: this.attach,
     });
     if (this.deps.spawnPrefixArgs) proc.setSpawnPrefixArgsForTest(this.deps.spawnPrefixArgs);
     proc.on("exit", () => {
