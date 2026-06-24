@@ -87,6 +87,41 @@ describe("ChatView", () => {
     expect(screen.getByText("/home/u/proj")).toBeInTheDocument();
   });
 
+  it("renders a top-left 'Show sessions' menu button (mobile-only) that calls onShowSessions", async () => {
+    const onShowSessions = vi.fn();
+    render(<ChatView session={session} api={apiStub()} token="t" onShowSessions={onShowSessions} needsYou={0} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const menu = screen.getByRole("button", { name: "Show sessions" });
+    // Mobile-only: it carries the class the layout's @media (min-width:768px) rule hides on desktop.
+    expect(menu).toHaveClass("rc-menu-btn");
+    await userEvent.click(menu);
+    expect(onShowSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("folds the needs-you count into the menu button's label and shows the iris pip", async () => {
+    render(<ChatView session={session} api={apiStub()} token="t" onShowSessions={() => {}} needsYou={3} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // The accessible name carries the count (never color-only), and a visible pip shows "3".
+    const menu = screen.getByRole("button", { name: "Show sessions, 3 need you" });
+    expect(menu).toHaveTextContent("3");
+  });
+
+  it("omits the header menu button when onShowSessions is not provided", async () => {
+    render(<ChatView session={session} api={apiStub()} token="t" />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: /show sessions/i })).not.toBeInTheDocument();
+  });
+
   it("the live-wire header reflects the session state (awaiting when a permission is pending)", async () => {
     await renderSettled(apiStub());
 

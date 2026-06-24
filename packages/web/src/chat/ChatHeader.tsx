@@ -1,5 +1,6 @@
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
+import { MobileMenuButton } from "../ui/MobileMenuButton";
 import { LiveWire } from "../ui/LiveWire";
 import type { LiveWireState } from "../ui/LiveWire";
 import type { SessionMeta } from "../types/server";
@@ -8,6 +9,13 @@ export interface ChatHeaderProps {
   session: SessionMeta;
   wireState: LiveWireState;
   onOpenSettings?: () => void;
+  /** Open the mobile sessions sheet. When provided, a top-left menu button is rendered as the FIRST
+   * item in the header row (mobile-only; hidden on the desktop breakpoint where the rail is always
+   * visible). This replaces the old floating FAB so nothing overlaps the conversation/composer. */
+  onShowSessions?: () => void;
+  /** Count of sessions awaiting a permission/question. When > 0 the menu button carries a loud iris
+   * "needs you" pip + the count is folded into the button's aria-label. */
+  needsYou?: number;
 }
 
 function basename(p: string): string {
@@ -15,12 +23,11 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-export function ChatHeader({ session, wireState, onOpenSettings }: ChatHeaderProps) {
+export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions, needsYou = 0 }: ChatHeaderProps) {
   return (
     <header
       style={{
         display: "flex",
-        justifyContent: "space-between",
         alignItems: "center",
         gap: "var(--sp-3)",
         padding: "var(--sp-3) var(--sp-4)",
@@ -32,7 +39,13 @@ export function ChatHeader({ session, wireState, onOpenSettings }: ChatHeaderPro
         WebkitBackdropFilter: "var(--glass-blur)",
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+      {/* Top-left, IN-FLOW mobile menu button — the first item in the header row, before the cwd, so
+          it never overlaps the session name (the name sits to its right). Mobile-only (hidden at the
+          desktop breakpoint where the rail is always visible). Replaces the old floating FAB. */}
+      {onShowSessions && <MobileMenuButton onShowSessions={onShowSessions} needsYou={needsYou} />}
+      {/* `flex: 1` so the cwd column takes the slack between the menu button and the right-side
+          status group (keeping that group pinned right); `min-width: 0` lets the path ellipsis clip. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flex: 1 }}>
         {/* cwd basename in the display font — the session's name, the clearest line in the header. */}
         <strong
           className="display"

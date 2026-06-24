@@ -26,9 +26,14 @@ export interface ChatViewProps {
    * the list while keeping the transcript (resumable). The app owns it so the chat disappears for good
    * and the active selection moves on. Used by Settings' "Stop session". */
   onClose?: (id: string) => void;
+  /** Open the mobile sessions sheet — threaded down to the header's top-left menu button (mobile-only;
+   * the desktop rail is always visible). */
+  onShowSessions?: () => void;
+  /** Sessions awaiting a permission/question — drives the header menu button's iris "needs you" pip. */
+  needsYou?: number;
 }
 
-export function ChatView({ session, api, token, onSlashCommand, onClose }: ChatViewProps) {
+export function ChatView({ session, api, token, onSlashCommand, onClose, onShowSessions, needsYou }: ChatViewProps) {
   const applyFrames = useStore((s) => s.applyFrames);
   const resetSession = useStore((s) => s.resetSession);
   const view = useStore((s) => s.views[session.id]);
@@ -144,7 +149,13 @@ export function ChatView({ session, api, token, onSlashCommand, onClose }: ChatV
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <ChatHeader session={session} wireState={wireState} onOpenSettings={() => setSettingsOpen(true)} />
+      <ChatHeader
+        session={session}
+        wireState={wireState}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onShowSessions={onShowSessions}
+        needsYou={needsYou}
+      />
       <div
         ref={scrollRef}
         onScroll={onScroll}

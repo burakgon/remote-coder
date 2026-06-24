@@ -15,6 +15,7 @@ import { ChatView } from "./chat/ChatView";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
 import { useOnline } from "./pwa/online-status";
 import { Icon } from "./ui/Icon";
+import { MobileMenuButton } from "./ui/MobileMenuButton";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -287,26 +288,44 @@ export function App() {
                 token={token}
                 onSlashCommand={onSlashCommand}
                 onClose={closeSession}
+                onShowSessions={() => setSessionsOpen(true)}
+                needsYou={awaitingCount(sessions)}
               />
             ) : (
-              <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>
-                Session not found.
+              // No matching session (e.g. a stale deep-link id). There's no ChatHeader here, so keep
+              // the sessions sheet reachable on mobile via the same top-left, in-flow menu button.
+              <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <div style={{ display: "flex", padding: "var(--sp-3) var(--sp-4)", flex: "none" }}>
+                  <MobileMenuButton onShowSessions={() => setSessionsOpen(true)} needsYou={awaitingCount(sessions)} />
+                </div>
+                <div style={{ display: "grid", placeItems: "center", flex: 1, minHeight: 0, color: "var(--text-muted)" }}>
+                  Session not found.
+                </div>
               </div>
             );
           })()
         ) : (
-          <div
-            style={{
-              display: "grid",
-              placeItems: "center",
-              gap: "var(--sp-4)",
-              height: "100%",
-              color: "var(--text-muted)",
-              padding: "var(--sp-5)",
-              textAlign: "center",
-            }}
-          >
-            {/* The Nebula landing mark — a violet-glowing icon tile, the on-brand focal point. */}
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            {/* On the landing/empty state there's no ChatHeader, so the sessions sheet still needs a
+                trigger on mobile. A slim, in-flow top-left affordance carries the SAME menu button
+                (with the needs-you pip) so sessions are always reachable. Desktop: the button hides
+                itself (rail always visible), leaving just the empty bar. */}
+            <div style={{ display: "flex", padding: "var(--sp-3) var(--sp-4)", flex: "none" }}>
+              <MobileMenuButton onShowSessions={() => setSessionsOpen(true)} needsYou={awaitingCount(sessions)} />
+            </div>
+            <div
+              style={{
+                display: "grid",
+                placeItems: "center",
+                gap: "var(--sp-4)",
+                flex: 1,
+                minHeight: 0,
+                color: "var(--text-muted)",
+                padding: "var(--sp-5)",
+                textAlign: "center",
+              }}
+            >
+              {/* The Nebula landing mark — a violet-glowing icon tile, the on-brand focal point. */}
             <span
               aria-hidden="true"
               style={{
@@ -359,6 +378,7 @@ export function App() {
               <Icon name="plus" size={16} />
               New session
             </button>
+            </div>
           </div>
         )}
       </AppLayout>

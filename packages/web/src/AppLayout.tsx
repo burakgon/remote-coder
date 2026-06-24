@@ -5,11 +5,14 @@ import { Icon } from "./ui/Icon";
 export interface AppLayoutProps {
   children: ReactNode;
   sessionList: ReactNode;
+  /** Open the mobile sessions sheet. Kept on the layout's plumbing for the caller (App), but the
+   * trigger itself now lives in the header / landing state (a top-left, in-flow menu button) rather
+   * than a floating FAB — so it never overlaps the conversation or composer. */
   onShowSessions?: () => void;
   onHideSessions?: () => void;
   sessionsOpen?: boolean;
-  /** Count of sessions awaiting a permission/question. When > 0 the mobile sessions toggle shows a
-   * loud iris "needs you" badge so attention is visible from any chat, even with the rail closed. */
+  /** Count of sessions awaiting a permission/question. Drives the "needs you" pip on the (now header-
+   * /landing-owned) mobile menu button, so attention is visible from any chat with the rail closed. */
   needsYou?: number;
   /**
    * When a conversation occupies the main panel, the mobile sheet is collapsed; mounting the hidden
@@ -49,18 +52,17 @@ function useIsDesktop(): boolean {
 /**
  * Mission-control responsive shell. Desktop (≥768px): left rail + right conversation, with the
  * rail always visible. Mobile: the conversation is full-bleed and the session list lives in a
- * bottom sheet toggled by `sessionsOpen`. A thumb-reachable "Sessions" pill (mobile-only) opens
- * the sheet; a backdrop + the sheet's own close button dismiss it. Layout is CSS-driven so the
- * desktop rail is unaffected by `sessionsOpen`.
+ * bottom sheet toggled by `sessionsOpen`. The sheet is opened by a top-left, in-flow menu button
+ * owned by the header / landing state (not a floating FAB, so nothing overlaps the composer); a
+ * backdrop + the sheet's own close button dismiss it. Layout is CSS-driven so the desktop rail is
+ * unaffected by `sessionsOpen`.
  */
 export function AppLayout({
   children,
   sessionList,
-  onShowSessions,
   onHideSessions,
   sessionsOpen,
   conversationActive,
-  needsYou = 0,
 }: AppLayoutProps) {
   const open = sessionsOpen ? "true" : "false";
   const isDesktop = useIsDesktop();
@@ -87,24 +89,6 @@ export function AppLayout({
       </aside>
 
       <main className="rc-main">{children}</main>
-
-      {/* Thumb-reachable mobile control — opens the sessions sheet. An icon button (not a heavy text
-          button), anchored bottom-right so it never sits on the composer's Image/File/Send row. When
-          sessions need attention it carries a loud iris count badge (visible with the rail closed). */}
-      <button
-        type="button"
-        className="rc-sessions-fab"
-        aria-label={needsYou > 0 ? `Show sessions, ${needsYou} need you` : "Show sessions"}
-        aria-expanded={sessionsOpen ? "true" : "false"}
-        onClick={onShowSessions}
-      >
-        <Icon name="menu" size={20} />
-        {needsYou > 0 && (
-          <span className="rc-fab-badge" aria-hidden="true">
-            {needsYou}
-          </span>
-        )}
-      </button>
 
       <style>{`
         .rc-shell { height: 100%; display: flex; flex-direction: column; position: relative; }
@@ -150,33 +134,6 @@ export function AppLayout({
           background: var(--scrim); animation: rc-fade 180ms ease;
         }
         @keyframes rc-fade { from { opacity: 0; } to { opacity: 1; } }
-        .rc-sessions-fab {
-          /* Anchored to the bottom-RIGHT corner (not dead-center) so it never sits on top of the
-             composer's Image/File/Send row. The composer also reserves bottom clearance (see
-             Composer.tsx), so the controls stay fully tappable with the FAB visible at 390px. */
-          position: fixed; right: var(--sp-4);
-          bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sp-4));
-          z-index: 38;
-          width: 52px; height: 52px; flex: none;
-          display: grid; place-items: center;
-          background: var(--accent-grad); color: #fff; border: none;
-          border-radius: 999px; cursor: pointer;
-          box-shadow: var(--fab-glow);
-          transition: transform 120ms ease, box-shadow 120ms ease;
-        }
-        .rc-sessions-fab:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(124, 92, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45); }
-        /* The iris "needs you" count on the FAB — a small loud pip pinned to the top-right corner,
-           tabular so 1/2/9 line up. iris-on-ink with a violet halo so it reads on the violet FAB. */
-        .rc-fab-badge {
-          position: absolute; top: -2px; right: -2px;
-          min-width: 20px; height: 20px; padding: 0 5px;
-          display: grid; place-items: center;
-          background: var(--iris); color: var(--on-iris);
-          border: 2px solid var(--bg); border-radius: 999px;
-          box-shadow: 0 0 10px rgba(181, 123, 255, 0.7);
-          font-family: var(--font-mono); font-size: 11px; font-weight: 700; line-height: 1;
-          font-variant-numeric: tabular-nums;
-        }
         @media (min-width: 768px) {
           .rc-shell { flex-direction: row; }
           /* On desktop the rail is a permanent two-pane sister to the chat. It stays glassy (the
@@ -189,7 +146,7 @@ export function AppLayout({
             box-shadow: 1px 0 0 rgba(124, 92, 255, 0.12);
             display: block !important; animation: none;
           }
-          .rc-rail__handle, .rc-rail__close, .rc-scrim, .rc-sessions-fab { display: none; }
+          .rc-rail__handle, .rc-rail__close, .rc-scrim { display: none; }
         }
       `}</style>
     </div>

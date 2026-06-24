@@ -98,6 +98,27 @@ describe("App ready-state controls", () => {
     expect(screen.getByTestId("sessions-rail")).toHaveAttribute("data-open", "true");
   });
 
+  it("the landing-state menu button is mobile-only (carries the rc-menu-btn class hidden on desktop)", async () => {
+    await renderReady();
+    expect(screen.getByRole("button", { name: /show sessions/i })).toHaveClass("rc-menu-btn");
+  });
+
+  it("the landing menu button folds the needs-you count into its label when sessions await", async () => {
+    saveToken("good-token");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        sessions: [
+          { id: "s1", cwd: "/home/u/a", dangerouslySkip: false, status: "running", createdAt: 1, awaiting: true },
+          { id: "s2", cwd: "/home/u/b", dangerouslySkip: false, status: "running", createdAt: 2, awaiting: true },
+        ],
+      }),
+    );
+    render(<App />);
+    // No active session → landing state; its menu button carries the count (never color-only).
+    const menu = await screen.findByRole("button", { name: "Show sessions, 2 need you" });
+    expect(menu).toHaveTextContent("2");
+  });
+
   it("opens the new-session wizard (directory picker) from the New session button", async () => {
     await renderReady();
     // Open the sessions sheet to reach its New session button.
