@@ -2,10 +2,11 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { MessageList } from "./MessageList";
+import { emptyView } from "../store/frame-reducer";
 import type { SessionView } from "../store/frame-reducer";
 
 function viewWith(partial: Partial<SessionView>): SessionView {
-  return { liveText: "", thinkingText: "", turns: [], diagnostics: [], wireState: "idle", lastSeq: 0, ...partial };
+  return { ...emptyView(), ...partial };
 }
 
 describe("MessageList", () => {

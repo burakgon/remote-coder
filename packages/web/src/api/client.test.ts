@@ -39,6 +39,40 @@ describe("ApiClient", () => {
     expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({ cwd: "/x", model: "opus" });
   });
 
+  it("getResumable GETs /resumable and returns the rows", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        sessions: [
+          { sessionId: "r1", cwd: "/p", summary: "fix it", lastActivity: 9, messageCount: 4, gitBranch: "main" },
+        ],
+      }),
+    );
+    const api = createApiClient({ baseUrl, getToken: () => "tok" });
+    const rows = await api.getResumable();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.sessionId).toBe("r1");
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${baseUrl}/resumable`);
+  });
+
+  it("getResumable passes the cwd query when scoped", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ sessions: [] }));
+    const api = createApiClient({ baseUrl, getToken: () => undefined });
+    await api.getResumable("/home/u/proj");
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${baseUrl}/resumable?cwd=${encodeURIComponent("/home/u/proj")}`);
+  });
+
+  it("createSession passes resumeSessionId when resuming", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ session: { id: "r1", cwd: "/x", dangerouslySkip: false, status: "running", createdAt: 3 } }),
+    );
+    const api = createApiClient({ baseUrl, getToken: () => undefined });
+    const s = await api.createSession({ resumeSessionId: "r1" });
+    expect(s.id).toBe("r1");
+    expect(JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      resumeSessionId: "r1",
+    });
+  });
+
   it("throws ApiError with status 401 on unauthorized", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401));
     const api = createApiClient({ baseUrl, getToken: () => "bad" });

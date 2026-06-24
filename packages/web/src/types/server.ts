@@ -21,6 +21,20 @@ export interface SessionMeta {
   permissionMode?: string;
 }
 
+/**
+ * A past Claude conversation that can be resumed (server-side mirror: packages/server/src/transcript.ts,
+ * GET /resumable). One row per on-disk transcript, recent-first. `summary` is the first user message
+ * (the eye-level line); `lastActivity` is the transcript file mtime (ms).
+ */
+export interface ResumableSession {
+  sessionId: string;
+  cwd?: string;
+  gitBranch?: string;
+  summary: string;
+  lastActivity: number;
+  messageCount: number;
+}
+
 export interface DirEntry {
   name: string;
   path: string;

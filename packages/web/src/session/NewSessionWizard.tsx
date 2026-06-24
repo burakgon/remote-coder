@@ -2,22 +2,30 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
+import { SegmentedToggle } from "../ui/SegmentedToggle";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { DirectoryPicker } from "../picker/DirectoryPicker";
+import { ResumePicker } from "./ResumePicker";
 import { pushRecentDir } from "../picker/recents";
 import { loadDefaults, EFFORTS } from "../settings/defaults";
 import type { ApiClient } from "../api/client";
 import type { SessionMeta } from "../types/server";
 
+type WizardMode = "new" | "resume";
+
 export interface NewSessionWizardProps {
-  api: Pick<ApiClient, "listDir" | "createSession">;
+  api: Pick<ApiClient, "listDir" | "createSession" | "getResumable">;
   recents: string[];
+  /** Wall clock (ms) for the resume list's relative-time labels — passed in so the wizard stays free
+   * of Date.now() (the app owns the tick). Defaults to Date.now() at mount when omitted. */
+  now?: number;
   onCreated: (session: SessionMeta) => void;
   onClose: () => void;
 }
 
-export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessionWizardProps) {
+export function NewSessionWizard({ api, recents, now, onCreated, onClose }: NewSessionWizardProps) {
   const seeded = loadDefaults();
+  const [mode, setMode] = useState<WizardMode>("new");
   const [cwd, setCwd] = useState<string | undefined>();
   const [effort, setEffort] = useState<string>(seeded.effort);
   const [model, setModel] = useState(seeded.model ?? "");
@@ -25,6 +33,19 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const nowMs = now ?? Date.now();
+
+  const toggle = (
+    <SegmentedToggle<WizardMode>
+      label="New session or resume"
+      value={mode}
+      onChange={setMode}
+      options={[
+        { value: "new", label: "New session", icon: <Icon name="plus" size={15} /> },
+        { value: "resume", label: "Resume", icon: <Icon name="history" size={15} /> },
+      ]}
+    />
+  );
 
   // Real modal semantics for the settings step: focus its first control on entry, trap Tab
   // within it, and restore focus on close. Inert while the picker (step 1) owns the viewport —
@@ -48,10 +69,36 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
     if (e.target === e.currentTarget) onClose();
   }
 
-  // Step 1 — the directory picker (the headline). It owns the whole viewport.
+  // Resume mode — a list of past conversations to pick up where they left off. Resuming creates a
+  // session (idempotent server-side) seeded from the transcript; the caller adds it + selects it, and
+  // the prior conversation replays on WS connect.
+  if (mode === "resume") {
+    return (
+      <ResumePicker
+        getResumable={api.getResumable}
+        scopeCwd={cwd}
+        now={nowMs}
+        topSlot={toggle}
+        onCancel={onClose}
+        onResume={async (resumeSessionId) => {
+          const session = await api.createSession({ resumeSessionId });
+          onCreated(session);
+        }}
+      />
+    );
+  }
+
+  // Step 1 — the directory picker (the headline). It owns the whole viewport. The new/resume toggle
+  // sits at the very top of its header so resume is a discoverable first-class peer.
   if (!cwd) {
     return (
-      <DirectoryPicker listDir={api.listDir} recents={recents} onPick={(path) => setCwd(path)} onCancel={onClose} />
+      <DirectoryPicker
+        listDir={api.listDir}
+        recents={recents}
+        onPick={(path) => setCwd(path)}
+        onCancel={onClose}
+        topSlot={toggle}
+      />
     );
   }
 

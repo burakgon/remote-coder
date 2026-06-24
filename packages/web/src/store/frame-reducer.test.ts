@@ -64,6 +64,68 @@ describe("reduceFrame", () => {
     expect(v.turns.at(-1)).toEqual({ kind: "tool-result", toolUseId: "tu1", content: "done" });
   });
 
+  it("renders a user TEXT event (string content) as a user turn — needed for resume replay", () => {
+    let v = emptyView();
+    v = reduceFrame(v, ev(1, { type: "user", message: { content: "fix the bug" }, uuid: "u1" }));
+    expect(v.turns).toEqual([{ kind: "user", blocks: [{ type: "text", text: "fix the bug" }] }]);
+  });
+
+  it("renders a user TEXT event with text blocks as a user turn", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, { type: "user", message: { content: [{ type: "text", text: "do the thing" }] }, uuid: "u2" }),
+    );
+    expect(v.turns).toEqual([{ kind: "user", blocks: [{ type: "text", text: "do the thing" }] }]);
+  });
+
+  it("dedupes a user text event by uuid — a duplicate delivery does NOT draw a second bubble", () => {
+    let v = emptyView();
+    // First delivery (e.g. transcript replay) → one user turn.
+    v = reduceFrame(v, ev(1, { type: "user", message: { content: "hello" }, uuid: "dup" }));
+    // A second frame carrying the SAME uuid (overlap/dup replay) must be a no-op for the text turn.
+    v = reduceFrame(v, ev(2, { type: "user", message: { content: "hello" }, uuid: "dup" }));
+    const userTurns = v.turns.filter((t) => t.kind === "user");
+    expect(userTurns).toHaveLength(1);
+  });
+
+  it("a user event with BOTH text and a tool_result yields a user turn AND a tool-result turn", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "u3",
+        message: {
+          content: [
+            { type: "text", text: "and then" },
+            { type: "tool_result", tool_use_id: "tu9", content: "ok" },
+          ],
+        },
+      }),
+    );
+    expect(v.turns).toEqual([
+      { kind: "user", blocks: [{ type: "text", text: "and then" }] },
+      { kind: "tool-result", toolUseId: "tu9", content: "ok" },
+    ]);
+  });
+
+  it("does not duplicate a live user bubble: optimistic append + later assistant reply, no echoed user-text event", () => {
+    // Mirrors the live flow: the sender's own message is appended optimistically (the store does this,
+    // not the reducer), then claude streams a reply. claude never re-emits the user TEXT as a `user`
+    // event live, so the reducer never re-adds it. Prove the reducer adds no extra user turn here.
+    let v = emptyView();
+    v = { ...v, turns: [{ kind: "user", blocks: [{ type: "text", text: "hi" }] }] }; // optimistic (store-side)
+    v = reduceFrame(v, ev(1, { type: "assistant", message: { content: [{ type: "text", text: "hello!" }] } }));
+    // a live `user` event only ever carries a tool_result (not the typed text) — that still works:
+    v = reduceFrame(
+      v,
+      ev(2, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "r" }] } }),
+    );
+    const userTurns = v.turns.filter((t) => t.kind === "user");
+    expect(userTurns).toHaveLength(1); // still just the one optimistic bubble — no duplicate
+  });
+
   it("sets pendingPermission on a permission frame (wireState=awaiting) and clears it on result", () => {
     let v = emptyView();
     v = reduceFrame(v, {

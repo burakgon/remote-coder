@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NewSessionWizard } from "./NewSessionWizard";
 import { loadRecentDirs } from "../picker/recents";
 import type { CreateSessionBody } from "../api/client";
-import type { DirListing, SessionMeta } from "../types/server";
+import type { DirListing, ResumableSession, SessionMeta } from "../types/server";
 
 afterEach(() => localStorage.clear());
 
@@ -19,13 +19,15 @@ function makeCreate() {
   return vi.fn<(body: CreateSessionBody) => Promise<SessionMeta>>(() => Promise.resolve(created));
 }
 
+const noResumable = (): Promise<ResumableSession[]> => Promise.resolve([]);
+
 describe("NewSessionWizard", () => {
   it("picks a directory then creates a session with the chosen settings", async () => {
     const createSession = makeCreate();
     const onCreated = vi.fn();
     render(
       <NewSessionWizard
-        api={{ listDir: () => Promise.resolve(listing), createSession }}
+        api={{ listDir: () => Promise.resolve(listing), createSession, getResumable: noResumable }}
         recents={[]}
         onCreated={onCreated}
         onClose={vi.fn()}
@@ -48,7 +50,7 @@ describe("NewSessionWizard", () => {
     const createSession = makeCreate();
     render(
       <NewSessionWizard
-        api={{ listDir: () => Promise.resolve(listing), createSession }}
+        api={{ listDir: () => Promise.resolve(listing), createSession, getResumable: noResumable }}
         recents={[]}
         onCreated={vi.fn()}
         onClose={vi.fn()}
@@ -71,7 +73,7 @@ describe("NewSessionWizard", () => {
   it("lets the user go back to change the directory", async () => {
     render(
       <NewSessionWizard
-        api={{ listDir: () => Promise.resolve(listing), createSession: makeCreate() }}
+        api={{ listDir: () => Promise.resolve(listing), createSession: makeCreate(), getResumable: noResumable }}
         recents={[]}
         onCreated={vi.fn()}
         onClose={vi.fn()}
@@ -89,7 +91,7 @@ describe("NewSessionWizard", () => {
   async function reachSettingsStep(onClose = vi.fn()) {
     render(
       <NewSessionWizard
-        api={{ listDir: () => Promise.resolve(listing), createSession: makeCreate() }}
+        api={{ listDir: () => Promise.resolve(listing), createSession: makeCreate(), getResumable: noResumable }}
         recents={[]}
         onCreated={vi.fn()}
         onClose={onClose}
@@ -125,5 +127,57 @@ describe("NewSessionWizard", () => {
     // Clicking the heading inside the surface must not bubble into a dismiss.
     await userEvent.click(screen.getByText(/start a session/i));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("the New/Resume toggle switches from the directory picker to the resume pane", async () => {
+    const resumable: ResumableSession[] = [
+      { sessionId: "r-1", cwd: "/home/u/proj", summary: "Earlier work", lastActivity: 1, messageCount: 5 },
+    ];
+    render(
+      <NewSessionWizard
+        api={{
+          listDir: () => Promise.resolve(listing),
+          createSession: makeCreate(),
+          getResumable: () => Promise.resolve(resumable),
+        }}
+        recents={[]}
+        now={2}
+        onCreated={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    // Starts on the directory picker (New session).
+    await waitFor(() => screen.getByRole("button", { name: /use this directory/i }));
+    // Flip to Resume via the segmented toggle.
+    await userEvent.click(screen.getByRole("tab", { name: /resume/i }));
+    expect(await screen.findByText("Earlier work")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /use this directory/i })).not.toBeInTheDocument();
+  });
+
+  it("resuming a session calls createSession with resumeSessionId and reports the created session", async () => {
+    const createSession = makeCreate();
+    const onCreated = vi.fn();
+    const resumable: ResumableSession[] = [
+      { sessionId: "r-9", cwd: "/home/u/proj", summary: "Pick this up", lastActivity: 1, messageCount: 8 },
+    ];
+    render(
+      <NewSessionWizard
+        api={{
+          listDir: () => Promise.resolve(listing),
+          createSession,
+          getResumable: () => Promise.resolve(resumable),
+        }}
+        recents={[]}
+        now={2}
+        onCreated={onCreated}
+        onClose={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: /resume/i }));
+    await screen.findByText("Pick this up");
+    await userEvent.click(screen.getByRole("button", { name: /resume pick this up/i }));
+    await waitFor(() => expect(createSession).toHaveBeenCalled());
+    expect(createSession.mock.calls[0]![0]).toMatchObject({ resumeSessionId: "r-9" });
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "new-1" })));
   });
 });

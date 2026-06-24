@@ -32,7 +32,9 @@ export type IconName =
   | "plus"
   | "bell"
   | "power"
-  | "sliders";
+  | "sliders"
+  | "branch"
+  | "history";
 
 export interface IconProps {
   name: IconName;
@@ -171,6 +173,24 @@ const PATHS: Record<IconName, ReactElement> = {
       <circle cx="16" cy="6" r="2" />
       <circle cx="6" cy="12" r="2" />
       <circle cx="18" cy="18" r="2" />
+    </>
+  ),
+  // Git branch — two rails with a fork (lower node branching up to an upper node).
+  branch: (
+    <>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="8" r="2.5" />
+      <path d="M6 8.5v7" />
+      <path d="M18 10.5a6 6 0 0 1-6 6H8.5" />
+    </>
+  ),
+  // Clock with a counter-clockwise sweep — "past / resume" affordance.
+  history: (
+    <>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 4v4h4" />
+      <path d="M12 8v4l3 2" />
     </>
   ),
 };

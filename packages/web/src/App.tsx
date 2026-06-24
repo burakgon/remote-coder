@@ -254,9 +254,12 @@ export function App() {
         <NewSessionWizard
           api={api}
           recents={loadRecentDirs()}
+          now={now}
           onClose={() => setWizardOpen(false)}
           onCreated={(session) => {
-            setSessions([...sessions, session]);
+            // Resume is idempotent server-side: a session that's already live is returned as-is, so
+            // dedupe by id rather than appending a duplicate rail row.
+            setSessions(sessions.some((s) => s.id === session.id) ? sessions : [...sessions, session]);
             setActive(session.id);
             setWizardOpen(false);
             setSessionsOpen(false);

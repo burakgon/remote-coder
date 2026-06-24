@@ -1,4 +1,4 @@
-import type { DirListing, ServerFrame, SessionMeta } from "../types/server";
+import type { DirListing, ResumableSession, ServerFrame, SessionMeta } from "../types/server";
 
 export class ApiError extends Error {
   status: number;
@@ -10,15 +10,21 @@ export class ApiError extends Error {
 }
 
 export interface CreateSessionBody {
-  cwd: string;
+  /** Required for a fresh session; optional when resuming (the transcript supplies the cwd). */
+  cwd?: string;
   model?: string;
   effort?: string;
   addDirs?: string[];
   dangerouslySkip?: boolean;
+  /** Resume a past conversation by its session id — the server seeds the replay buffer from the
+   * on-disk transcript so the prior thread replays into the chat on WS connect. */
+  resumeSessionId?: string;
 }
 
 export interface ApiClient {
   listSessions(): Promise<SessionMeta[]>;
+  /** Past, resumable conversations (recent-first). Optionally scoped to a `cwd`. */
+  getResumable(cwd?: string): Promise<ResumableSession[]>;
   getSession(id: string): Promise<{ session: SessionMeta; history: ServerFrame[] }>;
   createSession(body: CreateSessionBody): Promise<SessionMeta>;
   stopSession(id: string): Promise<void>;
@@ -72,6 +78,11 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
   return {
     async listSessions() {
       const body = await req<{ sessions: SessionMeta[] }>("/sessions", { headers: headers() });
+      return body.sessions;
+    },
+    async getResumable(cwd) {
+      const qs = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+      const body = await req<{ sessions: ResumableSession[] }>(`/resumable${qs}`, { headers: headers() });
       return body.sessions;
     },
     async getSession(id) {

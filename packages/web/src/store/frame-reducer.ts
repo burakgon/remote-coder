@@ -27,10 +27,25 @@ export interface SessionView {
   diagnostics: DiagnosticPayload[];
   wireState: LiveWireState;
   lastSeq: number;
+  /**
+   * UUIDs of `user` text turns we've already rendered from a `user` event. Resume replays the
+   * transcript's user lines as `user` events carrying the typed text; this set lets a second
+   * delivery of the SAME line (e.g. a transcript frame overlapping an optimistic send, or a
+   * duplicate replay) be a no-op so a user bubble is never drawn twice.
+   */
+  seenUserUuids: Set<string>;
 }
 
 export function emptyView(): SessionView {
-  return { liveText: "", thinkingText: "", turns: [], diagnostics: [], wireState: "idle", lastSeq: 0 };
+  return {
+    liveText: "",
+    thinkingText: "",
+    turns: [],
+    diagnostics: [],
+    wireState: "idle",
+    lastSeq: 0,
+    seenUserUuids: new Set(),
+  };
 }
 
 interface DeltaEvent {
@@ -42,7 +57,10 @@ interface AssistantMsg {
   message?: { content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }> };
 }
 interface UserMsg {
-  message?: { content?: Array<{ type?: string; tool_use_id?: string; content?: unknown }> };
+  message?: { content?: string | Array<{ type?: string; tool_use_id?: string; content?: unknown; text?: string }> };
+  /** Present on transcript-replayed lines (parseLine passes the raw line through); used to dedupe. */
+  uuid?: string;
+  raw?: { uuid?: string };
 }
 
 /**
@@ -136,13 +154,41 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     return next;
   }
   if (ev.type === "user") {
-    const content = ev.message?.content ?? [];
+    const userEv = ev as UserMsg;
+    const content = userEv.message?.content;
     const turns = [...view.turns];
-    for (const block of content) {
-      if (block.type === "tool_result") {
-        turns.push({ kind: "tool-result", toolUseId: String(block.tool_use_id), content: block.content });
+
+    // A user turn's text. On RESUME the replayed `user` line carries the typed message (as a plain
+    // string or as `text` blocks); without surfacing it the resumed thread shows assistant replies
+    // but not what the user actually asked. Live sends never arrive as a `user` text event (claude
+    // doesn't echo them — that's why the optimistic appendUserMessage exists), so this only fires on
+    // replay; even so we dedupe by the line's uuid to defend against any overlap with the optimistic
+    // bubble or a duplicate replay, so a user message is never drawn twice.
+    const textBlocks: ContentBlock[] = [];
+    if (typeof content === "string") {
+      if (content.length > 0) textBlocks.push({ type: "text", text: content });
+    } else if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
+          textBlocks.push({ type: "text", text: block.text });
+        }
       }
     }
+    const uuid = userEv.uuid ?? userEv.raw?.uuid;
+    if (textBlocks.length > 0 && !(uuid !== undefined && view.seenUserUuids.has(uuid))) {
+      turns.push({ kind: "user", blocks: textBlocks });
+      if (uuid !== undefined) next.seenUserUuids = new Set(view.seenUserUuids).add(uuid);
+    }
+
+    // tool_result blocks render as their own turns (unchanged from the live pipeline).
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (block.type === "tool_result") {
+          turns.push({ kind: "tool-result", toolUseId: String(block.tool_use_id), content: block.content });
+        }
+      }
+    }
+
     next.turns = turns;
     return next;
   }

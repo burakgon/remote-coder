@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Button } from "../ui/Button";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
@@ -11,6 +12,9 @@ export interface DirectoryPickerProps {
   recents: string[];
   onPick: (path: string) => void;
   onCancel: () => void;
+  /** Optional content rendered at the very top of the sheet header (above the title) — the new/resume
+   * segmented toggle injects here so the toggle reads as the first thing in the new-session flow. */
+  topSlot?: ReactNode;
 }
 
 /**
@@ -20,7 +24,7 @@ export interface DirectoryPickerProps {
  * the branch as TEXT (not color-only). Dismissible via the Cancel button or the Escape key;
  * focus moves to the filter on open so the sheet is keyboard-navigable immediately.
  */
-export function DirectoryPicker({ listDir, recents, onPick, onCancel }: DirectoryPickerProps) {
+export function DirectoryPicker({ listDir, recents, onPick, onCancel, topSlot }: DirectoryPickerProps) {
   const [listing, setListing] = useState<DirListing | undefined>();
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | undefined>();
@@ -78,6 +82,7 @@ export function DirectoryPicker({ listDir, recents, onPick, onCancel }: Director
   return (
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Pick a directory" className="rc-picker">
       <header className="rc-picker__head">
+        {topSlot}
         <div className="rc-picker__title">
           <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>
             Pick a directory
