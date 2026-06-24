@@ -68,4 +68,35 @@ describe("PermissionPrompt", () => {
     render(<PermissionPrompt permission={perm} onAnswer={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /always allow/i })).not.toBeInTheDocument();
   });
+
+  it("renders the iris card title 'Claude wants to run <Tool>' with the tool shown in mono", () => {
+    const bash: PermissionPayload = {
+      requestId: "r3",
+      kind: "hook_callback",
+      toolName: "Bash",
+      toolInput: { command: "ls -la" },
+    };
+    render(<PermissionPrompt permission={bash} onAnswer={vi.fn()} />);
+    expect(screen.getByText(/claude wants to run/i)).toBeInTheDocument();
+    expect(screen.getByText("Bash")).toBeInTheDocument();
+    // The command appears in the mono detail panel.
+    const cmd = screen.getByText("ls -la");
+    expect(cmd.style.fontFamily).toContain("--font-mono");
+    // A benign command is NOT tinted as an error.
+    expect(cmd.style.color).not.toContain("--err");
+  });
+
+  it("tints a destructive command (rm -rf) with the error treatment", () => {
+    const danger: PermissionPayload = {
+      requestId: "r4",
+      kind: "hook_callback",
+      toolName: "Bash",
+      toolInput: { command: "rm -rf build" },
+    };
+    render(<PermissionPrompt permission={danger} onAnswer={vi.fn()} />);
+    const cmd = screen.getByText("rm -rf build");
+    // The dangerous command is colored + backed by the --err token (mockup's rm -rf treatment).
+    expect(cmd.style.color).toContain("--err");
+    expect(cmd.style.background).toContain("--err");
+  });
 });

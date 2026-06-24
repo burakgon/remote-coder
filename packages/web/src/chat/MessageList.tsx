@@ -10,6 +10,10 @@ import { planRender, parseToolResult, summarizeToolInput, type ToolStep } from "
 import type { SessionView, TurnItem } from "../store/frame-reducer";
 import type { ContentBlock } from "../types/server";
 
+// A quick, calm reveal for an expanding panel (the tool cluster body, a step's detail). The keyframe
+// is neutralized by the global prefers-reduced-motion reduce block (styles/global.css).
+const REVEAL_KEYFRAMES = `@keyframes rc-reveal { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }`;
+
 function fileBasename(p: string): string {
   const parts = p.split("/");
   return parts[parts.length - 1] || p;
@@ -223,7 +227,13 @@ function ToolStepRow({ step }: { step: ToolStep }) {
         )}
       </button>
       {open && (
-        <div style={{ padding: `0 var(--sp-3) var(--sp-3) calc(var(--sp-3) + 22px)` }}>
+        <div
+          style={{
+            padding: `0 var(--sp-3) var(--sp-3) calc(var(--sp-3) + 22px)`,
+            animation: "rc-reveal 0.18s ease-out",
+          }}
+        >
+          <style>{REVEAL_KEYFRAMES}</style>
           <div style={detailLabelStyle}>Input</div>
           <pre style={rawPanelStyle}>{stringifyInput(use.input)}</pre>
           {parsed ? (
@@ -294,10 +304,11 @@ function ToolCluster({ steps }: { steps: ToolStep[] }) {
         </span>
       </button>
       {open && (
-        <div style={{ borderTop: "1px solid var(--border)" }}>
+        <div style={{ borderTop: "1px solid var(--border)", animation: "rc-reveal 0.18s ease-out" }}>
           {steps.map((step, i) => (
             <ToolStepRow key={`${step.use.id}-${i}`} step={step} />
           ))}
+          <style>{REVEAL_KEYFRAMES}</style>
         </div>
       )}
     </div>

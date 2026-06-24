@@ -122,4 +122,19 @@ describe("Composer", () => {
     await userEvent.click(screen.getByText("/clear"));
     expect(box.value).toBe("/clear ");
   });
+
+  it("exposes the image / file / send controls as icon BUTTONS reachable by their aria-labels", () => {
+    // Phase 2 replaced the text Image/File/Send buttons with icon buttons. They must stay real
+    // <button>s named by aria-label (a11y + so screen readers and these tests can reach them).
+    render(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} />);
+    const image = screen.getByRole("button", { name: /add image/i });
+    const file = screen.getByRole("button", { name: /upload file/i });
+    const send = screen.getByRole("button", { name: /^send$/i });
+    for (const btn of [image, file, send]) {
+      expect(btn.tagName).toBe("BUTTON");
+      // The label text is NOT a visible string — it lives on the icon button as aria-label only.
+      expect(btn).toHaveAttribute("aria-label");
+      expect(btn.querySelector("svg")).toBeInTheDocument();
+    }
+  });
 });

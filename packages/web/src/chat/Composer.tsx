@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { Button } from "../ui/Button";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
 import { validateImage, fileToBase64 } from "./image-util";
@@ -26,6 +25,21 @@ export interface ComposerProps {
   initialText?: string;
   initialImages?: PendingImage[];
 }
+
+// Shared base for the two ghost icon controls (image / file). A real <button> with an aria-label so
+// it stays reachable by name (a11y + the existing tests). Tap target ≥ var(--tap-min).
+const iconBtn: React.CSSProperties = {
+  width: "var(--tap-min)",
+  height: "var(--tap-min)",
+  flex: "none",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "var(--radius)",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  color: "var(--text-muted)",
+  cursor: "pointer",
+};
 
 export function Composer({ onSend, onUploadFile, disabled, initialText, initialImages }: ComposerProps) {
   const [text, setText] = useState(initialText ?? "");
@@ -89,6 +103,8 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
     <div
       className="rc-composer"
       style={{
+        // Calm composer surface: a hairline top border + a soft blur'd gradient (Variant A). The
+        // controls sit on it without elevation noise; Send is the one amber affordance.
         borderTop: "1px solid var(--border)",
         padding: "var(--sp-3)",
         background: "var(--surface)",
@@ -112,11 +128,12 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
         <div
           style={{
             display: "grid",
-            gap: "var(--sp-1)",
+            gap: "2px",
             background: "var(--surface-2)",
             border: "1px solid var(--border)",
-            borderRadius: "var(--radius-sm)",
-            padding: "var(--sp-2)",
+            borderRadius: "var(--radius)",
+            padding: "var(--sp-1)",
+            boxShadow: "var(--shadow-card)",
           }}
         >
           {slashMatches.map((c) => (
@@ -128,11 +145,14 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
                 textAlign: "left",
                 background: "transparent",
                 border: "none",
+                borderRadius: "var(--radius-sm)",
                 color: "var(--text)",
                 cursor: "pointer",
-                minHeight: 32,
+                minHeight: 36,
                 display: "flex",
+                alignItems: "center",
                 gap: "var(--sp-2)",
+                padding: "0 var(--sp-2)",
               }}
             >
               <Mono>{c.name}</Mono>
@@ -149,11 +169,11 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "var(--sp-1)",
+                gap: "var(--sp-2)",
                 background: "var(--surface-2)",
                 border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                padding: "2px var(--sp-2)",
+                borderRadius: "var(--radius)",
+                padding: "var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-1)",
               }}
             >
               <img
@@ -173,16 +193,20 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
                 aria-label={`Remove ${img.name}`}
                 onClick={() => setImages((p) => p.filter((x) => x.id !== img.id))}
                 style={{
+                  width: 24,
+                  height: 24,
+                  flex: "none",
                   display: "grid",
                   placeItems: "center",
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text-muted)",
+                  borderRadius: "50%",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-faint)",
                   cursor: "pointer",
                   padding: 0,
                 }}
               >
-                <Icon name="x" size={15} />
+                <Icon name="x" size={14} />
               </button>
             </span>
           ))}
@@ -204,11 +228,12 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
           placeholder="Message claude…"
           style={{
             flex: 1,
+            minWidth: 0,
             minHeight: "var(--tap-min)",
             resize: "vertical",
             background: "var(--bg)",
             border: "1px solid var(--border)",
-            borderRadius: "var(--radius-sm)",
+            borderRadius: "var(--radius)",
             color: "var(--text)",
             padding: "var(--sp-2) var(--sp-3)",
             font: "inherit",
@@ -232,15 +257,49 @@ export function Composer({ onSend, onUploadFile, disabled, initialText, initialI
           aria-hidden
           tabIndex={-1}
         />
-        <Button variant="ghost" disabled={disabled} onClick={() => imageInput.current?.click()} aria-label="Add image">
-          Image
-        </Button>
-        <Button variant="ghost" disabled={disabled} onClick={() => fileInput.current?.click()} aria-label="Upload file">
-          File
-        </Button>
-        <Button variant="primary" onClick={send} disabled={!canSend} aria-label="Send">
-          Send
-        </Button>
+        {/* Icon buttons (Variant A) — quiet ghost affordances. The aria-labels are kept verbatim
+            ("Add image" / "Upload file" / "Send") so screen readers AND the existing tests still
+            reach each control by name. */}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => imageInput.current?.click()}
+          aria-label="Add image"
+          style={{ ...iconBtn, opacity: disabled ? 0.5 : 1 }}
+        >
+          <Icon name="image" size={19} />
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => fileInput.current?.click()}
+          aria-label="Upload file"
+          style={{ ...iconBtn, opacity: disabled ? 0.5 : 1 }}
+        >
+          <Icon name="paperclip" size={19} />
+        </button>
+        {/* Send — the ONE amber primary affordance in the composer. */}
+        <button
+          type="button"
+          onClick={send}
+          disabled={!canSend}
+          aria-label="Send"
+          style={{
+            width: "var(--tap-min)",
+            height: "var(--tap-min)",
+            flex: "none",
+            display: "grid",
+            placeItems: "center",
+            borderRadius: "var(--radius)",
+            border: 0,
+            background: "var(--accent)",
+            color: "var(--on-accent)",
+            cursor: canSend ? "pointer" : "default",
+            opacity: canSend ? 1 : 0.5,
+          }}
+        >
+          <Icon name="arrow-up" size={19} />
+        </button>
       </div>
     </div>
   );

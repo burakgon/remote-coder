@@ -49,4 +49,22 @@
   /* Elevation — modal/sheet drop shadow and the dim scrim behind dialogs */
   --shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.5);
+  /* Card elevation (Variant A) — a hairline top highlight + a soft, restrained drop shadow.
+     Used for the iris permission/question card and any raised surface so chrome stays calm. */
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.02), 0 8px 24px rgba(0, 0, 0, 0.28);
+  /* Focus ring — the single :focus-visible affordance (amber, paired with an offset so it reads on
+     any surface). Kept as a token so a future theme can retune it in one place. */
+  --focus-ring: 2px solid var(--accent);
+  --focus-offset: 2px;
+  /* IRIS attention card (the ONE place the UI grabs you) — pre-mixed iris tints so the wash/edge/halo
+     read identically without re-deriving from --iris. The card is iris-accented; nothing else is. */
+  --iris-card-bg-top: rgba(201, 162, 255, 0.1);
+  --iris-card-bg-bottom: rgba(201, 162, 255, 0.04);
+  --iris-card-border: rgba(201, 162, 255, 0.4);
+  --iris-card-divider: rgba(201, 162, 255, 0.22);
+  --iris-halo: 0 0 0 1px rgba(201, 162, 255, 0.12), 0 14px 36px rgba(40, 20, 70, 0.4);
+  --on-iris: #1c1030; /* dark ink for text/icons sitting ON the iris accent (the Allow button) */
+  /* ERROR / dangerous-command treatment — a tinted mono panel for a destructive command (rm -rf …). */
+  --err-bg: rgba(242, 104, 92, 0.08);
+  --err-border: rgba(242, 104, 92, 0.25);
 }

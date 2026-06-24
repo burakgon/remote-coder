@@ -1,5 +1,5 @@
 import { Mono } from "../ui/Mono";
-import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 import { LiveWire } from "../ui/LiveWire";
 import type { LiveWireState } from "../ui/LiveWire";
 import type { SessionMeta } from "../types/server";
@@ -22,41 +22,90 @@ export function ChatHeader({ session, wireState, onOpenSettings }: ChatHeaderPro
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        padding: "var(--sp-4)",
+        gap: "var(--sp-3)",
+        padding: "var(--sp-3) var(--sp-4)",
+        // Hairline bottom border — calm, restrained chrome (Variant A).
         borderBottom: "1px solid var(--border)",
         background: "var(--surface)",
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", minWidth: 0 }}>
-        <strong className="display" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+        {/* cwd basename in the display font — the session's name, the clearest line in the header. */}
+        <strong
+          className="display"
+          style={{
+            fontSize: "var(--fs-base)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {basename(session.cwd)}
         </strong>
         {/* Truncate the cwd so a long path can't overrun and overprint the right-side status
             group at narrow widths (390px). The parent column is already a `min-width:0` flex
-            child, which is what lets the ellipsis actually clip instead of forcing overflow. */}
-        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            child, which is what lets the ellipsis actually clip instead of forcing overflow. The
+            muted full path + the meta row share one mono baseline so the header reads as one quiet
+            block under the bold name. */}
+        <div
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: "var(--fs-xs)",
+          }}
+        >
           <Mono muted>{session.cwd}</Mono>
         </div>
         {/* Surface the ACTIVE per-session settings so the user can confirm model/effort and — most
-            importantly — that --dangerously-skip-permissions is in effect (no permission prompts). */}
-        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", fontSize: "var(--fs-sm)" }}>
-          {session.model && <Mono muted>{session.model}</Mono>}
-          {session.effort && <Mono muted>· {session.effort}</Mono>}
-          {session.permissionMode === "bypassPermissions" ? (
-            <span style={{ color: "var(--accent)" }}>· skip-permissions</span>
-          ) : (
-            session.permissionMode && <Mono muted>· {session.permissionMode}</Mono>
-          )}
-        </div>
+            importantly — that --dangerously-skip-permissions is in effect (no permission prompts).
+            Each item is mono, separated by a faint middot, with skip-permissions flagged in accent. */}
+        {(session.model || session.effort || session.permissionMode) && (
+          <div
+            style={{
+              display: "flex",
+              gap: "var(--sp-2)",
+              alignItems: "center",
+              flexWrap: "wrap",
+              fontSize: "var(--fs-xs)",
+            }}
+          >
+            {session.model && <Mono muted>{session.model}</Mono>}
+            {session.effort && <Mono muted>{`· ${session.effort}`}</Mono>}
+            {session.permissionMode === "bypassPermissions" ? (
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)" }}>
+                · skip-permissions
+              </span>
+            ) : (
+              session.permissionMode && <Mono muted>{`· ${session.permissionMode}`}</Mono>
+            )}
+          </div>
+        )}
       </div>
       {/* `flex: none` so the status/settings group keeps its intrinsic width and is never
           squeezed or overlapped by the path column. */}
       <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", flex: "none" }}>
         <LiveWire state={wireState} aria-label={`Session ${basename(session.cwd)} — ${wireState}`} />
         {onOpenSettings && (
-          <Button variant="ghost" onClick={onOpenSettings} aria-label="Session settings">
-            Settings
-          </Button>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label="Session settings"
+            style={{
+              width: "var(--tap-min)",
+              height: "var(--tap-min)",
+              flex: "none",
+              display: "grid",
+              placeItems: "center",
+              borderRadius: "var(--radius)",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
+          >
+            <Icon name="settings" size={18} />
+          </button>
         )}
       </div>
     </header>

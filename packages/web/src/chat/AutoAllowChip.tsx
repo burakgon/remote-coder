@@ -57,8 +57,11 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
             flexWrap: "wrap",
             gap: "var(--sp-2)",
             marginTop: "var(--sp-2)",
+            animation: "rc-reveal 0.16s ease-out",
           }}
         >
+          {/* Quick, calm popover reveal — neutralized by the global prefers-reduced-motion block. */}
+          <style>{`@keyframes rc-reveal { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }`}</style>
           {tools.map((tool) => (
             <span
               key={tool}
