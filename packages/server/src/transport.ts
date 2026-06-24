@@ -10,6 +10,14 @@ import { AuthGate, extractBearerToken } from "./auth.js";
 import { registerStatic, isPublicForRequest } from "./static-routes.js";
 import { buildImageBlock } from "@remote-coder/protocol";
 import type { ContentBlock, HookPermissionDecision } from "@remote-coder/protocol";
+import {
+  defaultProjectsDir,
+  findTranscriptFile,
+  listResumable,
+  parseTranscript,
+  transcriptToFrames,
+} from "./transcript.js";
+import { readFile } from "node:fs/promises";
 import type { SessionManager } from "./session-manager.js";
 import type { ServerRuntimeConfig } from "./server-config.js";
 import type { SessionStore } from "./session-store.js";
@@ -33,6 +41,11 @@ export interface CreateServerDeps {
    * push dispatcher fires on result/permission/question frames without coupling to the WS layer.
    */
   onFrame?: (sessionId: string, frame: ServerFrame) => void;
+  /**
+   * Root of Claude's per-project transcript store (`~/.claude/projects` by default). Used by
+   * GET /resumable and the resume-create flow to browse + load past sessions. Overridable for tests.
+   */
+  projectsDir?: string;
 }
 
 export interface CreateServerResult {
@@ -47,6 +60,12 @@ interface CreateSessionBody {
   effort?: string;
   addDirs?: string[];
   dangerouslySkip?: boolean;
+  /**
+   * Resume a PAST claude session. When set, the new session reuses THIS id (claude --resume <id>), its
+   * cwd is taken from the transcript (falling back to body.cwd), and its prior conversation is pre-loaded
+   * into the replay buffer. The transcript file must exist (else 404).
+   */
+  resumeSessionId?: string;
 }
 
 export function createServer(
@@ -56,6 +75,7 @@ export function createServer(
 ): CreateServerResult {
   const hub = new SessionHub(sessionManager, { store: deps.store, history: deps.history, onFrame: deps.onFrame });
   hub.loadFromStore();
+  const projectsDir = deps.projectsDir ?? defaultProjectsDir();
   // Per-idempotency-key in-flight lock: two simultaneous same-key POSTs must yield ONE session.
   const inFlight = new Map<string, Promise<SessionMeta>>();
   const authGate = new AuthGate({ token: config.accessToken });
@@ -156,10 +176,50 @@ export function createServer(
 
   app.post<{ Body: CreateSessionBody }>("/sessions", async (request, reply) => {
     const body = request.body;
-    if (!body || typeof body.cwd !== "string") {
+    if (!body || (typeof body.cwd !== "string" && typeof body.resumeSessionId !== "string")) {
       reply.code(400).send({ error: "cwd is required" });
       return;
     }
+
+    // Resume a past session: validate the transcript exists, then create a live session under THAT id
+    // with its prior conversation pre-loaded into the replay buffer. Idempotent — resuming an already
+    // live id returns it. (Bypasses the idempotency-key path below; the session id IS the dedup key.)
+    if (typeof body.resumeSessionId === "string") {
+      const resumeId = body.resumeSessionId;
+      const live = hub.getSession(resumeId);
+      if (live && live.status === "running") {
+        reply.code(200).send({ session: live });
+        return;
+      }
+      const file = await findTranscriptFile(projectsDir, resumeId);
+      if (!file) {
+        reply.code(404).send({ error: "transcript not found for the requested session" });
+        return;
+      }
+      let parsed;
+      try {
+        parsed = parseTranscript(await readFile(file, "utf8"));
+      } catch (err) {
+        reply.code(400).send({ error: `failed to read transcript: ${(err as Error).message}` });
+        return;
+      }
+      const cwd = parsed.cwd ?? (typeof body.cwd === "string" ? body.cwd : undefined);
+      if (!cwd) {
+        reply.code(400).send({ error: "transcript has no cwd and none was provided" });
+        return;
+      }
+      const session = await hub.resumeFromTranscript({
+        sessionId: resumeId,
+        cwd,
+        model: body.model,
+        effort: body.effort,
+        dangerouslySkip: body.dangerouslySkip,
+        frames: transcriptToFrames(parsed),
+      });
+      reply.code(201).send({ session });
+      return;
+    }
+
     const idemKey = request.headers["idempotency-key"];
     const key = typeof idemKey === "string" ? idemKey : undefined;
 
@@ -203,6 +263,14 @@ export function createServer(
 
   app.get("/sessions", async () => {
     return { sessions: hub.listSessions() };
+  });
+
+  // Browse past claude conversations to resume (the `claude --resume` picker). Read-only; token-gated
+  // by the global preHandler. `?cwd=` filters to one working directory. Recent-first.
+  app.get<{ Querystring: { cwd?: string } }>("/resumable", async (request) => {
+    const cwd = typeof request.query.cwd === "string" ? request.query.cwd : undefined;
+    const sessions = await listResumable(projectsDir, cwd ? { cwd } : {});
+    return { sessions };
   });
 
   app.get<{ Params: { id: string } }>("/sessions/:id", async (request, reply) => {

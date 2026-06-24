@@ -113,6 +113,65 @@ export class SessionHub {
   }
 
   /**
+   * Resume a PAST claude session (the `claude --resume` equivalent). Spawns `claude --resume <id>` in
+   * `opts.cwd` registered under the SAME id, and PRE-LOADS the parsed transcript frames into that
+   * session's replay buffer so a WS client connecting sees the full prior conversation; live
+   * continuation then appends after it. The transcript frames seed the buffer ONLY (they are not
+   * fanned out to the push seam — there is nothing new to notify about) so reconnecting clients replay
+   * exactly-once history.
+   *
+   * Dup-history guard: a `claude --resume` in stream-json mode does NOT re-emit the prior transcript as
+   * events — it emits only the synthetic warm-up pair (already suppressed in claude-process.ts) and then
+   * live continuation. So injecting the parsed transcript here yields history EXACTLY ONCE.
+   *
+   * Idempotency: resuming an already-live id just returns its existing meta (no second spawn, no
+   * re-seeded buffer).
+   */
+  async resumeFromTranscript(opts: {
+    sessionId: string;
+    cwd: string;
+    model?: string;
+    effort?: string;
+    dangerouslySkip?: boolean;
+    frames: ServerFrame[];
+  }): Promise<SessionMeta> {
+    const existing = this.records.get(opts.sessionId);
+    if (existing && this.manager.getSession(opts.sessionId)) return existing.meta;
+
+    const session = await this.manager.createSession({
+      cwd: opts.cwd,
+      model: opts.model,
+      effort: opts.effort,
+      dangerouslySkip: opts.dangerouslySkip,
+      resumeId: opts.sessionId,
+    });
+    const meta: SessionMeta = {
+      id: session.id,
+      cwd: session.cwd,
+      model: opts.model,
+      effort: opts.effort,
+      dangerouslySkip: opts.dangerouslySkip ?? false,
+      status: "running",
+      createdAt: this.now(),
+      permissionMode: opts.dangerouslySkip ? "bypassPermissions" : "default",
+    };
+    const buffer = new ReplayBuffer(this.replayCapacity);
+    // Seed the buffer with the prior conversation (each push assigns a contiguous seq), so any client
+    // that connects replays the full history BEFORE live continuation frames.
+    for (const frame of opts.frames) buffer.push(frame.kind, frame.payload);
+    const record: SessionRecord = {
+      meta,
+      buffer,
+      listeners: new Set(),
+      questionToolInputs: new Map(),
+    };
+    this.records.set(session.id, record);
+    this.attach(session.process, record);
+    this.persist(meta);
+    return meta;
+  }
+
+  /**
    * Push a frame into a session's buffer and fan it out to live subscribers + the onFrame seam.
    * The single seq/emit/replay path shared by claude-driven frames AND server-injected ones
    * (e.g. an attachment): a frame pushed here is delivered live AND buffered for reconnect.

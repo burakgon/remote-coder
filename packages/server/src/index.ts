@@ -43,6 +43,19 @@ export type { RegisterStaticOptions } from "./static-routes.js";
 export { startServer } from "./start.js";
 export { HistoryService } from "./history-service.js";
 export type { HistoryServiceOptions } from "./history-service.js";
+export {
+  parseTranscript,
+  transcriptToFrames,
+  listResumable,
+  findTranscriptFile,
+  defaultProjectsDir,
+} from "./transcript.js";
+export type {
+  TranscriptMessage,
+  ParsedTranscript,
+  ResumableSession,
+  ListResumableOptions,
+} from "./transcript.js";
 export { openIdempotencyStore } from "./idempotency.js";
 export type { IdempotencyStore, OpenIdempotencyStoreOptions } from "./idempotency.js";
 export { openPushStore } from "./push-store.js";

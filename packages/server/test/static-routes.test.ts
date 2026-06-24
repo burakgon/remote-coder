@@ -6,6 +6,7 @@ describe("API_PATH_DENYLIST mirrors the web apiNavigationDenylist (extended)", (
   test("matches the live API / WS / health / push routes", () => {
     expect(matches("/sessions")).toBe(true);
     expect(matches("/sessions/abc/ws")).toBe(true);
+    expect(matches("/resumable")).toBe(true);
     expect(matches("/fs/list")).toBe(true);
     expect(matches("/health")).toBe(true);
     expect(matches("/push/vapid")).toBe(true);
@@ -36,6 +37,7 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/sessions")).toBe(false);
     expect(isPublicPath("/sessions/abc")).toBe(false);
     expect(isPublicPath("/sessions/abc/ws")).toBe(false);
+    expect(isPublicPath("/resumable")).toBe(false);
     expect(isPublicPath("/fs/list")).toBe(false);
     expect(isPublicPath("/push/subscribe")).toBe(false);
     expect(isPublicPath("/health")).toBe(false);

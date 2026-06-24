@@ -15,7 +15,14 @@ import type { FastifyInstance } from "fastify";
  * configured with `caseSensitive:false` or `ignoreDuplicateSlashes:true`, this gate must apply the
  * SAME case/slash normalization first, or those options will silently reopen the bypass.
  */
-export const API_PATH_DENYLIST: RegExp[] = [/^\/sessions/, /^\/fs/, /^\/health/, /^\/push/, /\/ws$/];
+export const API_PATH_DENYLIST: RegExp[] = [
+  /^\/sessions/,
+  /^\/resumable/,
+  /^\/fs/,
+  /^\/health/,
+  /^\/push/,
+  /\/ws$/,
+];
 
 /**
  * Normalize a raw request URL to the path the FASTIFY ROUTER will route, for the auth gate.

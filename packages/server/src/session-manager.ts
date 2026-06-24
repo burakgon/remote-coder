@@ -9,6 +9,12 @@ export interface CreateSessionOptions {
   effort?: string;
   addDirs?: string[];
   dangerouslySkip?: boolean;
+  /**
+   * Resume a PAST claude session instead of starting a fresh one. When set, the spawned `claude` uses
+   * `--resume <resumeId>` (not `--session-id`) and the new session is registered under THIS id (so its
+   * transcript keeps appending to the same file). When absent, a fresh random id is assigned.
+   */
+  resumeId?: string;
 }
 
 export interface Session {
@@ -46,7 +52,9 @@ export class SessionManager {
   }
 
   async createSession(opts: CreateSessionOptions): Promise<Session> {
-    const id = randomUUID();
+    // Resume reuses the past session's id (so claude --resume <id> reopens the same transcript);
+    // a fresh session assigns a new random id via --session-id.
+    const id = opts.resumeId ?? randomUUID();
     const proc = new ClaudeProcess({
       claudeBin: this.config.claudeBin,
       cwd: opts.cwd,
@@ -55,6 +63,7 @@ export class SessionManager {
       effort: opts.effort ?? this.config.defaultEffort,
       addDirs: opts.addDirs,
       dangerouslySkip: opts.dangerouslySkip,
+      resume: opts.resumeId !== undefined,
       startTimeoutMs: this.deps.startTimeoutMs,
       env: this.deps.baseEnv,
       attach: this.attach,
