@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LoginScreen } from "./auth/LoginScreen";
-import { loadToken, saveToken, clearToken } from "./auth/token-store";
+import { loadToken, saveToken, clearToken, consumeTokenFromUrl } from "./auth/token-store";
 import { createApiClient, ApiError } from "./api/client";
 import { API_BASE_URL } from "./config";
 import { useStore } from "./store/store";
@@ -18,7 +18,10 @@ import { Button } from "./ui/Button";
 type Phase = "login" | "validating" | "ready";
 
 export function App() {
-  const [token, setTokenState] = useState<string | undefined>(() => loadToken());
+  // Prefer a `?token=` in the connect URL (the link the server prints): persist it + strip it from
+  // the address bar, so opening the printed link authenticates directly instead of prompting. Falls
+  // back to a previously stored token.
+  const [token, setTokenState] = useState<string | undefined>(() => consumeTokenFromUrl() ?? loadToken());
   const [phase, setPhase] = useState<Phase>(token === undefined ? "login" : "validating");
   const [loginError, setLoginError] = useState<string | undefined>();
   const { sessions, setSessions, setToken, activeSessionId, setActive, views } = useStore();

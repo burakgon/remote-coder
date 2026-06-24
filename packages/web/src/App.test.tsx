@@ -60,6 +60,24 @@ describe("App token validation on load", () => {
     expect(screen.getByLabelText(/access token/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("with ?token=<t> in the connect URL, authenticates directly (no login prompt) and strips the token from the URL", async () => {
+    window.history.replaceState({}, "", "/index.html?token=url-token");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ sessions: [] }));
+
+    render(<App />);
+
+    // It validated via /sessions using the URL token — the login screen never appears.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toMatch(/\/sessions$/);
+    expect((init as RequestInit).headers).toMatchObject({ authorization: "Bearer url-token" });
+    // Persisted for next time, and stripped from the address bar (not left in history/referer).
+    expect(loadToken()).toBe("url-token");
+    expect(window.location.search).toBe("");
+    expect(screen.queryByLabelText(/access token/i)).not.toBeInTheDocument();
+    window.history.replaceState({}, "", "/");
+  });
 });
 
 describe("App ready-state controls", () => {
