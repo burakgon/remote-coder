@@ -258,7 +258,7 @@ const resumeCss = `
   border-radius: var(--radius-sm); padding: 0 var(--sp-3);
   transition: border-color 120ms ease;
 }
-.rc-resume__search:focus-within { border-color: var(--accent); }
+.rc-resume__search:focus-within { border-color: var(--accent-line); box-shadow: var(--focus-glow); }
 .rc-resume__search-icon { color: var(--text-muted); display: grid; place-items: center; }
 .rc-resume__search input {
   flex: 1; min-width: 0; background: transparent; border: none; outline: none;
@@ -271,7 +271,7 @@ const resumeCss = `
   color: var(--text-muted); cursor: pointer; font: inherit; font-size: var(--fs-xs); font-weight: 600;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
-.rc-resume__scope-btn--on { color: var(--text); border-color: var(--accent); background: var(--surface); }
+.rc-resume__scope-btn--on { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 .rc-resume__body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2) 0; }
 .rc-resume__hint { padding: var(--sp-5) var(--sp-4); color: var(--text-muted); font-size: var(--fs-sm); }
 .rc-resume__error {

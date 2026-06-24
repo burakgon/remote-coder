@@ -179,11 +179,16 @@ export function SessionList({
 
 const sessionListCss = `
 .rc-sl { display: flex; flex-direction: column; height: 100%; }
+/* The rail header — a glassy bar so the ambient glow shows through it, with a hairline below. */
 .rc-sl__head {
   flex: none;
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
+  background: var(--bar-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  position: sticky; top: 0; z-index: 1;
 }
 .rc-sl__title {
   display: inline-flex; align-items: baseline; gap: var(--sp-2);
@@ -191,27 +196,33 @@ const sessionListCss = `
 }
 .rc-sl__count { color: var(--text-faint); }
 .rc-sl__count-n { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-/* The global "N need you" badge — a loud iris pill. In the rail header it pushes the New button to the
-   right (margin-left: auto). It is the ONE place besides the iris card that grabs attention. */
+/* The global "N need you" badge — a loud iris pill that GLOWS violet. In the rail header it pushes the
+   New button to the right (margin-left: auto). It is the ONE place besides the iris card that grabs
+   attention; the violet halo lifts it off the glassy header. */
 .rc-needs {
   display: inline-flex; align-items: center; gap: var(--sp-1);
   padding: 2px var(--sp-2); border-radius: 999px;
-  background: var(--iris-card-bg-top); border: 1px solid var(--iris-card-border);
+  background: var(--iris-soft); border: 1px solid var(--iris-card-border);
   color: var(--iris); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.4;
   white-space: nowrap;
+  box-shadow: 0 0 0 1px var(--iris-line), 0 0 14px rgba(181, 123, 255, 0.32);
 }
 .rc-needs__n { font-weight: 700; font-variant-numeric: tabular-nums; }
 .rc-needs__label { color: var(--iris); opacity: 0.92; }
 .rc-sl__needs { margin-left: var(--sp-2); margin-right: auto; }
+/* The "+" new-session button — crisp glassy tile that warms to violet (soft glow) on hover/focus. */
 .rc-sl__new {
   width: var(--tap-min); height: var(--tap-min); flex: none;
   display: grid; place-items: center;
   border-radius: var(--radius);
   background: var(--surface-2); border: 1px solid var(--border);
   color: var(--text-muted); cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
-.rc-sl__new:hover { color: var(--accent); border-color: var(--accent); }
+.rc-sl__new:hover, .rc-sl__new:focus-visible {
+  color: var(--accent); border-color: var(--accent-line);
+  background: var(--accent-soft); box-shadow: var(--glow-accent);
+}
 .rc-sl__list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
 /* The row + its ✕ live side by side in the list item; a hairline divider sits on the item so it
    spans both. A subtle entrance fade (reduce-motion-neutralized globally) softens reorders. */
@@ -232,26 +243,33 @@ const sessionListCss = `
   transition: background 120ms ease;
 }
 .rc-sl__row:hover { background: var(--surface); }
-.rc-sl__row--active { background: var(--surface-2); }
-/* The selected accent edge — a hairline amber rail down the left, calm not loud. */
-.rc-sl__rail { flex: none; width: 2px; background: transparent; }
-.rc-sl__row--active .rc-sl__rail { background: var(--accent); }
-/* An awaiting row is the loud exception: a faint iris wash + a thicker iris left edge so it reads as
-   "needs you" even before you parse the chip. Wins visually over the calm amber active edge. */
-.rc-sl__item--awaiting { background: var(--iris-card-bg-bottom); }
-.rc-sl__row--awaiting .rc-sl__rail { width: 3px; background: var(--iris); }
+/* The ACTIVE row gets a subtle violet WASH (not just a flat surface lift) so the selected session is
+   clearly the one in focus, on-theme with the Nebula chat surface. */
+.rc-sl__row--active { background: var(--accent-soft); }
+/* The selected accent edge — a violet-GLOWING left rail. Calm at rest, the bloom marks the active
+   session at a glance without shouting over an awaiting row. */
+.rc-sl__rail { flex: none; width: 3px; background: transparent; }
+.rc-sl__row--active .rc-sl__rail { background: var(--accent); box-shadow: var(--rail-glow); }
+/* An awaiting row is the LOUD exception: a faint iris wash + a thicker, glowing iris left edge so it
+   reads as "needs you" even before you parse the chip. Wins visually over the violet active edge. */
+.rc-sl__item--awaiting { background: var(--iris-soft); }
+.rc-sl__row--awaiting .rc-sl__rail {
+  width: 3px; background: var(--iris);
+  box-shadow: 0 0 12px rgba(181, 123, 255, 0.7);
+}
 .rc-sl__row--awaiting:hover { background: var(--iris-card-bg-top); }
-/* The per-row "needs you" chip — high-visibility iris, the loudest per-row signal. */
+/* The per-row "needs you" chip — high-visibility iris with a violet halo, the loudest per-row signal. */
 .rc-sl__await {
   display: inline-flex; align-items: center; gap: var(--sp-1);
   padding: 2px var(--sp-2); border-radius: 999px;
   background: var(--iris-card-bg-top); border: 1px solid var(--iris-card-border);
   color: var(--iris); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.4;
   white-space: nowrap;
+  box-shadow: 0 0 14px rgba(181, 123, 255, 0.3);
 }
 .rc-sl__await-dot {
   width: 8px; height: 8px; border-radius: 50%; background: var(--iris); flex: none;
-  box-shadow: 0 0 6px var(--iris);
+  box-shadow: 0 0 7px var(--iris);
   animation: rc-pulse 1.2s ease-in-out infinite;
 }
 @keyframes rc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }

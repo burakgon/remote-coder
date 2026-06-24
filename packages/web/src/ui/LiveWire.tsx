@@ -48,6 +48,9 @@ export function LiveWire({ state, ...rest }: LiveWireProps) {
   // working/running-tool CYAN dot. All pulses are neutralized under prefers-reduced-motion (global.css).
   const animated =
     state === "thinking" || state === "streaming" || state === "awaiting" || state === "running-tool";
+  // The "working" (running-tool) dot is the Nebula LIVE signal: a pulsing CYAN core wrapped in a soft
+  // expanding cyan "ping" halo (rc-ping, defined in global.css) — the one chrome dot that earns motion.
+  const working = state === "running-tool";
   const color = COLORS[state];
   return (
     <span
@@ -64,8 +67,10 @@ export function LiveWire({ state, ...rest }: LiveWireProps) {
       }}
     >
       <span
+        className={working ? "rc-wire-dot rc-wire-dot--live" : "rc-wire-dot"}
         aria-hidden
         style={{
+          position: "relative",
           width: 8,
           height: 8,
           borderRadius: "50%",
@@ -75,7 +80,15 @@ export function LiveWire({ state, ...rest }: LiveWireProps) {
         }}
       />
       <span style={{ color: "var(--text-muted)" }}>{LABELS[state]}</span>
-      <style>{`@keyframes rc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }`}</style>
+      <style>{`
+        @keyframes rc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+        /* The cyan "working" ping ring — a soft expanding cyan halo around the live dot. */
+        .rc-wire-dot--live::after {
+          content: ""; position: absolute; inset: -3px;
+          border-radius: 50%; border: 1.5px solid var(--cyan); opacity: 0.5;
+          animation: rc-ping 1.9s ease-out infinite;
+        }
+      `}</style>
     </span>
   );
 }

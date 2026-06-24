@@ -82,26 +82,33 @@ const loginCss = `
   min-height: 100%;
   display: grid; place-items: center;
   padding: var(--sp-5);
-  /* A soft cool-ink wash overhead so the centered card feels intentional, not floating in void. */
-  background: radial-gradient(1100px 640px at 50% -10%, #141a22 0%, var(--bg) 58%);
+  /* The Nebula first impression: the centered card sits on a soft violet→cyan ambient glow so it
+     feels intentional, not floating in void. */
+  background: var(--ambient-center);
 }
+/* A glassy Nebula card — translucent so the ambient glow shows through, with a faint violet edge
+   and a soft drop so it reads as a premium, deliberate surface. */
 .rc-login__card {
   width: min(92vw, 400px);
   display: grid; gap: var(--sp-4);
   padding: var(--sp-6) var(--sp-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), 0 0 40px rgba(124, 92, 255, 0.12);
 }
 .rc-login__brand { display: flex; align-items: center; gap: var(--sp-3); }
+/* The violet brand mark — a glowing icon tile, the wordmark anchor. */
 .rc-login__mark {
   width: 40px; height: 40px; flex: none;
   display: grid; place-items: center;
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(232, 163, 61, 0.18), rgba(232, 163, 61, 0.08));
-  border: 1px solid var(--user-bubble-border);
+  background: var(--tile-bg);
+  border: 1px solid var(--accent-line);
   color: var(--accent);
+  box-shadow: var(--glow-accent);
 }
 .rc-login__wordmark { font-size: var(--fs-2xl); letter-spacing: 0.01em; color: var(--text); }
 .rc-login__lede { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }
@@ -121,7 +128,7 @@ const loginCss = `
   border-radius: var(--radius); padding: 0 var(--sp-3);
   transition: border-color 120ms ease;
 }
-.rc-login__input:focus-within { border-color: var(--accent); }
+.rc-login__input:focus-within { border-color: var(--accent-line); box-shadow: var(--focus-glow); }
 .rc-login__input-icon { color: var(--text-faint); display: grid; place-items: center; }
 .rc-login__input input {
   flex: 1; min-width: 0; min-height: var(--tap-min);
@@ -129,16 +136,17 @@ const loginCss = `
   color: var(--text); font-family: var(--font-mono); font-size: var(--fs-base);
 }
 .rc-login__input input::placeholder { color: var(--text-faint); }
+/* The single violet primary — the Connect CTA. A violet→accent gradient with the Nebula "pop" glow. */
 .rc-login__connect {
   min-height: var(--tap-min);
   border: none; border-radius: var(--radius); cursor: pointer;
-  background: linear-gradient(180deg, #f2b357, var(--accent));
-  color: var(--on-accent);
+  background: var(--accent-grad);
+  color: #fff;
   font-family: var(--font-display); font-weight: 600; font-size: var(--fs-base);
-  box-shadow: 0 4px 14px rgba(232, 163, 61, 0.3);
-  transition: transform 120ms ease;
+  box-shadow: var(--shadow-pop);
+  transition: transform 120ms ease, box-shadow 120ms ease;
 }
-.rc-login__connect:hover { transform: translateY(-1px); }
+.rc-login__connect:hover { transform: translateY(-1px); box-shadow: 0 12px 44px rgba(124, 92, 255, 0.42); }
 .rc-login__divider { height: 1px; background: var(--border); }
 .rc-login__dev {
   min-height: var(--tap-min);

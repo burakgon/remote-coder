@@ -279,7 +279,7 @@ const pickerCss = `
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 0 var(--sp-3);
 }
-.rc-picker__filter:focus-within { border-color: var(--accent); }
+.rc-picker__filter:focus-within { border-color: var(--accent-line); box-shadow: var(--focus-glow); }
 .rc-picker__filter-icon { color: var(--text-muted); font-family: var(--font-mono); }
 .rc-picker__filter input {
   flex: 1; min-height: var(--tap-min);
@@ -329,7 +329,8 @@ const pickerCss = `
 .rc-picker__git {
   flex: none; color: var(--accent);
   font-family: var(--font-mono); font-size: var(--fs-xs);
-  border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
   padding: 2px var(--sp-2); white-space: nowrap;
 }
 .rc-picker__hint { color: var(--text-muted); padding: var(--sp-2); }

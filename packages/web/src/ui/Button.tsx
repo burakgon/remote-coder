@@ -21,7 +21,13 @@ const base: React.CSSProperties = {
 };
 
 const variants: Record<NonNullable<ButtonProps["variant"]>, React.CSSProperties> = {
-  primary: { background: "var(--accent)", color: "var(--on-accent)", borderColor: "var(--accent)" },
+  // The single violet primary — a violet→accent gradient with the Nebula "pop" glow (white label).
+  primary: {
+    background: "var(--accent-grad)",
+    color: "#fff",
+    borderColor: "transparent",
+    boxShadow: "var(--shadow-pop)",
+  },
   ghost: { background: "transparent", color: "var(--text)" },
   danger: { background: "transparent", color: "var(--err)", borderColor: "var(--err)" },
 };

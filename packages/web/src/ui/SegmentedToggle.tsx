@@ -81,10 +81,13 @@ const segCss = `
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 .rc-seg__btn:hover { color: var(--text); }
+/* Nebula active segment — a faint violet wash + violet edge + label, so the selected mode (New /
+   Resume) reads clearly on-brand without becoming a loud filled button. */
 .rc-seg__btn--on {
-  background: var(--surface); color: var(--text);
-  border-color: var(--border);
-  box-shadow: var(--shadow-card);
+  background: var(--accent-soft); color: var(--accent);
+  border-color: var(--accent-line);
+  box-shadow: var(--glow-accent);
 }
+.rc-seg__btn--on:hover { color: var(--accent); }
 .rc-seg__icon { display: grid; place-items: center; color: currentColor; }
 `;

@@ -293,22 +293,28 @@ const settingsCss = `
   padding: var(--sp-5);
   overflow-y: auto;
 }
+/* The glassy Nebula settings card — translucent over the bg with a faint violet edge + soft drop. */
 .rc-settings__card {
   width: min(92vw, 480px);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), 0 0 40px rgba(124, 92, 255, 0.1);
   overflow: hidden;
 }
 .rc-settings__head {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  background: var(--bar-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 .rc-settings__head-id { display: flex; align-items: center; gap: var(--sp-2); }
-.rc-settings__head-icon { color: var(--text-muted); display: grid; place-items: center; }
+/* The violet-tinted Settings glyph tile — a small icon-headed accent. */
+.rc-settings__head-icon { color: var(--accent); display: grid; place-items: center; }
 .rc-settings__title { font-size: var(--fs-lg); }
 .rc-settings__close {
   width: var(--tap-min); height: var(--tap-min); flex: none;
@@ -343,7 +349,7 @@ const settingsCss = `
   padding: 0 var(--sp-3); font: inherit;
   transition: border-color 120ms ease;
 }
-.rc-settings__control:focus, .rc-settings__control:focus-within { border-color: var(--accent); }
+.rc-settings__control:focus, .rc-settings__control:focus-within { border-color: var(--accent-line); box-shadow: var(--focus-glow); }
 .rc-settings__control--mono { font-family: var(--font-mono); }
 .rc-settings__readonly { display: grid; gap: var(--sp-2); }
 .rc-settings__ro-row {
@@ -357,8 +363,10 @@ const settingsCss = `
   border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-weight: 500;
   padding: 0 var(--sp-4);
 }
+/* The single violet primary — a violet→accent gradient with the Nebula "pop" glow (white label). */
 .rc-settings__primary {
-  background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent);
+  background: var(--accent-grad); color: #fff; border: 1px solid transparent;
+  box-shadow: var(--shadow-pop);
 }
 .rc-settings__secondary {
   background: transparent; color: var(--text); border: 1px solid var(--border);

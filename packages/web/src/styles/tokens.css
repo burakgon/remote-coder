@@ -105,4 +105,27 @@
   /* ERROR / dangerous-command treatment — a tinted mono panel for a destructive command (rm -rf …). */
   --err-bg: rgba(255, 107, 122, 0.1);
   --err-border: rgba(255, 107, 122, 0.4);
+  /* ---------------------------------------------------------------------------
+     NEBULA SHELL art-direction tokens (phase 2). The shell (rail / sheet / FAB /
+     login / wizard / settings) is individually art-directed to the Nebula look —
+     same deep bg + violet→cyan glow as the chat surface. Pre-mixed so chrome reads
+     identically without re-deriving from --accent.
+     --------------------------------------------------------------------------- */
+  /* The violet ambient halo behind the login card + empty/landing mark (a soft wash,
+     not loud) — same palette as --ambient but tuned for a centered focal point. */
+  --ambient-center: radial-gradient(620px 420px at 50% -8%, rgba(124, 92, 255, 0.2), transparent 60%),
+    radial-gradient(560px 420px at 90% 4%, rgba(34, 211, 238, 0.1), transparent 64%),
+    radial-gradient(1100px 680px at 50% -10%, #14132a 0%, var(--bg) 58%);
+  /* The violet→accent primary-button gradient (Connect / Start / Allow-style CTAs). */
+  --accent-grad: linear-gradient(180deg, var(--accent-2), var(--accent));
+  /* The violet FAB glow — the circular sessions FAB sits on a soft violet halo. */
+  --fab-glow: 0 6px 22px rgba(124, 92, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.45);
+  /* Icon-tile wash (login mark, wizard head) — a faint violet gradient + violet edge. */
+  --tile-bg: linear-gradient(180deg, rgba(160, 123, 255, 0.2), rgba(124, 92, 255, 0.1));
+  /* A glassy header/sheet bar that lets the ambient glow show through. */
+  --bar-glass: var(--glass-strong);
+  /* The active-rail violet glow — the selected session's left edge gets a soft bloom. */
+  --rail-glow: 0 0 10px rgba(124, 92, 255, 0.55);
+  /* A violet hairline divider with a soft fade (rail/sheet edges). */
+  --hairline-grad: linear-gradient(90deg, var(--border-strong), transparent);
 }

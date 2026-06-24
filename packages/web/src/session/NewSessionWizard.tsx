@@ -222,12 +222,15 @@ const wizardCss = `
   animation: rc-wizard-in 180ms ease;
 }
 @keyframes rc-wizard-in { from { opacity: 0; } to { opacity: 1; } }
+/* The glassy Nebula wizard card — translucent over the scrim with a faint violet edge + soft drop. */
 .rc-wizard__card {
   width: min(92vw, 460px);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--accent-line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), 0 0 40px rgba(124, 92, 255, 0.1);
 }
 .rc-wizard__body {
   padding: var(--sp-5);
@@ -238,9 +241,10 @@ const wizardCss = `
   width: 32px; height: 32px; flex: none;
   display: grid; place-items: center;
   border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, rgba(232, 163, 61, 0.16), rgba(232, 163, 61, 0.07));
-  border: 1px solid var(--user-bubble-border);
+  background: var(--tile-bg);
+  border: 1px solid var(--accent-line);
   color: var(--accent);
+  box-shadow: var(--glow-accent);
 }
 .rc-wizard__title { font-size: var(--fs-lg); }
 .rc-wizard__dir {
@@ -267,7 +271,7 @@ const wizardCss = `
   padding: 0 var(--sp-3); font: inherit;
   transition: border-color 120ms ease;
 }
-.rc-wizard__control:focus-within, .rc-wizard__control:focus { border-color: var(--accent); }
+.rc-wizard__control:focus-within, .rc-wizard__control:focus { border-color: var(--accent-line); box-shadow: var(--focus-glow); }
 .rc-wizard__control--mono { font-family: var(--font-mono); }
 .rc-wizard__danger {
   display: flex; gap: var(--sp-2); align-items: center;
@@ -283,13 +287,16 @@ const wizardCss = `
   font-size: var(--fs-sm);
 }
 .rc-wizard__actions { display: flex; gap: var(--sp-3); }
+/* The single violet primary — Start. A violet→accent gradient with the Nebula "pop" glow. */
 .rc-wizard__start {
   flex: 1; min-height: var(--tap-min);
-  border: 1px solid var(--accent); border-radius: var(--radius-sm); cursor: pointer;
-  background: var(--accent); color: var(--on-accent);
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--accent-grad); color: #fff;
   font: inherit; font-weight: 600; padding: 0 var(--sp-4);
+  box-shadow: var(--shadow-pop);
+  transition: box-shadow 120ms ease;
 }
-.rc-wizard__start:disabled { opacity: 0.5; cursor: default; }
+.rc-wizard__start:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .rc-wizard__cancel {
   min-height: var(--tap-min);
   background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm);

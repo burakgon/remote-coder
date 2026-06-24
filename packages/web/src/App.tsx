@@ -306,26 +306,36 @@ export function App() {
               textAlign: "center",
             }}
           >
+            {/* The Nebula landing mark — a violet-glowing icon tile, the on-brand focal point. */}
             <span
               aria-hidden="true"
               style={{
-                width: 56,
-                height: 56,
+                width: 64,
+                height: 64,
                 display: "grid",
                 placeItems: "center",
-                borderRadius: "var(--radius)",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                color: "var(--text-faint)",
+                borderRadius: "var(--radius-lg)",
+                background: "var(--tile-bg)",
+                border: "1px solid var(--accent-line)",
+                color: "var(--accent)",
+                boxShadow: "var(--glow-accent)",
               }}
             >
-              <Icon name="terminal" size={24} />
+              <Icon name="terminal" size={28} />
             </span>
             <span className="display" style={{ fontSize: "var(--fs-lg)", color: "var(--text)" }}>
               Select or start a session
             </span>
+            <span style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", maxWidth: "26ch", lineHeight: 1.5 }}>
+              No active session. Tap{" "}
+              <span aria-hidden="true" style={{ color: "var(--accent)", fontWeight: 600 }}>
+                +
+              </span>{" "}
+              to start one and drive Claude from your phone.
+            </span>
             {/* A landing-state CTA so a new session is reachable without first opening the mobile
-                sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile). */}
+                sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile).
+                The single violet primary — a violet→accent gradient with the Nebula "pop" glow. */}
             <button
               type="button"
               onClick={() => openWizard("new")}
@@ -336,13 +346,14 @@ export function App() {
                 gap: "var(--sp-2)",
                 minHeight: "var(--tap-min)",
                 padding: "0 var(--sp-5)",
-                background: "var(--accent)",
-                color: "var(--on-accent)",
-                border: "1px solid var(--accent)",
-                borderRadius: "var(--radius-sm)",
+                background: "var(--accent-grad)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "999px",
                 cursor: "pointer",
                 fontFamily: "var(--font-display)",
                 fontWeight: 600,
+                boxShadow: "var(--shadow-pop)",
               }}
             >
               <Icon name="plus" size={16} />

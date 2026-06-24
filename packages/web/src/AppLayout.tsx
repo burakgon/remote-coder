@@ -109,23 +109,27 @@ export function AppLayout({
       <style>{`
         .rc-shell { height: 100%; display: flex; flex-direction: column; position: relative; }
         .rc-main { flex: 1; min-height: 0; overflow-y: auto; }
+        /* The mobile sessions SHEET — a glassy, violet-tinted panel that sits on the ambient glow. A
+           thin violet top edge + soft drop reads it as a deliberate, on-brand Nebula surface. */
         .rc-rail {
-          background: var(--surface);
+          background: var(--glass-strong);
+          backdrop-filter: var(--glass-blur);
+          -webkit-backdrop-filter: var(--glass-blur);
           position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
           max-height: 82vh; overflow-y: auto;
-          border-top: 1px solid var(--border);
+          border-top: 1px solid var(--accent-line);
           border-top-left-radius: var(--radius-lg); border-top-right-radius: var(--radius-lg);
-          box-shadow: var(--shadow);
+          box-shadow: 0 -1px 0 rgba(124, 92, 255, 0.18), var(--shadow);
           transform: translateY(0);
           animation: rc-rail-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
         }
         @keyframes rc-rail-in { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .rc-rail[data-open="false"] { display: none; }
-        /* The sheet grab-handle — a small centered hairline pill (mobile-only). */
+        /* The sheet grab-handle — a small centered violet-tinted pill (mobile-only). */
         .rc-rail__handle {
-          width: 36px; height: 4px; flex: none;
+          width: 40px; height: 4px; flex: none;
           margin: var(--sp-2) auto 0;
-          border-radius: 999px; background: var(--border);
+          border-radius: 999px; background: var(--accent-line);
         }
         .rc-rail__close {
           display: flex; justify-content: flex-end;
@@ -155,30 +159,35 @@ export function AppLayout({
           z-index: 38;
           width: 52px; height: 52px; flex: none;
           display: grid; place-items: center;
-          background: var(--accent); color: var(--on-accent); border: none;
+          background: var(--accent-grad); color: #fff; border: none;
           border-radius: 999px; cursor: pointer;
-          box-shadow: 0 6px 18px rgba(232, 163, 61, 0.34), var(--shadow);
-          transition: transform 120ms ease;
+          box-shadow: var(--fab-glow);
+          transition: transform 120ms ease, box-shadow 120ms ease;
         }
-        .rc-sessions-fab:hover { transform: translateY(-1px); }
+        .rc-sessions-fab:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(124, 92, 255, 0.5), 0 2px 8px rgba(0, 0, 0, 0.45); }
         /* The iris "needs you" count on the FAB — a small loud pip pinned to the top-right corner,
-           tabular so 1/2/9 line up. iris on dark ink so it reads on the amber FAB. */
+           tabular so 1/2/9 line up. iris-on-ink with a violet halo so it reads on the violet FAB. */
         .rc-fab-badge {
           position: absolute; top: -2px; right: -2px;
           min-width: 20px; height: 20px; padding: 0 5px;
           display: grid; place-items: center;
           background: var(--iris); color: var(--on-iris);
           border: 2px solid var(--bg); border-radius: 999px;
+          box-shadow: 0 0 10px rgba(181, 123, 255, 0.7);
           font-family: var(--font-mono); font-size: 11px; font-weight: 700; line-height: 1;
           font-variant-numeric: tabular-nums;
         }
         @media (min-width: 768px) {
           .rc-shell { flex-direction: row; }
+          /* On desktop the rail is a permanent two-pane sister to the chat. It stays glassy (the
+             ambient glow shows through both panes) and is separated by a hairline that carries a
+             faint violet glow so the whole shell sits on one continuous Nebula surface. */
           .rc-rail {
             position: static; width: var(--rail-w); max-height: none; height: 100%;
             border-top: none; border-radius: 0;
             border-right: 1px solid var(--border);
-            display: block !important; box-shadow: none; animation: none;
+            box-shadow: 1px 0 0 rgba(124, 92, 255, 0.12);
+            display: block !important; animation: none;
           }
           .rc-rail__handle, .rc-rail__close, .rc-scrim, .rc-sessions-fab { display: none; }
         }
