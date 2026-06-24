@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { isPublicPath, API_PATH_DENYLIST } from "../src/index.js";
+import { isPublicPath, API_PATH_DENYLIST, looksLikeAssetRequest } from "../src/index.js";
 
 describe("API_PATH_DENYLIST mirrors the web apiNavigationDenylist (extended)", () => {
   const matches = (p: string) => API_PATH_DENYLIST.some((re) => re.test(p));
@@ -39,6 +39,20 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/fs/list")).toBe(false);
     expect(isPublicPath("/push/subscribe")).toBe(false);
     expect(isPublicPath("/health")).toBe(false);
+  });
+});
+
+describe("looksLikeAssetRequest", () => {
+  test("true for /assets/* and any *.ext path (a missing file must 404, not get the shell)", () => {
+    expect(looksLikeAssetRequest("/assets/index-abc123.js")).toBe(true);
+    expect(looksLikeAssetRequest("/assets/index-abc123.css")).toBe(true);
+    expect(looksLikeAssetRequest("/icon-192.svg")).toBe(true);
+    expect(looksLikeAssetRequest("/whatever.js")).toBe(true);
+  });
+  test("false for extensionless navigation paths (these get the SPA shell)", () => {
+    expect(looksLikeAssetRequest("/")).toBe(false);
+    expect(looksLikeAssetRequest("/login")).toBe(false);
+    expect(looksLikeAssetRequest("/some/client/route")).toBe(false);
   });
 });
 
@@ -108,6 +122,23 @@ describe("serving the PWA on the same origin", () => {
     const res = await result.app.inject({ method: "GET", url: "/sessions/nope" });
     expect(res.statusCode).toBe(401);
     expect(res.body).not.toContain("remote-coder");
+  });
+
+  test("a MISSING static asset 404s instead of serving the HTML shell (no MIME-mismatch blank page / SW cache poisoning)", async () => {
+    // Regression: @fastify/static (wildcard:false) only routes files that existed at startup, so a
+    // stale/renamed asset reaches the notFound handler. It must 404 — serving index.html (text/html)
+    // for a missing `*.js` makes the browser block the module script (blank page) and can poison a
+    // service-worker precache (HTML cached as the JS entry).
+    result = createServer(configFor(), new SessionManager({ claudeBin: process.execPath }), { webDir });
+    const missingJs = await result.app.inject({ method: "GET", url: "/assets/index-DOESNOTEXIST.js" });
+    expect(missingJs.statusCode).toBe(404);
+    expect(missingJs.body).not.toContain("remote-coder");
+    const missingCss = await result.app.inject({ method: "GET", url: "/whatever.css" });
+    expect(missingCss.statusCode).toBe(404);
+    // ...but an extensionless CLIENT route still gets the shell (SPA fallback preserved).
+    const clientRoute = await result.app.inject({ method: "GET", url: "/some/client/route" });
+    expect(clientRoute.statusCode).toBe(200);
+    expect(clientRoute.body).toContain("remote-coder");
   });
 
   test("an unknown API path 404s as JSON (not the SPA shell)", async () => {

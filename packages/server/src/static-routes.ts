@@ -71,24 +71,44 @@ export function isPublicPath(path: string): boolean {
   return !API_PATH_DENYLIST.some((re) => re.test(path));
 }
 
+/**
+ * True if the path looks like a request for a static FILE — it lives under `/assets/` or its last
+ * segment has an extension (e.g. `.js`/`.css`/`.png`/`.svg`). A file request that reaches the
+ * notFound handler means the file does NOT exist on disk, so it must 404 — it must NOT fall back to
+ * index.html. Serving the HTML shell for a missing `.js` makes the browser block the module script
+ * (MIME mismatch → blank page) and can POISON a service-worker precache (HTML cached as the JS
+ * entry). Only extensionless navigation paths (client routes like `/`, `/login`) get the SPA shell.
+ *
+ * Operational note: `@fastify/static` with `wildcard:false` globs the dist and registers one route
+ * per file AT STARTUP, so after rebuilding the web bundle (new content-hashed filenames) the server
+ * must be RESTARTED for the new assets to get routes — otherwise they reach this handler and (now)
+ * correctly 404 instead of silently serving the shell.
+ */
+export function looksLikeAssetRequest(path: string): boolean {
+  return path.startsWith("/assets/") || /\/[^/]+\.[a-z0-9]+$/i.test(path);
+}
+
 export interface RegisterStaticOptions {
   /** Absolute path to the built PWA (packages/web/dist). */
   webDir: string;
 }
 
 /**
- * Serve the built PWA at `/` with an SPA fallback: any GET navigation that is NOT a static file and
- * NOT an API/WS/health/push route returns index.html, so client-side routes (e.g. /login) work on a
- * hard refresh. The fallback is scoped by `isPublicPath` so an unknown /sessions/... never silently
- * resolves to the shell (it must 404/401 from the real handlers).
+ * Serve the built PWA at `/` with an SPA fallback: a GET NAVIGATION (extensionless, public, non-API)
+ * that no static file matched returns index.html, so client routes (e.g. /login) work on a hard
+ * refresh. A request that looks like a missing FILE (`/assets/*`, or any `*.ext`) returns 404, never
+ * the shell — so a missing asset fails loudly instead of poisoning a browser/SW cache with HTML. An
+ * unknown /sessions/... still 404/401s from the real handlers / the gate.
  */
 export function registerStatic(app: FastifyInstance, opts: RegisterStaticOptions): void {
   app.register(fastifyStatic, { root: opts.webDir, wildcard: false });
 
-  // SPA fallback for navigations to non-file public paths (e.g. /login, /sessions-ui deep links that
-  // are CLIENT routes). `setNotFoundHandler` runs only when no route/file matched.
   app.setNotFoundHandler((request, reply) => {
-    if (request.method === "GET" && isPublicForRequest(request.url)) {
+    if (
+      request.method === "GET" &&
+      isPublicForRequest(request.url) &&
+      !looksLikeAssetRequest(pathForGate(request.url))
+    ) {
       // sendFile is added to reply by @fastify/static.
       return (reply as unknown as { sendFile: (f: string) => unknown }).sendFile("index.html");
     }

@@ -36,6 +36,7 @@ export {
   isPublicForRequest,
   pathForGate,
   hasEncodedSep,
+  looksLikeAssetRequest,
   API_PATH_DENYLIST,
 } from "./static-routes.js";
 export type { RegisterStaticOptions } from "./static-routes.js";
