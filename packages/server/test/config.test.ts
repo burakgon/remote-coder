@@ -92,6 +92,12 @@ test("buildClaudeArgs emits --mcp-config followed by a FILE PATH (never inline J
   // The arg after --mcp-config is a plain path, not a JSON document.
   expect(args[i + 1]).toBe(path);
   expect(() => JSON.parse(args[i + 1])).toThrow();
+  // The two send tools are auto-approved so Claude can deliver a file in any permission mode
+  // without a prompt (MCP tools are otherwise gated; `allowedTools` is the documented grant).
+  const a = args.indexOf("--allowedTools");
+  expect(a).toBeGreaterThanOrEqual(0);
+  expect(args).toContain("mcp__remote-coder__send_image");
+  expect(args).toContain("mcp__remote-coder__send_file");
 });
 
 test("buildClaudeArgs never puts the access token in the argv (regression: token must stay in the 0600 file)", () => {

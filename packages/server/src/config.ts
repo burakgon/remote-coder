@@ -124,6 +124,13 @@ export function buildClaudeArgs(opts: BuildClaudeArgsOptions): string[] {
   // a per-session mode-0600 file before calling this; we only reference its path here.
   if (opts.mcpConfigPath) {
     args.push("--mcp-config", opts.mcpConfigPath);
+    // Auto-approve the two send tools so Claude can deliver a file/image to the user WITHOUT a
+    // permission prompt, in ANY permission mode. Per the Agent docs, `allowedTools` is the right way
+    // to grant MCP tools (a permission mode like `default` would otherwise prompt for every MCP call;
+    // `bypassPermissions` auto-approves but is broader than needed). Sending a file TO the already-
+    // authenticated user is low-risk, so a standing allow is appropriate. The server name in the
+    // generated config is `remote-coder`, so the tool ids are `mcp__remote-coder__<tool>`.
+    args.push("--allowedTools", "mcp__remote-coder__send_image", "mcp__remote-coder__send_file");
   }
 
   return args;
