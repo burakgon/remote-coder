@@ -145,7 +145,7 @@ export function DirectoryPicker({ listDir, recents, onPick, onCancel }: Director
                 >
                   <span className="rc-picker__row-main">
                     <span className="rc-picker__folder" aria-hidden="true">
-                      ▸
+                      <Icon name="folder" size={16} />
                     </span>
                     <Mono>{e.name}</Mono>
                     <span className="rc-picker__slash" aria-hidden="true">
@@ -317,9 +317,10 @@ const pickerCss = `
 .rc-picker__row:hover, .rc-picker__row:focus-visible { background: var(--surface); }
 .rc-picker__row:active { background: var(--surface-2); }
 .rc-picker__row-main { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.rc-picker__folder { color: var(--text-muted); }
-.rc-picker__slash { color: var(--text-muted); font-family: var(--font-mono); }
-.rc-picker__star { color: var(--accent); }
+.rc-picker__folder { color: var(--text-muted); display: grid; place-items: center; flex: none; }
+.rc-picker__slash { color: var(--text-faint); font-family: var(--font-mono); }
+.rc-picker__star { color: var(--accent); display: grid; place-items: center; flex: none; }
+.rc-picker__row:hover .rc-picker__folder { color: var(--accent); }
 .rc-picker__git {
   flex: none; color: var(--accent);
   font-family: var(--font-mono); font-size: var(--fs-xs);

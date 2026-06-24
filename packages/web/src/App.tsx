@@ -13,7 +13,7 @@ import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
 import { useOnline } from "./pwa/online-status";
-import { Button } from "./ui/Button";
+import { Icon } from "./ui/Icon";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -91,8 +91,23 @@ export function App() {
 
   if (phase === "validating") {
     return (
-      <div style={{ display: "grid", placeItems: "center", height: "100%", color: "var(--text-muted)" }}>
-        Connecting…
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          gap: "var(--sp-3)",
+          height: "100%",
+          color: "var(--text-muted)",
+        }}
+      >
+        <span
+          aria-hidden="true"
+          className="display"
+          style={{ fontSize: "var(--fs-2xl)", color: "var(--text-faint)" }}
+        >
+          rc
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-sm)" }}>Connecting…</span>
       </div>
     );
   }
@@ -153,12 +168,48 @@ export function App() {
               textAlign: "center",
             }}
           >
-            <span>Select or start a session.</span>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 56,
+                height: 56,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: "var(--radius)",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                color: "var(--text-faint)",
+              }}
+            >
+              <Icon name="terminal" size={24} />
+            </span>
+            <span className="display" style={{ fontSize: "var(--fs-lg)", color: "var(--text)" }}>
+              Select or start a session
+            </span>
             {/* A landing-state CTA so a new session is reachable without first opening the mobile
                 sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile). */}
-            <Button variant="primary" onClick={() => setWizardOpen(true)} aria-label="New session">
-              + New session
-            </Button>
+            <button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              aria-label="New session"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--sp-2)",
+                minHeight: "var(--tap-min)",
+                padding: "0 var(--sp-5)",
+                background: "var(--accent)",
+                color: "var(--on-accent)",
+                border: "1px solid var(--accent)",
+                borderRadius: "var(--radius-sm)",
+                cursor: "pointer",
+                fontFamily: "var(--font-display)",
+                fontWeight: 600,
+              }}
+            >
+              <Icon name="plus" size={16} />
+              New session
+            </button>
           </div>
         )}
       </AppLayout>

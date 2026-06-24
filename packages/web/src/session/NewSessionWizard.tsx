@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { Surface } from "../ui/Surface";
-import { Button } from "../ui/Button";
 import { Mono } from "../ui/Mono";
+import { Icon } from "../ui/Icon";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { DirectoryPicker } from "../picker/DirectoryPicker";
 import { pushRecentDir } from "../picker/recents";
@@ -80,18 +79,30 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
       className="rc-wizard"
       onClick={onBackdrop}
     >
-      <Surface level={1} as="section">
+      <section className="rc-wizard__card">
         <div className="rc-wizard__body">
-          <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>
-            Start a session
-          </strong>
+          <header className="rc-wizard__head">
+            <span className="rc-wizard__head-icon" aria-hidden="true">
+              <Icon name="plus" size={18} />
+            </span>
+            <strong className="display rc-wizard__title">Start a session</strong>
+          </header>
 
+          {/* The chosen directory — a clean row with a folder icon, the mono path, and a quiet
+              "Change" affordance that returns to the picker. */}
           <div className="rc-wizard__dir">
-            <span className="rc-wizard__dir-label">Directory</span>
+            <span className="rc-wizard__dir-icon" aria-hidden="true">
+              <Icon name="folder" size={16} />
+            </span>
             <Mono>{cwd}</Mono>
-            <Button variant="ghost" onClick={() => setCwd(undefined)} aria-label="Change directory">
+            <button
+              type="button"
+              className="rc-wizard__change"
+              onClick={() => setCwd(undefined)}
+              aria-label="Change directory"
+            >
               Change
-            </Button>
+            </button>
           </div>
 
           <label className="rc-wizard__field">
@@ -125,20 +136,27 @@ export function NewSessionWizard({ api, recents, onCreated, onClose }: NewSessio
 
           {error && (
             <div role="alert" className="rc-wizard__error">
-              {error}
+              <Icon name="alert" size={16} />
+              <span>{error}</span>
             </div>
           )}
 
           <div className="rc-wizard__actions">
-            <Button variant="primary" disabled={busy} onClick={start} aria-label="Start session">
+            <button
+              type="button"
+              className="rc-wizard__start"
+              disabled={busy}
+              onClick={start}
+              aria-label="Start session"
+            >
               {busy ? "Starting…" : "Start session"}
-            </Button>
-            <Button variant="ghost" onClick={onClose}>
+            </button>
+            <button type="button" className="rc-wizard__cancel" onClick={onClose}>
               Cancel
-            </Button>
+            </button>
           </div>
         </div>
-      </Surface>
+      </section>
 
       <style>{wizardCss}</style>
     </div>
@@ -151,27 +169,53 @@ const wizardCss = `
   background: var(--scrim);
   display: grid; place-items: center;
   padding: var(--sp-5);
-  animation: rc-wizard-in 160ms ease;
+  animation: rc-wizard-in 180ms ease;
 }
 @keyframes rc-wizard-in { from { opacity: 0; } to { opacity: 1; } }
+.rc-wizard__card {
+  width: min(92vw, 460px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
 .rc-wizard__body {
   padding: var(--sp-5);
   display: grid; gap: var(--sp-4);
-  width: min(92vw, 460px);
 }
+.rc-wizard__head { display: flex; align-items: center; gap: var(--sp-2); }
+.rc-wizard__head-icon {
+  width: 32px; height: 32px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(232, 163, 61, 0.16), rgba(232, 163, 61, 0.07));
+  border: 1px solid var(--user-bubble-border);
+  color: var(--accent);
+}
+.rc-wizard__title { font-size: var(--fs-lg); }
 .rc-wizard__dir {
   display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
-  font-size: var(--fs-sm); color: var(--text-muted);
+  font-size: var(--fs-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);
 }
-.rc-wizard__dir-label { font-weight: 500; }
-.rc-wizard__dir > :nth-child(2) { color: var(--text); overflow-wrap: anywhere; }
+.rc-wizard__dir-icon { color: var(--text-muted); display: grid; place-items: center; }
+.rc-wizard__dir > :nth-child(2) { color: var(--text); overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.rc-wizard__change {
+  flex: none; min-height: 32px; padding: 0 var(--sp-2);
+  background: transparent; border: none; cursor: pointer;
+  color: var(--accent); font: inherit; font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+.rc-wizard__change:hover { background: var(--surface); }
 .rc-wizard__field { display: grid; gap: var(--sp-2); }
 .rc-wizard__field-label { font-size: var(--fs-sm); color: var(--text-muted); }
 .rc-wizard__control {
   min-height: var(--tap-min);
-  background: var(--surface); border: 1px solid var(--border);
+  background: var(--surface-2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); color: var(--text);
   padding: 0 var(--sp-3); font: inherit;
+  transition: border-color 120ms ease;
 }
 .rc-wizard__control:focus-within, .rc-wizard__control:focus { border-color: var(--accent); }
 .rc-wizard__control--mono { font-family: var(--font-mono); }
@@ -183,9 +227,23 @@ const wizardCss = `
 .rc-wizard__danger--on { color: var(--err); }
 .rc-wizard__danger input { width: 20px; height: 20px; accent-color: var(--err); }
 .rc-wizard__error {
-  color: var(--err); border: 1px solid var(--err);
-  border-radius: var(--radius-sm); padding: var(--sp-3);
+  display: flex; align-items: center; gap: var(--sp-2);
+  color: var(--err); background: var(--err-bg); border: 1px solid var(--err-border);
+  border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
 }
 .rc-wizard__actions { display: flex; gap: var(--sp-3); }
-.rc-wizard__actions button:first-child { flex: 1; }
+.rc-wizard__start {
+  flex: 1; min-height: var(--tap-min);
+  border: 1px solid var(--accent); border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--accent); color: var(--on-accent);
+  font: inherit; font-weight: 600; padding: 0 var(--sp-4);
+}
+.rc-wizard__start:disabled { opacity: 0.5; cursor: default; }
+.rc-wizard__cancel {
+  min-height: var(--tap-min);
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text); cursor: pointer; font: inherit; padding: 0 var(--sp-4);
+}
+.rc-wizard__cancel:hover { border-color: var(--text-faint); }
 `;

@@ -1,66 +1,152 @@
 import { useState } from "react";
-import { Surface } from "../ui/Surface";
-import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 
 export interface LoginScreenProps {
   onAuthenticated: (token: string) => void;
   initialError?: string;
 }
 
+/**
+ * The first impression — a calm, centered token-entry card (Variant A). The wordmark sits in the
+ * display font over a soft radial wash; the token field carries a clear label, a lock affordance,
+ * and an assertively-announced error state; "Connect" is the single amber primary action. A quiet
+ * tokenless local-dev path stays available beneath a hairline divider.
+ */
 export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps) {
   const [token, setToken] = useState("");
   return (
-    <div style={{ minHeight: "100%", display: "grid", placeItems: "center", padding: "var(--sp-5)" }}>
-      <Surface level={1} as="section">
+    <div className="rc-login">
+      <section className="rc-login__card">
+        <header className="rc-login__brand">
+          <span className="rc-login__mark" aria-hidden="true">
+            <Icon name="terminal" size={20} />
+          </span>
+          <span className="display rc-login__wordmark">remote-coder</span>
+        </header>
+
+        <p className="rc-login__lede">Enter the access token from your server to connect.</p>
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
             onAuthenticated(token);
           }}
-          style={{ padding: "var(--sp-5)", display: "grid", gap: "var(--sp-4)", width: "min(92vw, 420px)" }}
+          className="rc-login__form"
         >
-          <div className="display" style={{ fontSize: "var(--fs-2xl)" }}>
-            remote-coder
-          </div>
-          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "var(--fs-sm)" }}>
-            Enter the access token from your server to connect.
-          </p>
           {initialError && (
-            <div role="alert" aria-live="assertive" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>
-              {initialError}
+            <div role="alert" aria-live="assertive" className="rc-login__error">
+              <Icon name="alert" size={16} />
+              <span>{initialError}</span>
             </div>
           )}
-          <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-            <span style={{ fontSize: "var(--fs-sm)" }}>Access token</span>
-            <input
-              id="token"
-              name="token"
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoComplete="off"
-              style={{
-                minHeight: "var(--tap-min)",
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                color: "var(--text)",
-                padding: "0 var(--sp-3)",
-                fontFamily: "var(--font-mono)",
-              }}
-            />
+
+          <label className="rc-login__field">
+            <span className="rc-login__label">Access token</span>
+            <span className="rc-login__input">
+              <span className="rc-login__input-icon" aria-hidden="true">
+                <Icon name="lock" size={16} />
+              </span>
+              <input
+                id="token"
+                name="token"
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                autoComplete="off"
+                placeholder="paste your token"
+              />
+            </span>
           </label>
-          <Button type="submit" variant="primary">
+
+          <button type="submit" className="rc-login__connect">
             Connect
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => onAuthenticated("")}>
-            Connect without a token (local dev)
-          </Button>
-          <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "var(--fs-xs)" }}>
-            The token is stored in this browser only (localStorage).
-          </p>
+          </button>
         </form>
-      </Surface>
+
+        <div className="rc-login__divider" role="presentation" />
+
+        <button type="button" className="rc-login__dev" onClick={() => onAuthenticated("")}>
+          Connect without a token (local dev)
+        </button>
+
+        <p className="rc-login__note">The token is stored in this browser only (localStorage).</p>
+      </section>
+
+      <style>{loginCss}</style>
     </div>
   );
 }
+
+const loginCss = `
+.rc-login {
+  min-height: 100%;
+  display: grid; place-items: center;
+  padding: var(--sp-5);
+  /* A soft cool-ink wash overhead so the centered card feels intentional, not floating in void. */
+  background: radial-gradient(1100px 640px at 50% -10%, #141a22 0%, var(--bg) 58%);
+}
+.rc-login__card {
+  width: min(92vw, 400px);
+  display: grid; gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.rc-login__brand { display: flex; align-items: center; gap: var(--sp-3); }
+.rc-login__mark {
+  width: 40px; height: 40px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(232, 163, 61, 0.18), rgba(232, 163, 61, 0.08));
+  border: 1px solid var(--user-bubble-border);
+  color: var(--accent);
+}
+.rc-login__wordmark { font-size: var(--fs-2xl); letter-spacing: 0.01em; color: var(--text); }
+.rc-login__lede { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }
+.rc-login__form { display: grid; gap: var(--sp-4); }
+.rc-login__error {
+  display: flex; align-items: center; gap: var(--sp-2);
+  color: var(--err); font-size: var(--fs-sm);
+  background: var(--err-bg); border: 1px solid var(--err-border);
+  border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3);
+}
+.rc-login__field { display: grid; gap: var(--sp-2); }
+.rc-login__label { font-size: var(--fs-sm); color: var(--text-muted); }
+.rc-login__input {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: var(--tap-min);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0 var(--sp-3);
+  transition: border-color 120ms ease;
+}
+.rc-login__input:focus-within { border-color: var(--accent); }
+.rc-login__input-icon { color: var(--text-faint); display: grid; place-items: center; }
+.rc-login__input input {
+  flex: 1; min-width: 0; min-height: var(--tap-min);
+  background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--font-mono); font-size: var(--fs-base);
+}
+.rc-login__input input::placeholder { color: var(--text-faint); }
+.rc-login__connect {
+  min-height: var(--tap-min);
+  border: none; border-radius: var(--radius); cursor: pointer;
+  background: linear-gradient(180deg, #f2b357, var(--accent));
+  color: var(--on-accent);
+  font-family: var(--font-display); font-weight: 600; font-size: var(--fs-base);
+  box-shadow: 0 4px 14px rgba(232, 163, 61, 0.3);
+  transition: transform 120ms ease;
+}
+.rc-login__connect:hover { transform: translateY(-1px); }
+.rc-login__divider { height: 1px; background: var(--border); }
+.rc-login__dev {
+  min-height: var(--tap-min);
+  background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius); cursor: pointer;
+  color: var(--text-muted); font: inherit;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.rc-login__dev:hover { color: var(--text); border-color: var(--text-faint); }
+.rc-login__note { margin: 0; color: var(--text-faint); font-size: var(--fs-xs); text-align: center; }
+`;

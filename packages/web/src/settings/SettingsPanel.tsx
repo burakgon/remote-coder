@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
-import { Surface } from "../ui/Surface";
-import { Button } from "../ui/Button";
 import { Mono } from "../ui/Mono";
+import { Icon } from "../ui/Icon";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { EFFORTS, PERMISSION_MODES } from "./defaults";
 import type { SessionDefaults } from "./defaults";
@@ -21,16 +19,6 @@ export interface SettingsPanelProps {
   onDisablePush?: () => void;
   onClose: () => void;
 }
-
-const fieldStyle: CSSProperties = {
-  minHeight: "var(--tap-min)",
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius-sm)",
-  color: "var(--text)",
-  padding: "0 var(--sp-3)",
-  font: "inherit",
-};
 
 export function SettingsPanel({
   session,
@@ -88,67 +76,52 @@ export function SettingsPanel({
   }
 
   return (
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "var(--bg)",
-        display: "grid",
-        placeItems: "center",
-        padding: "var(--sp-5)",
-        zIndex: 50,
-        overflowY: "auto",
-      }}
-    >
-      <Surface level={1} as="section">
-        <div style={{ padding: "var(--sp-5)", display: "grid", gap: "var(--sp-4)", width: "min(92vw, 480px)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong className="display" style={{ fontSize: "var(--fs-lg)" }}>
-              Settings
-            </strong>
-            <Button variant="ghost" onClick={onClose} aria-label="Close settings">
-              Close
-            </Button>
-          </div>
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Settings" className="rc-settings">
+      <section className="rc-settings__card">
+        <header className="rc-settings__head">
+          <span className="rc-settings__head-id">
+            <span className="rc-settings__head-icon" aria-hidden="true">
+              <Icon name="settings" size={18} />
+            </span>
+            <strong className="display rc-settings__title">Settings</strong>
+          </span>
+          <button type="button" className="rc-settings__close" onClick={onClose} aria-label="Close settings">
+            <Icon name="x" size={18} />
+          </button>
+        </header>
 
+        <div className="rc-settings__body">
           {session && (
-            <section style={{ display: "grid", gap: "var(--sp-2)" }}>
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "var(--fs-xs)",
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                }}
-              >
-                This session (fixed at start)
+            <section className="rc-settings__section">
+              <div className="rc-settings__section-head">
+                <span className="rc-settings__section-icon" aria-hidden="true">
+                  <Icon name="sliders" size={15} />
+                </span>
+                <span className="rc-settings__section-label">This session</span>
               </div>
-              <div>
-                Directory: <Mono>{session.cwd}</Mono>
+              <div className="rc-settings__dir">
+                <span className="rc-settings__dir-key">Directory</span>
+                <Mono>{session.cwd}</Mono>
               </div>
               {onApplyLiveSettings ? (
-                <div style={{ display: "grid", gap: "var(--sp-3)" }}>
-                  <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-                    <span style={{ fontSize: "var(--fs-sm)" }}>Active session model</span>
+                <div className="rc-settings__fields">
+                  <label className="rc-settings__field">
+                    <span className="rc-settings__field-label">Active session model</span>
                     <input
                       aria-label="active session model"
                       value={liveModel}
                       onChange={(e) => setLiveModel(e.target.value)}
                       placeholder="default"
-                      style={{ ...fieldStyle, fontFamily: "var(--font-mono)" }}
+                      className="rc-settings__control rc-settings__control--mono"
                     />
                   </label>
-                  <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-                    <span style={{ fontSize: "var(--fs-sm)" }}>Active session effort</span>
+                  <label className="rc-settings__field">
+                    <span className="rc-settings__field-label">Active session effort</span>
                     <select
                       aria-label="active session effort"
                       value={liveEffort}
                       onChange={(e) => setLiveEffort(e.target.value)}
-                      style={fieldStyle}
+                      className="rc-settings__control"
                     >
                       {EFFORTS.map((e) => (
                         <option key={e} value={e}>
@@ -157,13 +130,13 @@ export function SettingsPanel({
                       ))}
                     </select>
                   </label>
-                  <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-                    <span style={{ fontSize: "var(--fs-sm)" }}>Active session permission mode</span>
+                  <label className="rc-settings__field">
+                    <span className="rc-settings__field-label">Active session permission mode</span>
                     <select
                       aria-label="active session permission mode"
                       value={livePermissionMode}
                       onChange={(e) => setLivePermissionMode(e.target.value)}
-                      style={fieldStyle}
+                      className="rc-settings__control"
                     >
                       {PERMISSION_MODES.map((m) => (
                         <option key={m} value={m}>
@@ -172,8 +145,9 @@ export function SettingsPanel({
                       ))}
                     </select>
                   </label>
-                  <Button
-                    variant="primary"
+                  <button
+                    type="button"
+                    className="rc-settings__primary"
                     aria-label="Apply to session"
                     onClick={() => {
                       // Only send the controls the user CHANGED — an unchanged control is omitted so
@@ -186,27 +160,31 @@ export function SettingsPanel({
                     }}
                   >
                     Apply to session
-                  </Button>
+                  </button>
                 </div>
               ) : (
-                <>
-                  <div>
-                    Model: <Mono>{session.model ?? "default"}</Mono>
+                <div className="rc-settings__readonly">
+                  <div className="rc-settings__ro-row">
+                    <span>Model</span>
+                    <Mono muted>{session.model ?? "default"}</Mono>
                   </div>
-                  <div>
-                    Effort: <Mono>{session.effort ?? "default"}</Mono>
+                  <div className="rc-settings__ro-row">
+                    <span>Effort</span>
+                    <Mono muted>{session.effort ?? "default"}</Mono>
                   </div>
-                  <div>
-                    Skip permissions: <Mono>{String(session.dangerouslySkip)}</Mono>
+                  <div className="rc-settings__ro-row">
+                    <span>Skip permissions</span>
+                    <Mono muted>{String(session.dangerouslySkip)}</Mono>
                   </div>
-                  <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", margin: 0 }}>
+                  <p className="rc-settings__hint">
                     Model/effort/permissions are set when a session starts. To change them, start a new session.
                   </p>
-                </>
+                </div>
               )}
               {onStopSession && (
-                <Button
-                  variant="danger"
+                <button
+                  type="button"
+                  className="rc-settings__danger"
                   onClick={() => {
                     if (window.confirm("Stop this session? The running claude process will be terminated.")) {
                       onStopSession(session.id);
@@ -214,36 +192,26 @@ export function SettingsPanel({
                   }}
                   aria-label="Stop session"
                 >
+                  <Icon name="power" size={16} />
                   Stop session
-                </Button>
+                </button>
               )}
             </section>
           )}
 
-          <section
-            style={{
-              display: "grid",
-              gap: "var(--sp-3)",
-              borderTop: "1px solid var(--border)",
-              paddingTop: "var(--sp-4)",
-            }}
-          >
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: "var(--fs-xs)",
-                textTransform: "uppercase",
-                letterSpacing: 1,
-              }}
-            >
-              Defaults for new sessions
+          <section className="rc-settings__section rc-settings__section--divided">
+            <div className="rc-settings__section-head">
+              <span className="rc-settings__section-icon" aria-hidden="true">
+                <Icon name="plus" size={15} />
+              </span>
+              <span className="rc-settings__section-label">Defaults for new sessions</span>
             </div>
-            <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-              <span style={{ fontSize: "var(--fs-sm)" }}>Default effort</span>
+            <label className="rc-settings__field">
+              <span className="rc-settings__field-label">Default effort</span>
               <select
                 value={draft.effort}
                 onChange={(e) => setDraft((d) => ({ ...d, effort: e.target.value }))}
-                style={fieldStyle}
+                className="rc-settings__control"
               >
                 {EFFORTS.map((e) => (
                   <option key={e} value={e}>
@@ -252,75 +220,164 @@ export function SettingsPanel({
                 ))}
               </select>
             </label>
-            <label style={{ display: "grid", gap: "var(--sp-2)" }}>
-              <span style={{ fontSize: "var(--fs-sm)" }}>Default model (optional)</span>
+            <label className="rc-settings__field">
+              <span className="rc-settings__field-label">Default model (optional)</span>
               <input
                 value={draft.model ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
                 placeholder="default"
-                style={{ ...fieldStyle, fontFamily: "var(--font-mono)" }}
+                className="rc-settings__control rc-settings__control--mono"
               />
             </label>
-            <label
-              style={{
-                display: "flex",
-                gap: "var(--sp-2)",
-                alignItems: "center",
-                color: draft.dangerouslySkip ? "var(--err)" : "var(--text)",
-              }}
-            >
+            <label className={`rc-settings__danger-check${draft.dangerouslySkip ? " rc-settings__danger-check--on" : ""}`}>
               <input type="checkbox" checked={draft.dangerouslySkip} onChange={(e) => toggleDanger(e.target.checked)} />
               <span>Dangerously skip permissions (RCE risk)</span>
             </label>
-            <Button variant="primary" onClick={() => onSaveDefaults(draft)} aria-label="Save defaults">
+            <button type="button" className="rc-settings__primary" onClick={() => onSaveDefaults(draft)} aria-label="Save defaults">
               Save defaults
-            </Button>
+            </button>
           </section>
 
           {pushState && (
-            <section
-              style={{
-                display: "grid",
-                gap: "var(--sp-3)",
-                borderTop: "1px solid var(--border)",
-                paddingTop: "var(--sp-4)",
-              }}
-            >
-              <div
-                style={{
-                  color: "var(--text-muted)",
-                  fontSize: "var(--fs-xs)",
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                }}
-              >
-                Notifications
+            <section className="rc-settings__section rc-settings__section--divided">
+              <div className="rc-settings__section-head">
+                <span className="rc-settings__section-icon" aria-hidden="true">
+                  <Icon name="bell" size={15} />
+                </span>
+                <span className="rc-settings__section-label">Notifications</span>
               </div>
               {pushState === "unsupported" ? (
-                <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)", margin: 0 }}>
+                <p className="rc-settings__hint">
                   Web Push needs HTTPS (or localhost) and a supporting browser. Open this app over your secure tunnel to
                   enable notifications.
                 </p>
               ) : pushState === "subscribed" ? (
-                <Button variant="ghost" aria-label="Disable notifications" onClick={() => onDisablePush?.()}>
+                <button
+                  type="button"
+                  className="rc-settings__secondary"
+                  aria-label="Disable notifications"
+                  onClick={() => onDisablePush?.()}
+                >
                   Notifications on — tap to disable
-                </Button>
+                </button>
               ) : (
-                <Button variant="primary" aria-label="Enable notifications" onClick={() => onEnablePush?.()}>
+                <button
+                  type="button"
+                  className="rc-settings__primary"
+                  aria-label="Enable notifications"
+                  onClick={() => onEnablePush?.()}
+                >
                   Enable notifications
-                </Button>
+                </button>
               )}
-              <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", margin: 0 }}>
+              <p className="rc-settings__hint">
                 Get a push when a session finishes a task or needs your permission/answer.
               </p>
             </section>
           )}
 
-          <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", margin: 0 }}>
-            The access token is stored in this browser only (localStorage).
-          </p>
+          <p className="rc-settings__note">The access token is stored in this browser only (localStorage).</p>
         </div>
-      </Surface>
+      </section>
+
+      <style>{settingsCss}</style>
     </div>
   );
 }
+
+const settingsCss = `
+.rc-settings {
+  position: fixed; inset: 0; z-index: 50;
+  background: var(--bg);
+  display: grid; place-items: center;
+  padding: var(--sp-5);
+  overflow-y: auto;
+}
+.rc-settings__card {
+  width: min(92vw, 480px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.rc-settings__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+.rc-settings__head-id { display: flex; align-items: center; gap: var(--sp-2); }
+.rc-settings__head-icon { color: var(--text-muted); display: grid; place-items: center; }
+.rc-settings__title { font-size: var(--fs-lg); }
+.rc-settings__close {
+  width: var(--tap-min); height: var(--tap-min); flex: none;
+  display: grid; place-items: center;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text-muted); border-radius: var(--radius);
+  transition: color 120ms ease, background 120ms ease;
+}
+.rc-settings__close:hover { color: var(--text); background: var(--surface-2); }
+.rc-settings__body { padding: var(--sp-4); display: grid; gap: var(--sp-4); }
+.rc-settings__section { display: grid; gap: var(--sp-3); }
+.rc-settings__section--divided { border-top: 1px solid var(--border); padding-top: var(--sp-4); }
+.rc-settings__section-head { display: flex; align-items: center; gap: var(--sp-2); }
+.rc-settings__section-icon { color: var(--text-faint); display: grid; place-items: center; }
+.rc-settings__section-label {
+  color: var(--text-muted); font-family: var(--font-display); font-weight: 600;
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.rc-settings__dir {
+  display: flex; gap: var(--sp-2); align-items: baseline; flex-wrap: wrap;
+  font-size: var(--fs-sm);
+}
+.rc-settings__dir-key { color: var(--text-muted); }
+.rc-settings__dir > :nth-child(2) { overflow-wrap: anywhere; }
+.rc-settings__fields { display: grid; gap: var(--sp-3); }
+.rc-settings__field { display: grid; gap: var(--sp-2); }
+.rc-settings__field-label { font-size: var(--fs-sm); color: var(--text-muted); }
+.rc-settings__control {
+  min-height: var(--tap-min);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  padding: 0 var(--sp-3); font: inherit;
+  transition: border-color 120ms ease;
+}
+.rc-settings__control:focus, .rc-settings__control:focus-within { border-color: var(--accent); }
+.rc-settings__control--mono { font-family: var(--font-mono); }
+.rc-settings__readonly { display: grid; gap: var(--sp-2); }
+.rc-settings__ro-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3);
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.rc-settings__hint { color: var(--text-muted); font-size: var(--fs-xs); margin: 0; line-height: 1.5; }
+.rc-settings__note { color: var(--text-faint); font-size: var(--fs-xs); margin: 0; }
+.rc-settings__primary, .rc-settings__secondary {
+  min-height: var(--tap-min);
+  border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-weight: 500;
+  padding: 0 var(--sp-4);
+}
+.rc-settings__primary {
+  background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent);
+}
+.rc-settings__secondary {
+  background: transparent; color: var(--text); border: 1px solid var(--border);
+}
+.rc-settings__secondary:hover { border-color: var(--text-faint); }
+/* The destructive Stop — a careful, err-tinted action, never a loud filled red button. */
+.rc-settings__danger {
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  min-height: var(--tap-min);
+  border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-weight: 500;
+  padding: 0 var(--sp-4);
+  background: var(--err-bg); color: var(--err); border: 1px solid var(--err-border);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.rc-settings__danger:hover { border-color: var(--err); }
+.rc-settings__danger-check {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: var(--tap-min); font-size: var(--fs-sm); color: var(--text);
+}
+.rc-settings__danger-check--on { color: var(--err); }
+.rc-settings__danger-check input { width: 20px; height: 20px; accent-color: var(--err); }
+`;

@@ -26,7 +26,13 @@ export type IconName =
   | "alert"
   | "menu"
   | "star"
-  | "arrow-up";
+  | "arrow-up"
+  | "lock"
+  | "folder"
+  | "plus"
+  | "bell"
+  | "power"
+  | "sliders";
 
 export interface IconProps {
   name: IconName;
@@ -127,6 +133,44 @@ const PATHS: Record<IconName, ReactElement> = {
     <>
       <path d="M12 19V5" />
       <path d="m5 12 7-7 7 7" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="4.5" y="11" width="15" height="9" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+  plus: (
+    <>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </>
+  ),
+  bell: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </>
+  ),
+  power: (
+    <>
+      <path d="M12 3v9" />
+      <path d="M6.4 6.4a8 8 0 1 0 11.2 0" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 6h10" />
+      <path d="M18 6h2" />
+      <path d="M4 12h2" />
+      <path d="M10 12h10" />
+      <path d="M4 18h12" />
+      <path d="M20 18h0" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="6" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
     </>
   ),
 };

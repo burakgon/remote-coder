@@ -51,6 +51,12 @@ describe("Icon", () => {
       "menu",
       "star",
       "arrow-up",
+      "lock",
+      "folder",
+      "plus",
+      "bell",
+      "power",
+      "sliders",
     ] as const;
     for (const name of names) {
       const { container } = render(<Icon name={name} />);
