@@ -10,6 +10,20 @@ import type { HistoryService } from "./history-service.js";
 
 export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
 
+/**
+ * Decide whether a claude process `exit` was clean (→ dormant, resumable) or a failure (→ errored),
+ * from its `{ code, signal }`. Clean = a 0 exit code, OR a graceful kill signal (SIGTERM/SIGINT/
+ * SIGHUP — what our own stop() and a host shutdown send). A non-zero exit code, or a crash signal
+ * (SIGKILL/SIGSEGV/SIGABRT/SIGBUS/SIGILL/SIGFPE), is a real failure. This only governs SELF-driven
+ * exits; a stop we initiated (intentionalStop) bypasses this entirely.
+ */
+function isCleanExit(info: { code: number | null; signal: NodeJS.Signals | null }): boolean {
+  if (info.signal) return info.signal === "SIGTERM" || info.signal === "SIGINT" || info.signal === "SIGHUP";
+  // code === 0 → clean; non-zero → failure. A null code with no signal shouldn't happen, but treat
+  // it as clean (no evidence of a crash) so a quirky-but-harmless exit doesn't flag red.
+  return info.code === null || info.code === 0;
+}
+
 export interface SessionMeta {
   id: string;
   cwd: string;
@@ -19,6 +33,20 @@ export interface SessionMeta {
   status: SessionStatus;
   createdAt: number;
   permissionMode?: string;
+  /**
+   * TRUE while a permission OR AskUserQuestion is pending for this session and the user hasn't
+   * answered/cancelled it yet. Lets the UI show a "needs you" badge for sessions the client isn't
+   * actively connected to. Transient (never persisted): a session rehydrated from the store at boot
+   * is always `awaiting:false`. Set when the hub emits a permission/question frame; cleared on the
+   * answer/cancel paths and defensively on the next `result`/turn.
+   */
+  awaiting: boolean;
+  /**
+   * Wall-clock ms of the last real conversation activity (user send OR assistant/result frame),
+   * mirrored from the store's `last_activity_at` so the client can sort by real activity. Monotonic
+   * across a session's life.
+   */
+  lastActivityAt: number;
 }
 
 export interface LiveSettings {
@@ -46,6 +74,17 @@ interface SessionRecord {
    * client-echoed one — so a client cannot smuggle a tampered tool_input back into the CLI.
    */
   questionToolInputs: Map<string, unknown>;
+  /**
+   * RequestIds of permissions/questions currently awaiting a user answer for this session. `awaiting`
+   * is `pending.size > 0`; tracking the set (not a bare counter) keeps it correct when several
+   * prompts are open at once and one is answered. Cleared wholesale on a `result`/turn boundary.
+   */
+  pending: Set<string>;
+  /**
+   * Set TRUE by deleteSession/stopAll BEFORE the child is killed, so the `exit` handler can tell a
+   * deliberate stop (→ dormant/removed, NOT an error) from a real crash. Reset on a fresh resume.
+   */
+  intentionalStop: boolean;
 }
 
 export interface SessionHubOptions {
@@ -90,6 +129,7 @@ export class SessionHub {
 
   async createSession(opts: CreateSessionOptions): Promise<SessionMeta> {
     const session = await this.manager.createSession(opts);
+    const now = this.now();
     const meta: SessionMeta = {
       id: session.id,
       cwd: session.cwd,
@@ -97,14 +137,18 @@ export class SessionHub {
       effort: opts.effort,
       dangerouslySkip: opts.dangerouslySkip ?? false,
       status: "running",
-      createdAt: this.now(),
+      createdAt: now,
       permissionMode: opts.dangerouslySkip ? "bypassPermissions" : "default",
+      awaiting: false,
+      lastActivityAt: now,
     };
     const record: SessionRecord = {
       meta,
       buffer: new ReplayBuffer(this.replayCapacity),
       listeners: new Set(),
       questionToolInputs: new Map(),
+      pending: new Set(),
+      intentionalStop: false,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -145,6 +189,7 @@ export class SessionHub {
       dangerouslySkip: opts.dangerouslySkip,
       resumeId: opts.sessionId,
     });
+    const now = this.now();
     const meta: SessionMeta = {
       id: session.id,
       cwd: session.cwd,
@@ -152,8 +197,10 @@ export class SessionHub {
       effort: opts.effort,
       dangerouslySkip: opts.dangerouslySkip ?? false,
       status: "running",
-      createdAt: this.now(),
+      createdAt: now,
       permissionMode: opts.dangerouslySkip ? "bypassPermissions" : "default",
+      awaiting: false,
+      lastActivityAt: now,
     };
     const buffer = new ReplayBuffer(this.replayCapacity);
     // Seed the buffer with the prior conversation (each push assigns a contiguous seq), so any client
@@ -164,6 +211,8 @@ export class SessionHub {
       buffer,
       listeners: new Set(),
       questionToolInputs: new Map(),
+      pending: new Set(),
+      intentionalStop: false,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -201,27 +250,81 @@ export class SessionHub {
 
   private attach(proc: ClaudeProcess, record: SessionRecord): void {
     const emit = (kind: ServerFrameKind, payload: unknown) => this.emitFrame(record, kind, payload);
-    proc.on("event", (ev: InboundEvent) => emit("event", ev));
-    proc.on("permission", (perm: PermissionEvent) => emit("permission", perm));
+    proc.on("event", (ev: InboundEvent) => {
+      // Assistant activity (the CLI streams events as it works) counts as conversation activity for
+      // sorting; bump lastActivityAt so a session that's actively responding sorts above an idle one.
+      this.markActivity(record);
+      emit("event", ev);
+    });
+    proc.on("permission", (perm: PermissionEvent) => {
+      this.setAwaiting(record, perm.requestId, true);
+      emit("permission", perm);
+    });
     proc.on("question", (q: QuestionEvent) => {
       // SECURITY: remember the CLI's original tool_input for this requestId so answerQuestion
       // replays IT (not a client-echoed value) back into the CLI.
       record.questionToolInputs.set(q.requestId, q.toolInput);
+      this.setAwaiting(record, q.requestId, true);
       emit("question", q);
     });
-    proc.on("result", (result: ResultEvent) => emit("result", result));
+    proc.on("result", (result: ResultEvent) => {
+      // A turn finished: nothing is pending anymore (defensive clear in case an answer frame was
+      // dropped), and this is real conversation activity.
+      this.clearAllAwaiting(record);
+      this.markActivity(record);
+      emit("result", result);
+    });
     proc.on("diagnostic", (diag: DiagnosticEvent) => emit("diagnostic", diag));
     // CRITICAL: Node's EventEmitter throws on an "error" event with no listener.
     // ClaudeProcess.write() emits "error" on write-after-teardown, so every managed
     // process MUST have an "error" listener. Fold it into a diagnostic frame (spec §10).
     proc.on("error", (err: Error) => {
       record.meta.status = "errored";
+      this.persist(record.meta);
       emit("diagnostic", { source: "parser", message: err.message } satisfies DiagnosticEvent);
     });
     proc.on("exit", (info) => {
-      if (record.meta.status !== "stopped") record.meta.status = "errored";
+      // A deliberate stop (deleteSession/stopAll) is being torn down separately — don't fight it by
+      // flipping to errored. For a self-driven exit: a clean exit (code 0, or a kill signal from a
+      // graceful stop) leaves the session DORMANT (resumable, not an error); a non-zero exit code or
+      // an unexpected crash signal is a real failure → errored.
+      if (!record.intentionalStop && record.meta.status !== "errored") {
+        record.meta.status = isCleanExit(info) ? "dormant" : "errored";
+        record.meta.awaiting = false;
+        record.pending.clear();
+        this.persist(record.meta);
+      }
       emit("exit", info);
     });
+  }
+
+  /** Mark a request pending/answered and recompute `meta.awaiting` (true iff anything is pending). */
+  private setAwaiting(record: SessionRecord, requestId: string, awaiting: boolean): void {
+    if (awaiting) record.pending.add(requestId);
+    else record.pending.delete(requestId);
+    record.meta.awaiting = record.pending.size > 0;
+  }
+
+  /** Clear every pending prompt for a session (turn boundary / exit). */
+  private clearAllAwaiting(record: SessionRecord): void {
+    record.pending.clear();
+    record.meta.awaiting = false;
+  }
+
+  /**
+   * Bump lastActivityAt (in-memory meta + durable store) to mark real conversation activity.
+   * The store write is best-effort: a killed child can flush buffered stdout events AFTER the
+   * onClose hook has closed the store ("database connection is not open"), and a touch failing
+   * must never unwind the process emit — the in-memory meta is the source of truth for live reads.
+   */
+  private markActivity(record: SessionRecord): void {
+    const at = this.now();
+    record.meta.lastActivityAt = at;
+    try {
+      this.store?.touch(record.meta.id, at);
+    } catch {
+      // store closed/unavailable — in-memory lastActivityAt already updated; ignore (spec §10)
+    }
   }
 
   listSessions(): SessionMeta[] {
@@ -270,7 +373,9 @@ export class SessionHub {
   async sendMessage(id: string, content: string | ContentBlock[]): Promise<void> {
     await this.ensureLive(id);
     this.manager.sendMessage(id, content);
-    this.store?.touch(id, this.now());
+    // User send is conversation activity: bump lastActivityAt (in-memory meta + durable store).
+    const record = this.records.get(id);
+    if (record) this.markActivity(record);
   }
 
   async answerPermission(
@@ -281,10 +386,13 @@ export class SessionHub {
   ): Promise<void> {
     await this.ensureLive(id);
     this.manager.answerPermission(id, requestId, decision, reason);
+    const record = this.records.get(id);
     // A skipped/denied AskUserQuestion routes through here (the web client sends a `deny`
     // permission for "Skip"), so the remembered tool_input would otherwise leak for the session
     // lifetime — answerQuestion deletes it on the answer path, mirror that on the cancel path.
-    this.records.get(id)?.questionToolInputs.delete(requestId);
+    record?.questionToolInputs.delete(requestId);
+    // The prompt is answered: drop it from the pending set and recompute `awaiting`.
+    if (record) this.setAwaiting(record, requestId, false);
   }
 
   /**
@@ -306,6 +414,8 @@ export class SessionHub {
       : _clientToolInput;
     this.manager.answerQuestion(id, requestId, remembered, answers);
     record.questionToolInputs.delete(requestId);
+    // The question is answered: drop it from the pending set and recompute `awaiting`.
+    this.setAwaiting(record, requestId, false);
   }
 
   /**
@@ -331,32 +441,79 @@ export class SessionHub {
     return record.meta;
   }
 
-  stopSession(id: string): void {
+  /**
+   * Close a session: stop its live `claude` process (if any), then REMOVE it from the in-memory list
+   * AND the durable store. Idempotent — closing an unknown id is a no-op. The claude transcript
+   * `.jsonl` is NOT touched (claude owns it; the session stays resumable via the /resume flow +
+   * GET /resumable). Both the chat ✕ and the Settings "Stop session" converge here.
+   */
+  deleteSession(id: string): void {
     const record = this.records.get(id);
-    if (!record) return;
-    record.meta.status = "stopped";
-    this.persist(record.meta);
-    this.manager.stopSession(id);
+    if (!record) return; // unknown id → no-op (idempotent)
+    // Mark BEFORE killing so the `exit` handler treats this as a deliberate stop, not a crash.
+    record.intentionalStop = true;
+    if (this.manager.getSession(id)) this.manager.stopSession(id);
+    // Drop every trace from the hub + store; the transcript on disk is intentionally left alone.
+    this.records.delete(id);
+    this.resumeInFlight.delete(id);
+    record.listeners.clear();
+    record.questionToolInputs.clear();
+    record.pending.clear();
+    this.store?.delete(id);
   }
 
-  /** Stop every live session — used by the server's onClose hook so no child `claude` is left running. */
+  /**
+   * Stop a session. Now an alias for {@link deleteSession}: both the chat ✕ and the Settings
+   * "Stop session" must make the session disappear from the list (stop the process AND remove the
+   * record + store row), keeping the transcript resumable. A subsequent GET /sessions — even after a
+   * server restart that reconstructs the hub from the store — will not include it.
+   */
+  stopSession(id: string): void {
+    this.deleteSession(id);
+  }
+
+  /**
+   * Stop every LIVE session's child `claude` for a graceful server shutdown (onClose hook) WITHOUT
+   * removing the records: a deploy/restart must leave sessions DORMANT (resumable) in the store, not
+   * delete them. Each live process is killed (intentionalStop, so the exit handler won't flag it
+   * errored) and its meta written back as dormant so it rehydrates correctly after the restart.
+   */
   stopAll(): void {
-    for (const id of this.records.keys()) this.stopSession(id);
+    for (const [id, record] of this.records) {
+      if (this.manager.getSession(id)) {
+        record.intentionalStop = true;
+        this.manager.stopSession(id);
+      }
+      record.meta.status = "dormant";
+      record.meta.awaiting = false;
+      record.pending.clear();
+      this.persist(record.meta);
+    }
   }
 
-  /** Write the session's current meta to the durable store (no-op when no store is configured). */
+  /**
+   * Write the session's current meta to the durable store (no-op when no store is configured).
+   * `lastActivityAt` carries the meta's own value (kept fresh by markActivity) so persisting a
+   * status/settings change can't clobber the real last-activity time — `awaiting` is transient and
+   * deliberately NOT persisted (a rehydrated session is always awaiting:false).
+   */
   private persist(meta: SessionMeta): void {
-    this.store?.upsert({
-      id: meta.id,
-      cwd: meta.cwd,
-      model: meta.model,
-      effort: meta.effort,
-      dangerouslySkip: meta.dangerouslySkip,
-      status: meta.status,
-      createdAt: meta.createdAt,
-      lastActivityAt: this.now(),
-      permissionMode: meta.permissionMode,
-    });
+    try {
+      this.store?.upsert({
+        id: meta.id,
+        cwd: meta.cwd,
+        model: meta.model,
+        effort: meta.effort,
+        dangerouslySkip: meta.dangerouslySkip,
+        status: meta.status,
+        createdAt: meta.createdAt,
+        lastActivityAt: meta.lastActivityAt,
+        permissionMode: meta.permissionMode,
+      });
+    } catch {
+      // best-effort: an exit/error frame can land AFTER onClose closed the store; the in-memory meta
+      // is authoritative for live reads and the store already holds the last good state. (spec §10)
+    }
   }
 
   /** Rehydrate DORMANT session metas from the store at boot (no live process is spawned). */
@@ -373,12 +530,17 @@ export class SessionHub {
         status: "dormant",
         createdAt: s.createdAt,
         permissionMode: s.permissionMode,
+        // A rehydrated session has no live process and no pending prompt: never awaiting on boot.
+        awaiting: false,
+        lastActivityAt: s.lastActivityAt,
       };
       this.records.set(s.id, {
         meta,
         buffer: new ReplayBuffer(this.replayCapacity),
         listeners: new Set(),
         questionToolInputs: new Map(),
+        pending: new Set(),
+        intentionalStop: false,
       });
     }
   }
@@ -401,6 +563,10 @@ export class SessionHub {
         dangerouslySkip: record.meta.dangerouslySkip,
       });
       record.meta.status = "running";
+      // Fresh live process: clear the deliberate-stop guard so its eventual exit is judged on its own
+      // merits (clean → dormant, crash → errored), and start from a clean awaiting state.
+      record.intentionalStop = false;
+      this.clearAllAwaiting(record);
       this.attach(session.process, record);
       this.persist(record.meta);
     })();

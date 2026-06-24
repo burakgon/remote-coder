@@ -46,9 +46,10 @@ test("app.close() reaps live sessions (onClose -> hub.stopAll -> child stopped)"
   await result.app.close();
   current = undefined; // already closed; don't double-close in afterEach
 
-  // onClose fired -> hub.stopAll() -> manager.stopSession() removed the session (child killed).
+  // onClose fired -> hub.stopAll() -> manager.stopSession() removed the LIVE child (killed), but the
+  // hub record SURVIVES as dormant so a deploy/restart leaves the session resumable (not removed).
   expect(manager.getSession(id)).toBeUndefined();
-  expect(result.hub.getSession(id)?.status).toBe("stopped");
+  expect(result.hub.getSession(id)?.status).toBe("dormant");
 });
 
 test("app.close() closes the session store, idempotency store, and push store (onClose)", async () => {
@@ -97,6 +98,7 @@ test("hub.stopAll() stops every live session", async () => {
   expect(manager.getSession(a)).toBeUndefined();
   expect(manager.getSession(b)).toBeUndefined();
   expect(manager.listSessions()).toHaveLength(0);
-  expect(result.hub.getSession(a)?.status).toBe("stopped");
-  expect(result.hub.getSession(b)?.status).toBe("stopped");
+  // Records survive shutdown as dormant (resumable), not removed.
+  expect(result.hub.getSession(a)?.status).toBe("dormant");
+  expect(result.hub.getSession(b)?.status).toBe("dormant");
 });

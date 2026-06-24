@@ -282,13 +282,24 @@ export function createServer(
     return { session: meta, history: await hub.getHistory(request.params.id) };
   });
 
+  // Close a session: stop its live process AND remove it from the list + store (transcript untouched,
+  // so it stays resumable via /resume + GET /resumable). Idempotent — deleting an unknown id is a
+  // 204 no-op, not a 404 — so a double-close / a stale client both succeed.
+  app.delete<{ Params: { id: string } }>("/sessions/:id", async (request, reply) => {
+    hub.deleteSession(request.params.id);
+    reply.code(204).send();
+  });
+
+  // Legacy stop endpoint — kept working, but now CONVERGES on full removal (stop + delete), so the
+  // chat disappears whether the client hit ✕ (DELETE) or Settings "Stop session" (this). 404 only
+  // when the session is already gone, preserving the old "stop a known session" contract.
   app.post<{ Params: { id: string } }>("/sessions/:id/stop", async (request, reply) => {
     const meta = hub.getSession(request.params.id);
     if (!meta) {
       reply.code(404).send({ error: "session not found" });
       return;
     }
-    hub.stopSession(request.params.id);
+    hub.deleteSession(request.params.id);
     return { ok: true };
   });
 

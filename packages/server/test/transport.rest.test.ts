@@ -83,7 +83,7 @@ test("GET /sessions/:id returns the session + (empty) history; unknown -> 404", 
   expect(missing.statusCode).toBe(404);
 });
 
-test("POST /sessions/:id/stop stops a session", async () => {
+test("POST /sessions/:id/stop removes a session (stop + delete; transcript untouched)", async () => {
   current = makeServer();
   const created = await current.app.inject({
     method: "POST",
@@ -96,6 +96,56 @@ test("POST /sessions/:id/stop stops a session", async () => {
   expect(stopped.statusCode).toBe(200);
   expect(stopped.json().ok).toBe(true);
 
+  // Stop now CONVERGES on full removal: the session is gone from both the detail route and the list.
   const after = await current.app.inject({ method: "GET", url: `/sessions/${id}`, headers: auth });
-  expect(after.json().session.status).toBe("stopped");
+  expect(after.statusCode).toBe(404);
+  const list = await current.app.inject({ method: "GET", url: "/sessions", headers: auth });
+  expect(list.json().sessions.map((s: { id: string }) => s.id)).not.toContain(id);
+});
+
+test("DELETE /sessions/:id removes a session (204) and is idempotent on an unknown id", async () => {
+  current = makeServer();
+  const created = await current.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: auth,
+    payload: { cwd: process.cwd() },
+  });
+  const id = created.json().session.id;
+
+  const deleted = await current.app.inject({ method: "DELETE", url: `/sessions/${id}`, headers: auth });
+  expect(deleted.statusCode).toBe(204);
+
+  const after = await current.app.inject({ method: "GET", url: `/sessions/${id}`, headers: auth });
+  expect(after.statusCode).toBe(404);
+  const list = await current.app.inject({ method: "GET", url: "/sessions", headers: auth });
+  expect(list.json().sessions.map((s: { id: string }) => s.id)).not.toContain(id);
+
+  // Idempotent: deleting again (now unknown) is still a 204 no-op, not an error.
+  const again = await current.app.inject({ method: "DELETE", url: `/sessions/${id}`, headers: auth });
+  expect(again.statusCode).toBe(204);
+});
+
+test("DELETE /sessions/:id requires a token (401 without auth)", async () => {
+  current = makeServer();
+  const res = await current.app.inject({ method: "DELETE", url: "/sessions/whatever" });
+  expect(res.statusCode).toBe(401);
+});
+
+test("a created session exposes awaiting:false and a numeric lastActivityAt", async () => {
+  current = makeServer();
+  const created = await current.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: auth,
+    payload: { cwd: process.cwd() },
+  });
+  const session = created.json().session;
+  expect(session.awaiting).toBe(false);
+  expect(typeof session.lastActivityAt).toBe("number");
+
+  const listed = await current.app.inject({ method: "GET", url: "/sessions", headers: auth });
+  const fromList = listed.json().sessions.find((s: { id: string }) => s.id === session.id);
+  expect(fromList.awaiting).toBe(false);
+  expect(typeof fromList.lastActivityAt).toBe("number");
 });
