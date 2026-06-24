@@ -9,7 +9,7 @@ import { SessionHub } from "./session-hub.js";
 import { AuthGate, extractBearerToken } from "./auth.js";
 import { registerStatic, isPublicForRequest } from "./static-routes.js";
 import { buildImageBlock } from "@remote-coder/protocol";
-import type { ContentBlock, HookPermissionDecision } from "@remote-coder/protocol";
+import type { ContentBlock, HookPermissionDecision, QuestionSpec } from "@remote-coder/protocol";
 import {
   defaultProjectsDir,
   findTranscriptFile,
@@ -347,6 +347,30 @@ export function createServer(
     },
   );
 
+  // Claude asks the user a multiple-choice question: the mcp-send stdio server POSTs the questions here
+  // on an `ask_user` tool call and this request is HELD OPEN (long-poll) until the user answers in the
+  // web UI, the prompt is dismissed, or it times out (~10 min). The hub emits a `question` frame (with
+  // an askId) so the existing web QuestionPrompt renders it; a matching WS `answer` resolves this promise.
+  // Token-gated by the global preHandler.
+  app.post<{ Params: { id: string }; Body: { questions?: unknown } }>(
+    "/sessions/:id/ask",
+    async (request, reply) => {
+      if (!hub.getSession(request.params.id)) {
+        reply.code(404).send({ error: "session not found" });
+        return;
+      }
+      const questions = parseAskQuestions(request.body?.questions);
+      if (!questions) {
+        reply.code(400).send({ error: "questions must be a non-empty array, each with 1+ options" });
+        return;
+      }
+      // Block until the user answers / the ask is cancelled (timeout or session stop). askUser never
+      // rejects, so this always resolves to { answers } or { cancelled: true }.
+      const result = await hub.askUser(request.params.id, questions);
+      reply.code(200).send(result);
+    },
+  );
+
   // Web Push opt-in routes (spec §1). The whole `/push/*` namespace is token-gated by the global
   // preHandler (it is in API_PATH_DENYLIST), including GET /push/vapid — the PWA already holds the
   // token by the time it opts into push, so no special-casing is needed.
@@ -518,10 +542,17 @@ function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unkn
     return;
   }
   if (msg.type === "answer") {
-    const requestId = typeof msg.requestId === "string" ? msg.requestId : undefined;
     const answers = isAnswerMap(msg.answers) ? msg.answers : undefined;
+    if (!answers) return;
+    // ask_user path (our MCP tool): an answer carrying an `askId` resolves the matching pending POST
+    // /ask long-poll. answerAsk returns false for an unknown/stale askId — fall through to the legacy
+    // built-in-question path in that case so a tampered/duplicate askId can't swallow the answer.
+    const askId = typeof msg.askId === "string" ? msg.askId : undefined;
+    if (askId && hub.answerAsk(id, askId, answers)) return;
+    // Legacy built-in AskUserQuestion path: routed by requestId back into the CLI.
+    const requestId = typeof msg.requestId === "string" ? msg.requestId : undefined;
     // NOTE: msg.toolInput is IGNORED by the hub (it replays the server-remembered tool_input).
-    if (requestId && answers) void hub.answerQuestion(id, requestId, msg.toolInput, answers).catch(() => {});
+    if (requestId) void hub.answerQuestion(id, requestId, msg.toolInput, answers).catch(() => {});
     return;
   }
   if (msg.type === "settings") {
@@ -544,6 +575,40 @@ function isAnswerMap(v: unknown): v is Record<string, string | string[]> {
     if (!ok) return false;
   }
   return true;
+}
+
+/**
+ * Validate + normalize the `ask_user` body (POST /sessions/:id/ask) into QuestionSpec[]. Requires a
+ * non-empty array of questions, each a non-empty `question` string with 1+ options that each have a
+ * non-empty `label`. Returns null for any malformed shape (the route answers 400). Coerces missing
+ * `multiSelect` to false and drops unknown fields so only well-formed specs reach the hub/web.
+ */
+function parseAskQuestions(v: unknown): QuestionSpec[] | null {
+  if (!Array.isArray(v) || v.length === 0) return null;
+  const out: QuestionSpec[] = [];
+  for (const raw of v) {
+    if (typeof raw !== "object" || raw === null) return null;
+    const q = raw as Record<string, unknown>;
+    if (typeof q.question !== "string" || q.question.length === 0) return null;
+    if (!Array.isArray(q.options) || q.options.length === 0) return null;
+    const options: QuestionSpec["options"] = [];
+    for (const o of q.options) {
+      if (typeof o !== "object" || o === null) return null;
+      const opt = o as Record<string, unknown>;
+      if (typeof opt.label !== "string" || opt.label.length === 0) return null;
+      options.push({
+        label: opt.label,
+        ...(typeof opt.description === "string" ? { description: opt.description } : {}),
+      });
+    }
+    out.push({
+      question: q.question,
+      ...(typeof q.header === "string" ? { header: q.header } : {}),
+      multiSelect: q.multiSelect === true,
+      options,
+    });
+  }
+  return out;
 }
 
 /** A content block is only forwarded if it is a well-formed text or image block. */

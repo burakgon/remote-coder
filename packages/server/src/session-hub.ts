@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { SessionManager } from "./session-manager.js";
 import { ReplayBuffer } from "./replay-buffer.js";
 import type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
 import type { CreateSessionOptions } from "./session-manager.js";
 import type { ClaudeProcess, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
 import type { AttachmentPayload } from "./fs-service.js";
-import type { ContentBlock, HookPermissionDecision, InboundEvent, ResultEvent } from "@remote-coder/protocol";
+import type {
+  ContentBlock,
+  HookPermissionDecision,
+  InboundEvent,
+  QuestionSpec,
+  ResultEvent,
+} from "@remote-coder/protocol";
 import type { SessionStore } from "./session-store.js";
 import type { HistoryService } from "./history-service.js";
 
@@ -64,6 +71,25 @@ export interface Subscription {
   unsubscribe(): void;
 }
 
+/** A per-question answer map: question text -> a chosen label / custom "Other" text, or many (multi-select). */
+export type AskAnswers = Record<string, string | string[]>;
+
+/**
+ * Result of an `ask_user` round-trip. `cancelled: true` (with no answers) means the user dismissed the
+ * prompt, the ask timed out, or the session stopped while waiting; otherwise `answers` holds the user's
+ * selections keyed by question text. The MCP tool maps this to a text tool-result for Claude.
+ */
+export type AskResult = { answers: AskAnswers } | { cancelled: true };
+
+/** Pending `ask_user` request awaiting a web answer: how to resolve it, and the timer to clear on resolve. */
+interface PendingAsk {
+  resolve: (result: AskResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** Default time (ms) the server holds an `ask_user` request open before giving up and cancelling it. */
+export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
+
 interface SessionRecord {
   meta: SessionMeta;
   buffer: ReplayBuffer;
@@ -80,6 +106,12 @@ interface SessionRecord {
    * prompts are open at once and one is answered. Cleared wholesale on a `result`/turn boundary.
    */
   pending: Set<string>;
+  /**
+   * In-flight `ask_user` requests for this session, keyed by askId. Each is a Promise the POST /ask
+   * route awaits; it resolves when a matching WS answer arrives, when the ask times out, or when the
+   * session stops (cancelled). Rejected/leaked timers are why deleteSession/stopAll drain this map.
+   */
+  pendingAsks: Map<string, PendingAsk>;
   /**
    * Set TRUE by deleteSession/stopAll BEFORE the child is killed, so the `exit` handler can tell a
    * deliberate stop (→ dormant/removed, NOT an error) from a real crash. Reset on a fresh resume.
@@ -148,6 +180,7 @@ export class SessionHub {
       listeners: new Set(),
       questionToolInputs: new Map(),
       pending: new Set(),
+      pendingAsks: new Map(),
       intentionalStop: false,
     };
     this.records.set(session.id, record);
@@ -212,6 +245,7 @@ export class SessionHub {
       listeners: new Set(),
       questionToolInputs: new Map(),
       pending: new Set(),
+      pendingAsks: new Map(),
       intentionalStop: false,
     };
     this.records.set(session.id, record);
@@ -246,6 +280,63 @@ export class SessionHub {
   pushAttachment(id: string, payload: AttachmentPayload): ServerFrame {
     const record = this.require(id);
     return this.emitFrame(record, "attachment", payload);
+  }
+
+  /**
+   * Surface an `ask_user` multiple-choice question to the web UI and WAIT for the user's answer. This
+   * backs the `mcp__remote-coder__ask_user` tool (POST /sessions/:id/ask, held open by the caller).
+   *
+   * Generates an `askId`, records a pending {askId → resolve} on the session, then emits a `question`
+   * frame carrying that askId + the questions (reusing the existing critical/replayable `question` kind
+   * so the web QuestionPrompt renders it and it survives a WS reconnect). The returned Promise resolves
+   * when the web answers (answerAsk, matched by askId), after a {@link ASK_TIMEOUT_MS} timeout, or when
+   * the session stops (cancelAllAsks) — always to an AskResult, never rejects, so the held HTTP request
+   * and the MCP tool can always complete. `requestId` mirrors `askId` so the unchanged web reducer (which
+   * keys pendingQuestion on `requestId`) renders it; the explicit `askId` routes the answer back here.
+   */
+  askUser(id: string, questions: QuestionSpec[]): Promise<AskResult> {
+    const record = this.require(id);
+    const askId = `ask-${randomUUID()}`;
+    return new Promise<AskResult>((resolve) => {
+      const timer = setTimeout(() => {
+        // Timed out: the user never answered. Drop the pending entry and report cancellation so the
+        // held POST /ask responds and the MCP tool returns rather than hanging forever.
+        if (record.pendingAsks.delete(askId)) this.setAwaiting(record, askId, false);
+        resolve({ cancelled: true });
+      }, ASK_TIMEOUT_MS);
+      // Don't let a pending ask-timer keep the process alive on shutdown (the timer is cleared on
+      // answer/cancel anyway). `unref` is unavailable on some timer mocks — guard it.
+      timer.unref?.();
+      record.pendingAsks.set(askId, { resolve, timer });
+      this.setAwaiting(record, askId, true);
+      this.emitFrame(record, "question", { requestId: askId, askId, toolInput: { questions }, questions });
+    });
+  }
+
+  /**
+   * Resolve a pending `ask_user` with the user's selections (the WS inbound `answer` path routes here
+   * when the message carries a matching `askId`). Clears the timeout + pending entry and recomputes
+   * `awaiting`. Returns false for an unknown/already-resolved askId (stale or duplicate answer) so the
+   * caller can fall through to the legacy built-in-question path.
+   */
+  answerAsk(id: string, askId: string, answers: AskAnswers): boolean {
+    const record = this.records.get(id);
+    const pending = record?.pendingAsks.get(askId);
+    if (!record || !pending) return false;
+    clearTimeout(pending.timer);
+    record.pendingAsks.delete(askId);
+    this.setAwaiting(record, askId, false);
+    pending.resolve({ answers });
+    return true;
+  }
+
+  /** Cancel every pending `ask_user` for a session (stop/delete/exit) so no held request leaks. */
+  private cancelAllAsks(record: SessionRecord): void {
+    for (const [, pending] of record.pendingAsks) {
+      clearTimeout(pending.timer);
+      pending.resolve({ cancelled: true });
+    }
+    record.pendingAsks.clear();
   }
 
   private attach(proc: ClaudeProcess, record: SessionRecord): void {
@@ -294,6 +385,10 @@ export class SessionHub {
         record.pending.clear();
         this.persist(record.meta);
       }
+      // The child is gone: any `ask_user` still waiting can never be answered now — cancel them so the
+      // held POST /ask requests (and the MCP tools) return instead of hanging. (A deliberate stop already
+      // drained them in delete/stopAll; this covers a self-driven exit/crash mid-question.)
+      this.cancelAllAsks(record);
       emit("exit", info);
     });
   }
@@ -452,6 +547,9 @@ export class SessionHub {
     if (!record) return; // unknown id → no-op (idempotent)
     // Mark BEFORE killing so the `exit` handler treats this as a deliberate stop, not a crash.
     record.intentionalStop = true;
+    // Cancel any in-flight ask_user BEFORE killing the child so its held POST /ask requests (and the
+    // waiting MCP tools) resolve as cancelled instead of leaking timers / hanging forever.
+    this.cancelAllAsks(record);
     if (this.manager.getSession(id)) this.manager.stopSession(id);
     // Drop every trace from the hub + store; the transcript on disk is intentionally left alone.
     this.records.delete(id);
@@ -484,6 +582,9 @@ export class SessionHub {
         record.intentionalStop = true;
         this.manager.stopSession(id);
       }
+      // Cancel pending ask_user requests so a graceful shutdown doesn't leave held HTTP requests (and
+      // their MCP tools) hanging while the child is killed out from under them.
+      this.cancelAllAsks(record);
       record.meta.status = "dormant";
       record.meta.awaiting = false;
       record.pending.clear();
@@ -540,6 +641,7 @@ export class SessionHub {
         listeners: new Set(),
         questionToolInputs: new Map(),
         pending: new Set(),
+        pendingAsks: new Map(),
         intentionalStop: false,
       });
     }

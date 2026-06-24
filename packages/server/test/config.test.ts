@@ -154,3 +154,23 @@ test("a fresh session emits --session-id and not --resume", () => {
   expect(args).toContain("--session-id");
   expect(args).not.toContain("--resume");
 });
+
+test("mcpConfigPath also allow-lists ask_user and appends a system prompt teaching Claude to use it", () => {
+  const args = buildClaudeArgs({ sessionId: "sid-1", mcpConfigPath: "/data/mcp-config-sid-1.json" });
+  // ask_user joins the two send tools in the standing allow-list.
+  expect(args).toContain("mcp__remote-coder__ask_user");
+  expect(args).toContain("mcp__remote-coder__send_image");
+  expect(args).toContain("mcp__remote-coder__send_file");
+  // The system prompt nudges Claude to call ask_user (the built-in AskUserQuestion is unavailable here).
+  const i = args.indexOf("--append-system-prompt");
+  expect(i).toBeGreaterThanOrEqual(0);
+  const prompt = args[i + 1];
+  expect(prompt).toContain("mcp__remote-coder__ask_user");
+  expect(prompt).toMatch(/AskUserQuestion/);
+});
+
+test("NO --append-system-prompt and no ask_user allow when mcpConfigPath is absent (additive)", () => {
+  const args = buildClaudeArgs({ sessionId: "sid-1" });
+  expect(args).not.toContain("--append-system-prompt");
+  expect(args).not.toContain("mcp__remote-coder__ask_user");
+});

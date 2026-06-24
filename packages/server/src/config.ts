@@ -124,13 +124,28 @@ export function buildClaudeArgs(opts: BuildClaudeArgsOptions): string[] {
   // a per-session mode-0600 file before calling this; we only reference its path here.
   if (opts.mcpConfigPath) {
     args.push("--mcp-config", opts.mcpConfigPath);
-    // Auto-approve the two send tools so Claude can deliver a file/image to the user WITHOUT a
-    // permission prompt, in ANY permission mode. Per the Agent docs, `allowedTools` is the right way
-    // to grant MCP tools (a permission mode like `default` would otherwise prompt for every MCP call;
-    // `bypassPermissions` auto-approves but is broader than needed). Sending a file TO the already-
-    // authenticated user is low-risk, so a standing allow is appropriate. The server name in the
-    // generated config is `remote-coder`, so the tool ids are `mcp__remote-coder__<tool>`.
-    args.push("--allowedTools", "mcp__remote-coder__send_image", "mcp__remote-coder__send_file");
+    // Auto-approve the send + ask tools so Claude can deliver a file/image to the user AND ask the user
+    // a multiple-choice question WITHOUT a permission prompt, in ANY permission mode. Per the Agent docs,
+    // `allowedTools` is the right way to grant MCP tools (a permission mode like `default` would otherwise
+    // prompt for every MCP call; `bypassPermissions` auto-approves but is broader than needed). All three
+    // act on the already-authenticated user's own chat, so a standing allow is appropriate. The server
+    // name in the generated config is `remote-coder`, so the tool ids are `mcp__remote-coder__<tool>`.
+    args.push(
+      "--allowedTools",
+      "mcp__remote-coder__send_image",
+      "mcp__remote-coder__send_file",
+      "mcp__remote-coder__ask_user",
+    );
+    // Teach Claude to USE our ask_user tool: the built-in AskUserQuestion is NOT available in this
+    // stream-json environment, so without this nudge Claude would try (and fail) to ask multi-choice
+    // questions. Keep it concise — and free of secrets (this lands in argv).
+    args.push(
+      "--append-system-prompt",
+      "To ask the user a single- or multiple-choice question, you MUST call the " +
+        "mcp__remote-coder__ask_user tool with a `questions` array (each question has 1+ `options`; set " +
+        "`multiSelect: true` to allow several). It returns the user's selection(s). The built-in " +
+        "AskUserQuestion tool is unavailable in this environment — do not rely on it.",
+    );
   }
 
   return args;
