@@ -22,4 +22,20 @@ describe("LiveWire", () => {
     render(<LiveWire state="thinking" aria-label="Session alpha is thinking" />);
     expect(screen.getByLabelText("Session alpha is thinking")).toBeInTheDocument();
   });
+
+  // Nebula: the "working" (running-tool) state must PULSE its (cyan) dot — the live signal. The dot
+  // is the aria-hidden span inside the status; assert it carries the rc-pulse animation + the cyan token.
+  it("pulses the cyan working dot while running a tool", () => {
+    const { container } = render(<LiveWire state="running-tool" />);
+    const dot = container.querySelector("span[aria-hidden]") as HTMLElement;
+    expect(dot).not.toBeNull();
+    expect(dot.style.animation).toContain("rc-pulse");
+    expect(dot.style.background).toBe("var(--cyan)");
+  });
+
+  it("leaves an idle dot static (no pulse)", () => {
+    const { container } = render(<LiveWire state="idle" />);
+    const dot = container.querySelector("span[aria-hidden]") as HTMLElement;
+    expect(dot.style.animation).toBe("none");
+  });
 });

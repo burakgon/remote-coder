@@ -31,9 +31,9 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
           alignItems: "center",
           gap: "var(--sp-2)",
           minHeight: 34,
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-          color: "var(--text-muted)",
+          background: "var(--accent-soft)",
+          border: "1px solid var(--accent-line)",
+          color: "var(--accent)",
           borderRadius: 999,
           padding: "var(--sp-1) var(--sp-3)",
           fontFamily: "var(--font-display)",
@@ -43,9 +43,11 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
         }}
       >
         <Icon name="bolt" size={15} style={{ color: "var(--accent)" }} />
-        <span style={{ color: "var(--text)" }}>{tools.length}</span>
+        <span style={{ color: "var(--accent)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+          {tools.length}
+        </span>
         <span>auto-allowed</span>
-        <Icon name={open ? "chevron-down" : "chevron-right"} size={13} style={{ color: "var(--text-faint)" }} />
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={13} style={{ color: "var(--accent)" }} />
       </button>
 
       {open && (

@@ -126,11 +126,14 @@ export function Composer({
     <div
       className="rc-composer"
       style={{
-        // Calm composer surface: a hairline top border + a soft blur'd gradient (Variant A). The
-        // controls sit on it without elevation noise; Send is the one amber affordance.
+        // Glassy Nebula composer: a hairline top border + a translucent, blurred surface over the
+        // ambient glow. The controls sit on it without elevation noise; Send is the one violet
+        // primary affordance (gradient + pop glow).
         borderTop: "1px solid var(--border)",
         padding: "var(--sp-3)",
-        background: "var(--surface)",
+        background: "var(--glass)",
+        backdropFilter: "var(--glass-blur)",
+        WebkitBackdropFilter: "var(--glass-blur)",
         display: "grid",
         gap: "var(--sp-2)",
       }}
@@ -272,8 +275,8 @@ export function Composer({
             minWidth: 0,
             minHeight: "var(--tap-min)",
             resize: "vertical",
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            border: "1px solid var(--border-strong)",
             borderRadius: "var(--radius)",
             color: "var(--text)",
             padding: "var(--sp-2) var(--sp-3)",
@@ -319,7 +322,7 @@ export function Composer({
         >
           <Icon name="paperclip" size={19} />
         </button>
-        {/* Send — the ONE amber primary affordance in the composer. */}
+        {/* Send — the ONE violet primary affordance in the composer (gradient + pop glow). */}
         <button
           type="button"
           onClick={send}
@@ -333,8 +336,9 @@ export function Composer({
             placeItems: "center",
             borderRadius: "var(--radius)",
             border: 0,
-            background: "var(--accent)",
+            background: "linear-gradient(180deg, var(--accent-2), var(--accent))",
             color: "var(--on-accent)",
+            boxShadow: canSend ? "var(--shadow-pop)" : "none",
             cursor: canSend ? "pointer" : "default",
             opacity: canSend ? 1 : 0.5,
           }}

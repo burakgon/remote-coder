@@ -7,6 +7,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 html,
 body,
@@ -15,11 +16,17 @@ body,
   margin: 0;
 }
 body {
-  background: var(--bg);
+  /* Nebula: the whole app sits on a very-subtle violet→cyan ambient glow over the
+     deep near-black bg. `fixed` keeps it anchored to the viewport so the glow stays
+     behind the app while content scrolls. The glow is gated to nothing motion-wise;
+     it is purely static color depth. */
+  background: var(--ambient) fixed;
+  background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
   font-size: var(--fs-base);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 h1,
 h2,
@@ -31,18 +38,64 @@ h3,
 button {
   font-family: inherit;
 }
-/* Visible keyboard focus everywhere (a11y floor) */
+/* Visible keyboard focus everywhere (a11y floor) — violet ring + a soft violet glow. */
 :focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
 }
 
+/* Selection + scrollbars — tuned to Nebula violet so even the chrome reads on-theme. */
+::selection {
+  background: rgba(124, 92, 255, 0.32);
+  color: var(--text);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* ---------------------------------------------------------------------------
-   Motion — restrained, quick, calm (Variant A). Each keyframe is defined once
-   here so any component (the iris card, the live-wire, popovers) can reference
-   it by name; all of it is neutralized by the prefers-reduced-motion block
-   below. Keep animations short and subtle — chrome should never call attention
-   to itself; only the iris "awaiting you" card earns a deliberate entrance.
+   Glass / elevation utilities — the glassy Nebula chrome. A `.rc-glass` surface
+   is translucent + blurred so the ambient glow shows through; `.rc-glow` lends
+   the violet attention halo. Components opt in by class or by the matching tokens.
+   --------------------------------------------------------------------------- */
+.rc-glass {
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+.rc-glow {
+  box-shadow: var(--glow-accent);
+}
+/* A quiet glassy hairline tool-step row — surfaces a subtle highlight on hover/focus. */
+.rc-tool-step:hover,
+.rc-tool-step:focus-visible {
+  background: var(--surface-2) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion — restrained, quick, calm. Each keyframe is defined once here so any
+   component (the iris card, the live-wire, popovers) can reference it by name; all
+   of it is neutralized by the prefers-reduced-motion block below. Chrome should
+   never call attention to itself; only the violet "awaiting you" card + the cyan
+   "working" pulse earn deliberate motion. Colors are tuned to Nebula.
    --------------------------------------------------------------------------- */
 /* The iris card's deliberate entrance: a small rise + fade. */
 @keyframes rc-rise {
@@ -55,16 +108,27 @@ button {
     transform: none;
   }
 }
-/* The iris "pulse" halo on the awaiting-you dot — a slow, soft expanding ring. */
+/* The iris "pulse" halo on the awaiting-you dot — a slow, soft expanding VIOLET ring. */
 @keyframes rc-halo {
   0% {
-    box-shadow: 0 0 0 0 rgba(201, 162, 255, 0.55);
+    box-shadow: 0 0 0 0 rgba(181, 123, 255, 0.6);
   }
   70% {
-    box-shadow: 0 0 0 9px rgba(201, 162, 255, 0);
+    box-shadow: 0 0 0 10px rgba(181, 123, 255, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(201, 162, 255, 0);
+    box-shadow: 0 0 0 0 rgba(181, 123, 255, 0);
+  }
+}
+/* The "live"/working ping ring — a soft expanding CYAN halo on the working dot. */
+@keyframes rc-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
   }
 }
 

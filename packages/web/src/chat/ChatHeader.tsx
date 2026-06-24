@@ -24,9 +24,12 @@ export function ChatHeader({ session, wireState, onOpenSettings }: ChatHeaderPro
         alignItems: "center",
         gap: "var(--sp-3)",
         padding: "var(--sp-3) var(--sp-4)",
-        // Hairline bottom border — calm, restrained chrome (Variant A).
+        // Deep glassy bar — a translucent, blurred surface over the ambient glow, with a hairline
+        // bottom border (Nebula chrome). The glass lets the violet→cyan ambient show through.
         borderBottom: "1px solid var(--border)",
-        background: "var(--surface)",
+        background: "var(--glass)",
+        backdropFilter: "var(--glass-blur)",
+        WebkitBackdropFilter: "var(--glass-blur)",
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>

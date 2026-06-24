@@ -17,17 +17,19 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
     <pre
       data-language={language}
       style={{
-        background: "var(--bg)",
-        border: "1px solid var(--border)",
+        background: "var(--code-bg)",
+        border: "1px solid var(--code-border)",
         borderRadius: "var(--radius-sm)",
         padding: "var(--sp-3)",
         overflowX: "auto",
         fontFamily: "var(--font-mono)",
         fontSize: "var(--fs-sm)",
+        color: "var(--code-text)",
+        boxShadow: "var(--shadow-card)",
         margin: 0,
       }}
     >
-      <code style={{ fontFamily: "var(--font-mono)" }}>{code}</code>
+      <code style={{ fontFamily: "var(--font-mono)", color: "inherit" }}>{code}</code>
     </pre>
   );
 }

@@ -1,27 +1,38 @@
 :root {
   color-scheme: dark;
-  /* Surfaces — cool ink, not pure black */
-  --bg: #0e1116;
-  --surface: #161b22;
-  --surface-2: #1c232c;
-  --border: #262e38;
-  /* Text */
-  --text: #e6edf3;
-  --text-muted: #8b98a5;
-  /* Brand / signal accent — warm amber (Claude-warm) */
-  --accent: #e8a33d;
-  --on-accent: #1a1206; /* dark ink for text/icons sitting ON the amber accent */
-  /* Accent-tinted USER bubble surfaces (Variant A): a subtle amber wash + a hairline amber edge.
-     Pre-mixed rgba so the same tint reads identically in light/dark without re-deriving from accent. */
-  --user-bubble-bg: rgba(232, 163, 61, 0.13);
-  --user-bubble-border: rgba(232, 163, 61, 0.34);
-  /* Faintest text tier — for de-emphasized tool plumbing / ToolSearch meta lines (still ≥4.5:1 muted). */
-  --text-faint: #5a6672;
-  /* Semantic STATE colors — used as small dots/edges, NOT fills */
-  --iris: #c9a2ff; /* awaiting-you (permission/question) — the ONE rare attention color */
-  --cyan: #5ac8e8; /* running-tool */
-  --ok: #5ad19a; /* success */
-  --err: #f2685c; /* error */
+  /* ===========================================================================
+     NEBULA — deep near-black cool slate, electric VIOLET → cyan. Vibrant, glassy,
+     energetic but tasteful. Every surface sits on a soft violet→cyan ambient glow
+     (wired in global.css). ALL token NAMES are preserved from the prior system —
+     components reference them by name; this file only re-VALUES + ADDS tokens.
+     =========================================================================== */
+  /* Surfaces — deep cool slate, not pure black */
+  --bg: #08080f;
+  --surface: #12131e;
+  --surface-2: #191b29;
+  --border: #262a3e;
+  --border-strong: #343a55; /* a brighter hairline for focused inputs / dividers */
+  /* Text — high-contrast on the deep bg; muted/faint kept legible (≥4.5:1 muted) */
+  --text: #eef0fb;
+  --text-muted: #9aa0c0;
+  --text-faint: #666d92; /* faintest tier — de-emphasized plumbing / meta lines */
+  /* Brand / signal accent — electric violet */
+  --accent: #7c5cff;
+  --accent-2: #a07bff; /* lighter violet for primary-button gradients */
+  --accent-soft: rgba(124, 92, 255, 0.16); /* faint violet wash (icon tiles, chips) */
+  --accent-line: rgba(124, 92, 255, 0.42); /* violet hairline edge */
+  --on-accent: #ffffff; /* near-white reads on the violet accent (bold icons/labels) */
+  /* Accent-tinted USER bubble surfaces: a violet wash + a hairline violet edge.
+     Pre-mixed rgba so the same tint reads identically without re-deriving from accent. */
+  --user-bubble-bg: linear-gradient(180deg, rgba(160, 123, 255, 0.22), rgba(124, 92, 255, 0.16));
+  --user-bubble-border: rgba(124, 92, 255, 0.5);
+  --user-bubble-text: #f3f0ff; /* slightly warmed near-white for the violet bubble */
+  /* Semantic STATE colors — used as small dots/edges/labels, NOT fills */
+  --iris: #b57bff; /* awaiting-you (permission/question) — the ONE attention color (violet) */
+  --cyan: #22d3ee; /* running-tool / live (cyan) */
+  --working: #22d3ee; /* alias for the working/live cyan (matches the mockup name) */
+  --ok: #34e0a8; /* success */
+  --err: #ff6b7a; /* error */
   /* Type scale (rem) */
   --fs-xs: 0.75rem;
   --fs-sm: 0.875rem;
@@ -33,38 +44,65 @@
   --font-display: "Space Grotesk", system-ui, sans-serif; /* headings, wordmark, labels */
   --font-body: "Inter", system-ui, sans-serif; /* body */
   --font-mono: "JetBrains Mono", ui-monospace, monospace; /* paths, ids, tools, code, picker */
-  /* Spacing + radius */
+  /* Spacing + radius — slightly more generous radii for the glassy Nebula mood */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
   --sp-5: 24px;
   --sp-6: 32px;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --radius-lg: 16px;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
   /* Layout */
   --tap-min: 44px; /* minimum touch target */
   --rail-w: 300px; /* desktop session rail */
   /* Elevation — modal/sheet drop shadow and the dim scrim behind dialogs */
-  --shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-  --scrim: rgba(0, 0, 0, 0.5);
-  /* Card elevation (Variant A) — a hairline top highlight + a soft, restrained drop shadow.
-     Used for the iris permission/question card and any raised surface so chrome stays calm. */
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.02), 0 8px 24px rgba(0, 0, 0, 0.28);
-  /* Focus ring — the single :focus-visible affordance (amber, paired with an offset so it reads on
-     any surface). Kept as a token so a future theme can retune it in one place. */
+  --shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --scrim: rgba(4, 6, 12, 0.6);
+  /* Card elevation — a hairline top highlight + a soft, restrained drop shadow. */
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03), 0 14px 36px rgba(0, 0, 0, 0.5);
+  /* The violet "pop" glow for the ONE primary affordance (send / allow / CTA). */
+  --shadow-pop: 0 10px 40px rgba(124, 92, 255, 0.34);
+  /* Focus ring — violet :focus-visible affordance, paired with an offset so it reads on any surface. */
   --focus-ring: 2px solid var(--accent);
   --focus-offset: 2px;
-  /* IRIS attention card (the ONE place the UI grabs you) — pre-mixed iris tints so the wash/edge/halo
-     read identically without re-deriving from --iris. The card is iris-accented; nothing else is. */
-  --iris-card-bg-top: rgba(201, 162, 255, 0.1);
-  --iris-card-bg-bottom: rgba(201, 162, 255, 0.04);
-  --iris-card-border: rgba(201, 162, 255, 0.4);
-  --iris-card-divider: rgba(201, 162, 255, 0.22);
-  --iris-halo: 0 0 0 1px rgba(201, 162, 255, 0.12), 0 14px 36px rgba(40, 20, 70, 0.4);
-  --on-iris: #1c1030; /* dark ink for text/icons sitting ON the iris accent (the Allow button) */
+  --focus-glow: 0 0 0 3px rgba(124, 92, 255, 0.45); /* soft violet focus glow for inputs */
+  /* ---------------------------------------------------------------------------
+     NEBULA GLOW + GLASS depth
+     - --glow-accent : a soft violet halo for primary affordances / attention.
+     - --glass / --glass-blur : translucent surface + blur for glassy chrome (header,
+       composer) so the ambient glow shows through.
+     - --ambient : the very-subtle violet→cyan radial wash behind the whole app
+       (applied to <body> in global.css). Tasteful, never loud.
+     --------------------------------------------------------------------------- */
+  --glow-accent: 0 0 0 1px rgba(124, 92, 255, 0.18), 0 8px 30px rgba(124, 92, 255, 0.28);
+  --glass: rgba(18, 19, 30, 0.62);
+  --glass-strong: rgba(18, 19, 30, 0.78);
+  --glass-blur: blur(16px) saturate(140%);
+  --ambient: radial-gradient(720px 420px at 22% -6%, rgba(124, 92, 255, 0.22), transparent 60%),
+    radial-gradient(700px 480px at 88% 8%, rgba(34, 211, 238, 0.14), transparent 62%),
+    radial-gradient(1100px 700px at 50% -10%, #14132a 0%, var(--bg) 58%);
+  /* Code surface — the Nebula mono panel (slightly cooler than --bg, violet-cool border). */
+  --code-bg: #0b0c15;
+  --code-border: #22263a;
+  --code-text: #d4d8f0;
+  /* ---------------------------------------------------------------------------
+     IRIS / AWAITING attention card (the ONE place the UI grabs you) — the loudest
+     thing on screen. Pre-mixed violet tints so the wash/edge/halo read identically
+     without re-deriving from --iris. The card is violet-accented; nothing else is.
+     --------------------------------------------------------------------------- */
+  --iris-card-bg-top: rgba(181, 123, 255, 0.16);
+  --iris-card-bg-bottom: rgba(181, 123, 255, 0.05);
+  --iris-card-border: rgba(181, 123, 255, 0.5);
+  --iris-card-divider: rgba(181, 123, 255, 0.3);
+  --iris-line: rgba(181, 123, 255, 0.5); /* the awaiting hairline / badge edge */
+  --iris-soft: rgba(181, 123, 255, 0.14); /* faint awaiting wash (badge bg) */
+  /* The awaiting glow — a violet halo + soft drop, loudest card on screen. */
+  --iris-halo: 0 0 0 1px rgba(181, 123, 255, 0.5), 0 0 28px rgba(181, 123, 255, 0.28),
+    0 18px 44px rgba(124, 92, 255, 0.3);
+  --on-iris: #0a0712; /* very-dark ink for text/icons sitting ON the violet (the Allow button) */
   /* ERROR / dangerous-command treatment — a tinted mono panel for a destructive command (rm -rf …). */
-  --err-bg: rgba(242, 104, 92, 0.08);
-  --err-border: rgba(242, 104, 92, 0.25);
+  --err-bg: rgba(255, 107, 122, 0.1);
+  --err-border: rgba(255, 107, 122, 0.4);
 }

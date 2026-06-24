@@ -99,10 +99,11 @@ function UserTurn({ item }: { item: Extract<TurnItem, { kind: "user" }> }) {
             maxWidth: "84%",
             background: "var(--user-bubble-bg)",
             border: "1px solid var(--user-bubble-border)",
-            color: "var(--text)",
+            color: "var(--user-bubble-text)",
             padding: "var(--sp-3) var(--sp-4)",
-            borderRadius: "18px 18px 6px 18px",
+            borderRadius: "var(--radius-lg) var(--radius-lg) 6px var(--radius-lg)",
             fontSize: "var(--fs-base)",
+            boxShadow: "0 8px 24px rgba(124, 92, 255, 0.28)",
             display: "grid",
             gap: "var(--sp-2)",
             overflowWrap: "anywhere",
@@ -141,14 +142,14 @@ const detailLabelStyle: CSSProperties = {
 };
 
 const rawPanelStyle: CSSProperties = {
-  background: "var(--bg)",
-  border: "1px solid var(--border)",
+  background: "var(--code-bg)",
+  border: "1px solid var(--code-border)",
   borderRadius: "var(--radius-sm)",
   padding: "var(--sp-2) var(--sp-3)",
   fontFamily: "var(--font-mono)",
   fontSize: "var(--fs-xs)",
   lineHeight: 1.55,
-  color: "var(--text-muted)",
+  color: "var(--code-text)",
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
   overflowX: "auto",
@@ -175,6 +176,7 @@ function ToolStepRow({ step }: { step: ToolStep }) {
     <div style={{ borderBottom: "1px solid var(--border)" }}>
       <button
         type="button"
+        className="rc-tool-step"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={`${open ? "Collapse" : "Expand"} ${use.name} step`}
@@ -263,7 +265,10 @@ function ToolCluster({ steps }: { steps: ToolStep[] }) {
       style={{
         border: "1px solid var(--border)",
         borderRadius: "var(--radius)",
-        background: "var(--surface)",
+        background: "var(--glass)",
+        backdropFilter: "var(--glass-blur)",
+        WebkitBackdropFilter: "var(--glass-blur)",
+        boxShadow: "var(--shadow-card)",
         overflow: "hidden",
       }}
     >
@@ -364,7 +369,10 @@ function AttachmentCard({
         style={{
           border: "1px solid var(--border)",
           borderRadius: "var(--radius)",
-          background: "var(--surface)",
+          background: "var(--glass)",
+          backdropFilter: "var(--glass-blur)",
+          WebkitBackdropFilter: "var(--glass-blur)",
+          boxShadow: "var(--shadow-card)",
           overflow: "hidden",
         }}
       >
@@ -384,7 +392,7 @@ function AttachmentCard({
             borderTop: "1px solid var(--border)",
           }}
         >
-          <Icon name="image" size={15} style={{ color: "var(--cyan)" }} />
+          <Icon name="image" size={15} style={{ color: "var(--accent)" }} />
           <Mono muted>{item.name}</Mono>
           <a
             href={href}
@@ -407,7 +415,10 @@ function AttachmentCard({
         display: "flex",
         alignItems: "center",
         gap: "var(--sp-3)",
-        background: "var(--surface)",
+        background: "var(--glass)",
+        backdropFilter: "var(--glass-blur)",
+        WebkitBackdropFilter: "var(--glass-blur)",
+        boxShadow: "var(--shadow-card)",
         border: "1px solid var(--border)",
         borderRadius: "var(--radius)",
         padding: "var(--sp-3)",
@@ -422,9 +433,9 @@ function AttachmentCard({
           borderRadius: "var(--radius-sm)",
           display: "grid",
           placeItems: "center",
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-          color: "var(--cyan)",
+          background: "var(--accent-soft)",
+          border: "1px solid var(--accent-line)",
+          color: "var(--accent)",
         }}
       >
         <Icon name={fileIcon} size={20} />

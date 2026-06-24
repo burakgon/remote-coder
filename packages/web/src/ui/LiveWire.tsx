@@ -44,7 +44,10 @@ export interface LiveWireProps {
  * label so it is never the sole signal (a11y).
  */
 export function LiveWire({ state, ...rest }: LiveWireProps) {
-  const animated = state === "thinking" || state === "streaming" || state === "awaiting";
+  // The "live"/active states pulse: thinking/streaming (violet accent), the awaiting violet, and the
+  // working/running-tool CYAN dot. All pulses are neutralized under prefers-reduced-motion (global.css).
+  const animated =
+    state === "thinking" || state === "streaming" || state === "awaiting" || state === "running-tool";
   const color = COLORS[state];
   return (
     <span
