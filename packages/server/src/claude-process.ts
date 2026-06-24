@@ -325,8 +325,23 @@ export class ClaudeProcess extends EventEmitter {
       }
       const info = classifyPermissionRequest(ev as ControlRequestEvent);
       if (info) {
+        const requestId = (ev as ControlRequestEvent).requestId;
+        // --dangerously-skip-permissions only bypasses claude's OWN interactive prompt; the SDK's
+        // canUseTool callback / our PreToolUse hook still fire and reach us as a control_request. For
+        // a dangerouslySkip session the user explicitly opted out of approving tools, so auto-allow
+        // every request HERE (answering with the same shape a manual "Allow" would) instead of
+        // surfacing a permission prompt to the client. Questions (AskUserQuestion) are handled above
+        // and are NOT auto-answered — those are genuine asks, not a tool gate.
+        if (this.opts.dangerouslySkip) {
+          if (info.kind === "can_use_tool") {
+            this.answerCanUseTool(requestId, { behavior: "allow", updatedInput: info.toolInput });
+          } else {
+            this.answerPermission(requestId, "allow");
+          }
+          return;
+        }
         const perm: PermissionEvent = {
-          requestId: (ev as ControlRequestEvent).requestId,
+          requestId,
           kind: info.kind,
           toolName: info.toolName,
           toolInput: info.toolInput,

@@ -40,6 +40,34 @@ test("permission round-trip: receive 'permission', allow, tool proceeds to resul
   proc.stop();
 });
 
+test("dangerouslySkip auto-allows a permission WITHOUT surfacing a 'permission' event", async () => {
+  const proc = new ClaudeProcess({
+    claudeBin: process.execPath,
+    cwd: process.cwd(),
+    sessionId: "sid-skip",
+    env: { ...process.env, MOCK_MODE: "permission" },
+    startTimeoutMs: 5000,
+    dangerouslySkip: true,
+  });
+  proc.setSpawnPrefixArgsForTest([MOCK]);
+  await proc.start();
+
+  let surfaced = false;
+  proc.on("permission", () => {
+    surfaced = true;
+  });
+  const resultPromise: Promise<ResultEvent[]> = once(proc, "result") as Promise<ResultEvent[]>;
+
+  proc.sendUserMessage("write a file");
+
+  // The process auto-allows the control_request internally; no prompt reaches a subscriber, and the
+  // tool still proceeds to a clean result (no denial), exactly as a manual "allow" would.
+  const [result] = await resultPromise;
+  expect(surfaced).toBe(false);
+  expect(result.permissionDenials).toEqual([]);
+  proc.stop();
+});
+
 test("permission round-trip: deny blocks the tool (result has a denial)", async () => {
   const proc = makePermissionProc();
   await proc.start();
