@@ -53,6 +53,20 @@ const iconBtn: React.CSSProperties = {
   cursor: "pointer",
 };
 
+// Hidden file inputs are visually-hidden rather than `display:none`: on iOS Safari (esp. an installed
+// PWA) a `display:none` file input can refuse to open its picker on a programmatic `.click()`. This
+// keeps the input in the render tree (so the dialog opens) without affecting layout.
+const visuallyHidden: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  border: 0,
+};
+
 export function Composer({
   onSend,
   onUploadFile,
@@ -113,31 +127,39 @@ export function Composer({
     onStop?.();
   }
 
+  // Multi-select: validate + read every chosen image, append the valid ones, surface the first error
+  // (if any were rejected) without dropping the good ones.
   async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file) return;
-    const err = validateImage(file);
-    if (err) {
-      setError(err);
-      return;
+    if (files.length === 0) return;
+    const added: PendingImage[] = [];
+    let firstErr: string | undefined;
+    for (const file of files) {
+      const err = validateImage(file);
+      if (err) {
+        if (firstErr === undefined) firstErr = err;
+        continue;
+      }
+      try {
+        const dataBase64 = await fileToBase64(file);
+        const id = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        added.push({ id, mediaType: file.type, dataBase64, name: file.name });
+      } catch (readErr) {
+        if (firstErr === undefined) firstErr = readErr instanceof Error ? readErr.message : "failed to read image";
+      }
     }
-    try {
-      const dataBase64 = await fileToBase64(file);
-      const id = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      setImages((prev) => [...prev, { id, mediaType: file.type, dataBase64, name: file.name }]);
-      setError(undefined);
-    } catch (readErr) {
-      setError(readErr instanceof Error ? readErr.message : "failed to read image");
-    }
+    if (added.length > 0) setImages((prev) => [...prev, ...added]);
+    setError(firstErr);
   }
 
+  // Multi-select: upload each chosen file in turn; stop + surface the error on the first failure.
   async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
     try {
-      await onUploadFile(file);
+      for (const file of files) await onUploadFile(file);
       setError(undefined);
     } catch (uploadErr) {
       setError(uploadErr instanceof Error ? uploadErr.message : "upload failed");
@@ -315,18 +337,17 @@ export function Composer({
           ref={imageInput}
           type="file"
           accept="image/*"
-          capture="environment"
+          multiple
           onChange={onPickImage}
-          style={{ display: "none" }}
-          aria-hidden
+          style={visuallyHidden}
           tabIndex={-1}
         />
         <input
           ref={fileInput}
           type="file"
+          multiple
           onChange={onPickFile}
-          style={{ display: "none" }}
-          aria-hidden
+          style={visuallyHidden}
           tabIndex={-1}
         />
         {/* Icon buttons (Variant A) — quiet ghost affordances. The aria-labels are kept verbatim
