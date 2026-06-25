@@ -16,21 +16,21 @@ const dataURI = (name) => "data:image/png;base64," + readFileSync(join(SS, `${na
 const PHONES = ["chat-mobile-top", "question-mobile", "wizard-mobile", "rewind-mobile", "login-mobile", "chat-mobile"];
 const phoneHTML = (src) => `<!doctype html><html><head><style>
  body{margin:0;background:transparent}
- .wrap{display:inline-block;padding:70px}
- .phone{padding:12px;background:linear-gradient(155deg,#2c2c30,#131315);border-radius:50px;
-   box-shadow:0 60px 100px -30px rgba(0,0,0,.9),0 0 0 1px rgba(0,0,0,.7),inset 0 2px 0 rgba(255,255,255,.10),inset 0 -2px 0 rgba(0,0,0,.55)}
- .screen{border-radius:39px;overflow:hidden;display:block;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
- .screen img{display:block;width:300px}
+ .wrap{display:inline-block;padding:34px}
+ .phone{padding:11px;background:linear-gradient(155deg,#2c2c30,#131315);border-radius:46px;
+   box-shadow:0 22px 44px -16px rgba(0,0,0,.78),0 0 0 1px rgba(0,0,0,.7),inset 0 1.5px 0 rgba(255,255,255,.10),inset 0 -1.5px 0 rgba(0,0,0,.5)}
+ .screen{border-radius:36px;overflow:hidden;display:block;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+ .screen img{display:block;width:384px}
 </style></head><body><div class="wrap"><div class="phone"><div class="screen"><img src="${src}"></div></div></div></body></html>`;
 
 // Desktop shot → a macOS-style browser window (traffic lights + rounded corners + soft shadow).
 const browserHTML = (src) => `<!doctype html><html><head><style>
  body{margin:0;background:transparent}
- .wrap{display:inline-block;padding:64px}
- .win{border-radius:13px;overflow:hidden;background:#161618;box-shadow:0 50px 100px -30px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.07)}
- .bar{height:38px;background:#1b1b1e;display:flex;align-items:center;gap:9px;padding:0 16px;border-bottom:1px solid rgba(255,255,255,.06)}
- .d{width:12px;height:12px;border-radius:50%}.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
- .win img{display:block;width:920px}
+ .wrap{display:inline-block;padding:40px}
+ .win{border-radius:12px;overflow:hidden;background:#161618;box-shadow:0 30px 60px -22px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.07)}
+ .bar{height:36px;background:#1b1b1e;display:flex;align-items:center;gap:9px;padding:0 15px;border-bottom:1px solid rgba(255,255,255,.06)}
+ .d{width:11px;height:11px;border-radius:50%}.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+ .win img{display:block;width:1120px}
 </style></head><body><div class="wrap"><div class="win"><div class="bar"><span class="d r"></span><span class="d y"></span><span class="d g"></span></div><img src="${src}"></div></div></body></html>`;
 
 const browser = await chromium.launch();
