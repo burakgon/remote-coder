@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
@@ -86,8 +86,18 @@ export function Composer({
   const [stopping, setStopping] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   if (!running && stopping) setStopping(false);
+
+  // Auto-grow the textarea with its content (up to a cap, then it scrolls), so a long message is
+  // always fully visible instead of being clipped to a single line.
+  useLayoutEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
+  }, [text]);
 
   const slashMatches = matchSlash(text);
   const canSend = (text.trim().length > 0 || images.length > 0) && !disabled;
@@ -295,6 +305,7 @@ export function Composer({
       )}
       <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-end" }}>
         <textarea
+          ref={taRef}
           aria-label="Message claude"
           value={text}
           disabled={disabled}
@@ -322,7 +333,10 @@ export function Composer({
             flex: 1,
             minWidth: 0,
             minHeight: "var(--tap-min)",
-            resize: "vertical",
+            maxHeight: 150,
+            resize: "none",
+            overflowY: "auto",
+            lineHeight: 1.45,
             background: "var(--surface)",
             border: "1px solid var(--border-strong)",
             borderRadius: "var(--radius)",
