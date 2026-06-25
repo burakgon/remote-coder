@@ -154,6 +154,9 @@ export function AppShot() {
       lastActiveAt={lastActiveAt}
       now={Date.now()}
       usage={USAGE}
+      version="v2026.06.26 · ebe4bd3"
+      updateAvailable
+      onShowUpdate={() => {}}
       onSelect={(id) => setActive(id)}
       onNew={() => {}}
       onClose={() => {}}

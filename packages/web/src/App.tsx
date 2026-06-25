@@ -194,7 +194,9 @@ export function App() {
         });
     };
     poll();
-    const interval = setInterval(poll, 15 * 60 * 1000);
+    // ~3 min (plus an on-focus re-check) so a freshly pushed update surfaces promptly. The server
+    // caches the underlying git fetch (~2 min), so this stays cheap.
+    const interval = setInterval(poll, 3 * 60 * 1000);
     const onFocus = () => poll();
     window.addEventListener("focus", onFocus);
     return () => {
@@ -360,6 +362,9 @@ export function App() {
       lastActiveAt={lastActiveAt}
       now={now}
       usage={usage}
+      version={updateInfo?.current}
+      updateAvailable={updateInfo?.updateAvailable}
+      onShowUpdate={() => setUpdatePanelOpen(true)}
       onSelect={(id) => {
         setActive(id);
         setSessionsOpen(false);

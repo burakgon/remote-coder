@@ -23,6 +23,13 @@ export interface SessionListProps {
   /** Claude usage limits (GET /usage). When present, two slim bars render at the very top of the rail;
    * null/undefined hides them (the feature is unavailable). */
   usage?: UsageInfo | null;
+  /** Current running version label (from GET /version, e.g. "v2026.06.26 · ebe4bd3"), shown as a quiet
+   * footer at the bottom of the rail so you always know what's deployed. */
+  version?: string;
+  /** True when a newer version is available — the footer surfaces a tappable "Update available". */
+  updateAvailable?: boolean;
+  /** Open the update panel (from the footer's "Update available" affordance). */
+  onShowUpdate?: () => void;
 }
 
 function basename(p: string): string {
@@ -75,6 +82,9 @@ export function SessionList({
   onClose,
   viewWireState,
   usage,
+  version,
+  updateAvailable,
+  onShowUpdate,
 }: SessionListProps) {
   const ordered = sortSessionsByActivity(sessions, lastActiveAt);
   const needs = awaitingCount(sessions);
@@ -184,6 +194,21 @@ export function SessionList({
         )}
       </ul>
 
+      {/* A quiet footer at the bottom of the rail showing the running version (so you always know
+          what's deployed) + a tappable "Update available" when a newer one is out. */}
+      {version && (
+        <div className="rc-sl__footer">
+          <span className="rc-sl__version" title={version}>
+            {version}
+          </span>
+          {updateAvailable && onShowUpdate && (
+            <button type="button" className="rc-sl__update" onClick={onShowUpdate} aria-label="Update available">
+              Update available
+            </button>
+          )}
+        </div>
+      )}
+
       <style>{sessionListCss}</style>
     </div>
   );
@@ -191,6 +216,23 @@ export function SessionList({
 
 const sessionListCss = `
 .rc-sl { display: flex; flex-direction: column; height: 100%; }
+/* Version footer — pinned at the bottom of the rail; quiet mono label + a coral "Update available". */
+.rc-sl__footer {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: 8px 13px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+}
+.rc-sl__version {
+  font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rc-sl__update {
+  flex: none; font: inherit; font-size: var(--fs-xs); font-weight: 600; cursor: pointer;
+  color: var(--on-accent); background: var(--coral); border: 1px solid transparent;
+  border-radius: var(--radius-pill); padding: 2px var(--sp-2);
+}
+.rc-sl__update:hover { filter: brightness(1.08); }
 /* The rail header — a flat surface bar with a hairline below (no glass blur). */
 .rc-sl__head {
   flex: none;

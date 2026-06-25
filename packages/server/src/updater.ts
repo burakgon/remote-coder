@@ -25,9 +25,10 @@ import {
 /** The official repo this updater will pull from — the detached script refuses any other origin. */
 export const EXPECTED_REMOTE_SUBSTRING = "github.com/burakgon/remote-coder";
 
-/** Cache TTL for the `git fetch` + behind-count check. The app polls /version on open and ~every 15m;
- * this guards against hammering the network — a check inside this window reuses the last result. */
-export const CHECK_CACHE_MS = 10 * 60 * 1000;
+/** Cache TTL for the `git fetch` + behind-count check. The app polls /version on open + ~every 3m;
+ * this guards against hammering the network — a check inside this window reuses the last result. Kept
+ * short (2m) so a freshly pushed update is detected promptly instead of lingering behind a stale cache. */
+export const CHECK_CACHE_MS = 2 * 60 * 1000;
 
 /** Hard timeout for the network `git fetch` so a hung remote never blocks the /version response. */
 export const FETCH_TIMEOUT_MS = 20_000;
