@@ -13,13 +13,13 @@ const session: SessionMeta = {
 
 describe("ChatHeader", () => {
   it("renders the cwd basename and the full path", () => {
-    render(<ChatHeader session={session} wireState="idle" />);
+    render(<ChatHeader session={session} />);
     expect(screen.getByText("overrun")).toBeInTheDocument();
     expect(screen.getByText(session.cwd)).toBeInTheDocument();
   });
 
-  it("truncates the cwd so a long path cannot overprint the status group", () => {
-    render(<ChatHeader session={session} wireState="idle" />);
+  it("truncates the cwd so a long path cannot overprint the right-side group", () => {
+    render(<ChatHeader session={session} />);
     // The cwd lives inside a wrapper that clips with an ellipsis (mobile 390px overlap fix).
     const cwd = screen.getByText(session.cwd);
     const wrapper = cwd.parentElement as HTMLElement;
@@ -30,21 +30,20 @@ describe("ChatHeader", () => {
 
   it("surfaces the active model/effort and clearly flags skip-permissions", () => {
     render(
-      <ChatHeader
-        session={{ ...session, model: "opus", effort: "xhigh", permissionMode: "bypassPermissions" }}
-        wireState="idle"
-      />,
+      <ChatHeader session={{ ...session, model: "opus", effort: "xhigh", permissionMode: "bypassPermissions" }} />,
     );
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText(/xhigh/)).toBeInTheDocument();
     expect(screen.getByText(/skip-permissions/)).toBeInTheDocument();
   });
 
-  it("gives the status group flex:none so it is never squeezed/overlapped", () => {
-    render(<ChatHeader session={session} wireState="awaiting" onOpenSettings={() => {}} />);
-    const status = screen.getByRole("status");
-    // Walk up to the direct child of <header> that contains the status — that's the status group.
-    let group = status as HTMLElement;
+  it("gives the right-side (settings) group flex:none so it is never squeezed/overlapped", () => {
+    // The live model state moved to the composer telemetry strip; the header's right group now holds
+    // just Settings and must keep its intrinsic width.
+    render(<ChatHeader session={session} onOpenSettings={() => {}} />);
+    const settings = screen.getByRole("button", { name: "Session settings" });
+    // Walk up to the direct child of <header> that contains the button — that's the right-side group.
+    let group = settings as HTMLElement;
     while (group.parentElement && group.parentElement.tagName !== "HEADER") {
       group = group.parentElement;
     }

@@ -156,6 +156,12 @@ export interface ResultPayload {
   result?: string;
   sessionId?: string;
   totalCostUsd?: number;
+  /**
+   * Token usage for the turn. `contextTokens` = how full the model's context window now is (the whole
+   * prompt sent + this turn's output), which drives the chat's context meter / "time to /compact" hint.
+   * `outputTokens` = just this turn's generated tokens. Omitted when the CLI doesn't report usage.
+   */
+  usage?: { contextTokens?: number; outputTokens?: number };
   permissionDenials?: unknown[];
   /**
    * How the turn ended, when the CLI reports it. A user-initiated STOP (interrupt) ends the turn with

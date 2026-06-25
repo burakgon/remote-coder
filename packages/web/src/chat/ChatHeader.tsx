@@ -2,13 +2,10 @@ import type { CSSProperties } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
 import { MobileMenuButton } from "../ui/MobileMenuButton";
-import { LiveWire } from "../ui/LiveWire";
-import type { LiveWireState } from "../ui/LiveWire";
 import type { SessionMeta } from "../types/server";
 
 export interface ChatHeaderProps {
   session: SessionMeta;
-  wireState: LiveWireState;
   onOpenSettings?: () => void;
   /** Open the mobile sessions sheet. When provided, a top-left menu button is rendered as the FIRST
    * item in the header row (mobile-only; hidden on the desktop breakpoint where the rail is always
@@ -26,9 +23,10 @@ function basename(p: string): string {
 
 const midDot: CSSProperties = { fontFamily: "var(--font-mono)", color: "var(--text-faint)", flex: "none" };
 
-export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions, needsYou = 0 }: ChatHeaderProps) {
+export function ChatHeader({ session, onOpenSettings, onShowSessions, needsYou = 0 }: ChatHeaderProps) {
   return (
     <header
+      aria-label={`Session ${basename(session.cwd)}`}
       style={{
         display: "flex",
         alignItems: "center",
@@ -131,7 +129,6 @@ export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions,
       {/* `flex: none` so the status/settings group keeps its intrinsic width and is never
           squeezed or overlapped by the path column. */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "none" }}>
-        <LiveWire state={wireState} aria-label={`Session ${basename(session.cwd)} — ${wireState}`} />
         {onOpenSettings && (
           <button
             type="button"

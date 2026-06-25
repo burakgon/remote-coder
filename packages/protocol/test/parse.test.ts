@@ -75,6 +75,31 @@ test("parses an aborted (interrupted) result: terminalReason + error subtype car
   });
 });
 
+test("result usage: contextTokens sums input + cache-read + cache-creation + output", () => {
+  const line = JSON.stringify({
+    type: "result",
+    subtype: "success",
+    session_id: "s1",
+    total_cost_usd: 0.04,
+    usage: {
+      input_tokens: 1200,
+      cache_read_input_tokens: 80000,
+      cache_creation_input_tokens: 5000,
+      output_tokens: 600,
+    },
+  });
+  expect(parseLine(line)).toMatchObject({
+    type: "result",
+    usage: { contextTokens: 86800, outputTokens: 600 },
+  });
+});
+
+test("result without usage omits the usage field", () => {
+  const ev = parseLine(JSON.stringify({ type: "result", subtype: "success", session_id: "s1" }));
+  expect(ev?.type).toBe("result");
+  expect((ev as { usage?: unknown }).usage).toBeUndefined();
+});
+
 test("unknown type becomes UnknownEvent and keeps raw", () => {
   const ev = parseLine(JSON.stringify({ type: "brand_new", x: 1 }));
   expect(ev?.type).toBe("unknown");

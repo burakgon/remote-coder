@@ -21,6 +21,7 @@ import { MessageList } from "../chat/MessageList";
 import { PermissionPrompt } from "../chat/PermissionPrompt";
 import { QuestionPrompt } from "../chat/QuestionPrompt";
 import { Composer } from "../chat/Composer";
+import { ChatTelemetry } from "../chat/ChatTelemetry";
 import { RewindSheet } from "../chat/RewindSheet";
 import { NewSessionWizard } from "../session/NewSessionWizard";
 import { ResumePicker } from "../session/ResumePicker";
@@ -97,7 +98,7 @@ function ChatBody({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <ChatHeader session={session} wireState={wireState} needsYou={awaitingCount(sessions)} />
+      <ChatHeader session={session} needsYou={awaitingCount(sessions)} />
       <div aria-live="polite" style={{ flex: 1, overflowY: "auto" }}>
         {/* Pass downloadUrl so Claude's sent chart previews inline, onRewind so user turns carry the
             rewind affordance, and onOpenSubagent so subagent cards render as the live (tappable) look. */}
@@ -116,6 +117,8 @@ function ChatBody({
       </div>
       {/* The subagent tray sits directly above the composer (renders nothing without subagents). */}
       <SubagentTray subagents={view.subagents} subagentOrder={view.subagentOrder} onOpen={() => {}} />
+      {/* The telemetry strip — live model state + context meter, pinned above the composer. */}
+      <ChatTelemetry wireState={wireState} contextTokens={92000} model={session.model} />
       <Composer
         onSend={() => {}}
         onUploadFile={async () => {}}

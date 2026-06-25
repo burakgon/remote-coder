@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatHeader } from "./ChatHeader";
+import { ChatTelemetry } from "./ChatTelemetry";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { RewindSheet } from "./RewindSheet";
@@ -189,7 +190,6 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <ChatHeader
         session={session}
-        wireState={wireState}
         onOpenSettings={() => setSettingsOpen(true)}
         onShowSessions={onShowSessions}
         needsYou={needsYou}
@@ -250,6 +250,13 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             return next;
           })
         }
+      />
+      {/* TELEMETRY STRIP — the live model state + the context meter, pinned right above the composer so
+          a sent message visibly gets a reaction without looking up to the header. */}
+      <ChatTelemetry
+        wireState={wireState}
+        contextTokens={safeView.lastResult?.usage?.contextTokens}
+        model={session.model}
       />
       <Composer
         onSend={(frame) => {

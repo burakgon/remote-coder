@@ -93,7 +93,16 @@ export function parseLine(line: string): InboundEvent | null {
         uuid: str(obj.uuid),
         raw: obj,
       };
-    case "result":
+    case "result": {
+      // Context-window fill for the UI meter: the whole prompt that was sent (fresh input + cached reads
+      // + cache writes) plus this turn's output ≈ what the next request will carry. Cached tokens still
+      // occupy the window, so they count. 0 → omit (the CLI didn't report usage).
+      const u = rec(obj.usage);
+      const contextTokens =
+        (num(u.input_tokens) ?? 0) +
+        (num(u.cache_read_input_tokens) ?? 0) +
+        (num(u.cache_creation_input_tokens) ?? 0) +
+        (num(u.output_tokens) ?? 0);
       return {
         type: "result",
         subtype: str(obj.subtype),
@@ -101,10 +110,12 @@ export function parseLine(line: string): InboundEvent | null {
         result: str(obj.result),
         sessionId: str(obj.session_id),
         totalCostUsd: typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : undefined,
+        ...(contextTokens > 0 ? { usage: { contextTokens, outputTokens: num(u.output_tokens) } } : {}),
         permissionDenials: Array.isArray(obj.permission_denials) ? obj.permission_denials : undefined,
         terminalReason: str(obj.terminal_reason),
         raw: obj,
       };
+    }
     case "control_request": {
       const request = rec(obj.request);
       return {

@@ -1,0 +1,155 @@
+import type { LiveWireState } from "../ui/LiveWire";
+
+/**
+ * The conversation TELEMETRY strip — a quiet bar pinned between the chat log and the composer, so the
+ * two things you watch while working are right where your eyes already are (next to the textbox), not
+ * up in the header:
+ *
+ *  - LEFT  the live model state (the "live wire"), reacting the instant you send: a dot that radar-pings
+ *          while the agent works + a label with a typing-style ellipsis (Thinking… / Streaming…).
+ *  - RIGHT the context meter — how full the model's window is, so you know when to /compact. A slim
+ *          track tinted coral → amber → red as it fills, with the percent + token count in mono.
+ *
+ * Both stay readable at 390px and reduce to a static dot/label under prefers-reduced-motion.
+ */
+
+/** Current Claude models (Opus/Sonnet/Haiku 4.x) all expose a 200k-token context window. */
+const CONTEXT_WINDOW = 200_000;
+
+/** Working states animate (ping + ellipsis); the rest are a calm static dot + label. */
+const WORKING: ReadonlySet<LiveWireState> = new Set(["thinking", "streaming", "running-tool"]);
+
+const STATUS_LABEL: Record<LiveWireState, string> = {
+  idle: "Ready",
+  dormant: "Dormant",
+  thinking: "Thinking",
+  streaming: "Streaming",
+  awaiting: "Awaiting you",
+  "running-tool": "Running tool",
+  success: "Done",
+  error: "Error",
+};
+
+/** Match the rail's status palette: coral ONLY for "awaiting you", red for error, neutral otherwise. */
+function statusColor(state: LiveWireState): string {
+  if (state === "awaiting") return "var(--coral-2)";
+  if (state === "error") return "var(--err)";
+  return "var(--text-muted)";
+}
+
+/** The context meter's fill: coral with headroom, amber as it tightens, red when /compact is due. */
+export function contextFillColor(percent: number): string {
+  if (percent > 92) return "var(--err)";
+  if (percent > 80) return "var(--warn)";
+  return "var(--coral)";
+}
+
+/** Compact token count: 900 → "900", 5400 → "5.4k", 90000 → "90k", 128000 → "128k". */
+export function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return `${k < 10 ? k.toFixed(1) : Math.round(k)}k`;
+}
+
+export interface ChatTelemetryProps {
+  wireState: LiveWireState;
+  /** Context-window fill in tokens (from the last result's usage). Omitted → the meter is hidden. */
+  contextTokens?: number;
+  /** Reserved for per-model windows; current Claude models are all 200k. */
+  model?: string;
+}
+
+export function ChatTelemetry({ wireState, contextTokens }: ChatTelemetryProps) {
+  const working = WORKING.has(wireState);
+  // The dot radar-pings whenever the session is "live": the agent working OR waiting on you. Only the
+  // agent-working states get the typing ellipsis (it would misread on an awaiting-you state).
+  const pinging = working || wireState === "awaiting";
+  const color = statusColor(wireState);
+
+  const hasContext = typeof contextTokens === "number" && contextTokens > 0;
+  const percent = hasContext ? Math.min(100, Math.round((contextTokens! / CONTEXT_WINDOW) * 100)) : 0;
+  const fill = contextFillColor(percent);
+  const tight = percent > 80;
+
+  return (
+    <div className="rc-tele" data-state={wireState}>
+      <span
+        className="rc-tele__status"
+        role="status"
+        data-state={wireState}
+        aria-label={`Model ${STATUS_LABEL[wireState]}`}
+      >
+        <span className="rc-tele__dot" style={{ background: color }}>
+          {pinging && <span className="rc-tele__ping" style={{ background: color }} aria-hidden="true" />}
+        </span>
+        <span className="rc-tele__label" style={{ color }}>
+          {STATUS_LABEL[wireState]}
+        </span>
+        {working && (
+          <span className="rc-tele__dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
+      </span>
+
+      {hasContext && (
+        <span
+          className="rc-tele__ctx"
+          aria-label={`Context ${percent}% full — ${contextTokens!.toLocaleString()} of ${CONTEXT_WINDOW.toLocaleString()} tokens`}
+          title={tight ? "Context is filling up — consider /compact" : undefined}
+        >
+          <span className="rc-tele__ctx-key">ctx</span>
+          <span className="rc-tele__track">
+            <span className="rc-tele__fill" style={{ width: `${percent}%`, background: fill }} />
+          </span>
+          <span className="rc-tele__ctx-num" style={tight ? { color: fill } : undefined}>
+            {percent}% · {formatTokens(contextTokens!)}
+          </span>
+        </span>
+      )}
+
+      <style>{telemetryCss}</style>
+    </div>
+  );
+}
+
+const telemetryCss = `
+.rc-tele {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: 7px var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+}
+.rc-tele__status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+/* The live-wire dot. While the agent works it emits a single expanding radar ring (the ::ping sibling)
+   — calmer + more "alive" than a blunt opacity blink. */
+.rc-tele__dot { position: relative; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.rc-tele__ping {
+  position: absolute; inset: 0; border-radius: 50%;
+  animation: rc-tele-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes rc-tele-ping {
+  0% { transform: scale(1); opacity: 0.55; }
+  80%, 100% { transform: scale(2.8); opacity: 0; }
+}
+.rc-tele__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Typing-style trailing dots while working — the universal "it's responding" cue, right by the input. */
+.rc-tele__dots { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.rc-tele__dots i { width: 3px; height: 3px; border-radius: 50%; background: var(--text-faint); opacity: 0.25; animation: rc-tele-typing 1.4s ease-in-out infinite; }
+.rc-tele__dots i:nth-child(2) { animation-delay: 0.18s; }
+.rc-tele__dots i:nth-child(3) { animation-delay: 0.36s; }
+@keyframes rc-tele-typing { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 0.9; } }
+.rc-tele__ctx { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--text-faint); }
+.rc-tele__ctx-key { letter-spacing: 0.04em; }
+.rc-tele__track { width: 52px; height: 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.rc-tele__fill { display: block; height: 100%; border-radius: 999px; transition: width 0.4s ease, background 0.3s ease; }
+.rc-tele__ctx-num { color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) {
+  .rc-tele__ping, .rc-tele__dots i { animation: none; }
+  .rc-tele__ping { display: none; }
+}
+`;
