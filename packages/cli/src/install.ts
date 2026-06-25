@@ -76,8 +76,11 @@ export interface RenderSystemdOptions {
 /**
  * A systemd --user unit (per-user, `~/.config/systemd/user`) — runs as the login user, NOT root.
  *
- * `Restart=on-failure` keeps it alive across crashes; `WantedBy=default.target` starts it at login.
- * Like the plist, no token is embedded — only the data dir the service reads the token from.
+ * `Restart=always` keeps it alive across crashes AND across a CLEAN exit — the OTA self-update's
+ * restart fallback SIGTERMs this process (a clean exit), so the supervisor must bring it back even
+ * then (`on-failure` would NOT restart a code-0 exit, stranding the server down after an update).
+ * `WantedBy=default.target` starts it at login. Like the plist, no token is embedded — only the data
+ * dir the service reads the token from.
  *
  * LIMITATION: `ExecStart` splits on unquoted whitespace, so a `nodePath`/`cliPath` containing a space
  * is NOT supported here (systemd would treat the space as an argument separator). In practice
@@ -93,7 +96,7 @@ After=network-online.target
 [Service]
 ExecStart=${opts.nodePath} ${opts.cliPath}
 Environment=REMOTE_CODER_DATA_DIR=${opts.dataDir}
-Restart=on-failure
+Restart=always
 RestartSec=3
 
 [Install]
@@ -114,6 +117,18 @@ export interface InstallContext {
 export interface InstallResult {
   path: string;
   instructions: string;
+}
+
+/**
+ * Persist {manager,label} to `<dataDir>/service.json` so the OTA self-updater can restart THIS exact
+ * service after a build — cross-install, without re-deriving the label. The updater reads this first
+ * (then env REMOTE_CODER_SERVICE_*; then a platform default). 0600 — no secret, but keep it tidy.
+ */
+function writeServiceJson(dataDir: string, manager: "launchd" | "systemd", label: string): void {
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  const path = join(dataDir, "service.json");
+  writeFileSync(path, JSON.stringify({ manager, label }, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600);
 }
 
 /**
@@ -141,6 +156,8 @@ export function installService(ctx: InstallContext): InstallResult {
       }),
     );
     chmodSync(path, 0o644);
+    // Record the service identity so the OTA updater can restart this exact LaunchAgent.
+    writeServiceJson(ctx.dataDir, "launchd", "com.remote-coder");
     return {
       path,
       instructions: `launchctl load -w "${path}"   # start now + at login\nlaunchctl unload -w "${path}"  # stop`,
@@ -153,6 +170,8 @@ export function installService(ctx: InstallContext): InstallResult {
     const path = join(dir, "remote-coder.service");
     writeFileSync(path, renderSystemdUnit({ nodePath: ctx.nodePath, cliPath: ctx.cliPath, dataDir: ctx.dataDir }));
     chmodSync(path, 0o644);
+    // Record the service identity so the OTA updater can restart this exact --user unit.
+    writeServiceJson(ctx.dataDir, "systemd", "remote-coder");
     return {
       path,
       instructions: [

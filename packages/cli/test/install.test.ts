@@ -65,13 +65,15 @@ describe("renderSystemdUnit", () => {
     expect(unit).toContain("WantedBy=default.target");
   });
 
-  test("restarts on failure and never embeds a secret/token", () => {
+  test("restarts ALWAYS (incl. a clean exit, so the OTA-update SIGTERM is recovered) and never embeds a secret/token", () => {
     const unit = renderSystemdUnit({
       nodePath: "/usr/bin/node",
       cliPath: "/opt/rc/index.js",
       dataDir: "/home/me/.config/remote-coder",
     });
-    expect(unit).toContain("Restart=on-failure");
+    // Restart=always (not on-failure): the OTA self-update's restart fallback SIGTERMs the parent (a
+    // code-0 exit), which on-failure would NOT recover — leaving the server down after an update.
+    expect(unit).toContain("Restart=always");
     expect(unit).not.toMatch(/ACCESS_TOKEN|token/i);
   });
 });
@@ -86,10 +88,11 @@ describe("installService (against a temp HOME — never the real ~)", () => {
   });
 
   test("darwin writes a per-user LaunchAgent plist (~/Library/LaunchAgents) and prints launchctl", () => {
+    const dataDir = join(home, ".config", "remote-coder");
     const { path, instructions } = installService({
       nodePath: "/usr/local/bin/node",
       cliPath: "/opt/rc/index.js",
-      dataDir: "/Users/me/.config/remote-coder",
+      dataDir,
       home,
       os: "darwin",
     });
@@ -102,13 +105,21 @@ describe("installService (against a temp HOME — never the real ~)", () => {
     expect(instructions).not.toMatch(/sudo|LaunchDaemons/);
     // world-readable but owner-writable only
     expect(statSync(path).mode & 0o777).toBe(0o644);
+    // service.json records the launchd identity for the OTA updater's restart resolution.
+    const svc = JSON.parse(readFileSync(join(dataDir, "service.json"), "utf8")) as {
+      manager: string;
+      label: string;
+    };
+    expect(svc).toEqual({ manager: "launchd", label: "com.remote-coder" });
+    expect(statSync(join(dataDir, "service.json")).mode & 0o777).toBe(0o600);
   });
 
   test("linux writes a systemd --user unit (~/.config/systemd/user) and prints systemctl --user", () => {
+    const dataDir = join(home, ".config", "remote-coder");
     const { path, instructions } = installService({
       nodePath: "/usr/bin/node",
       cliPath: "/opt/rc/index.js",
-      dataDir: "/home/me/.config/remote-coder",
+      dataDir,
       home,
       os: "linux",
     });
@@ -119,6 +130,12 @@ describe("installService (against a temp HOME — never the real ~)", () => {
     // user-level enable, NOT a system unit / sudo
     expect(instructions).toContain("systemctl --user");
     expect(instructions).not.toMatch(/sudo/);
+    // service.json records the systemd identity for the OTA updater's restart resolution.
+    const svc = JSON.parse(readFileSync(join(dataDir, "service.json"), "utf8")) as {
+      manager: string;
+      label: string;
+    };
+    expect(svc).toEqual({ manager: "systemd", label: "remote-coder" });
   });
 
   test("an unsupported platform errors clearly instead of writing the wrong unit", () => {
@@ -126,7 +143,7 @@ describe("installService (against a temp HOME — never the real ~)", () => {
       installService({
         nodePath: "/usr/bin/node",
         cliPath: "/opt/rc/index.js",
-        dataDir: "/data",
+        dataDir: join(home, ".config", "remote-coder"),
         home,
         os: "win32",
       }),

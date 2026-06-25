@@ -1,7 +1,12 @@
 import { create } from "zustand";
-import type { ContentBlock, ServerFrame, SessionMeta } from "../types/server";
+import type { ContentBlock, ServerFrame, SessionMeta, VersionInfo } from "../types/server";
 import { emptyView, reduceFrame } from "./frame-reducer";
 import type { SessionView } from "./frame-reducer";
+
+/** Client-side UX phase of the OTA self-update (distinct from the server-reported UpdateStatus.state):
+ * idle = not updating; updating = we POSTed /update and are polling + waiting to reconnect; failed =
+ * the updater reported a failure (offer Retry). */
+export type UpdateUxState = "idle" | "updating" | "failed";
 
 /**
  * Reconcile per-session activity stamps against a (re)loaded meta list. For each session the stamp is
@@ -37,6 +42,15 @@ interface StoreState {
    * inbound frame so the rail can float the live/just-opened session to the top, chat-app style.
    * Seeded from each session's createdAt when the list loads so fresh lists still have an order. */
   lastActiveAt: Record<string, number>;
+  /** OTA self-update: the latest GET /version result (undefined until first polled). Drives the
+   * update banner + panel. */
+  updateInfo?: VersionInfo;
+  /** Client-side update UX phase (idle | updating | failed). */
+  updateState: UpdateUxState;
+  /** Set the polled version info. */
+  setUpdateInfo: (info: VersionInfo | undefined) => void;
+  /** Set the client-side update UX phase. */
+  setUpdateState: (state: UpdateUxState) => void;
   setToken: (token: string | undefined) => void;
   setSessions: (sessions: SessionMeta[]) => void;
   /** Merge a freshly-polled `GET /sessions` list into the store WITHOUT clobbering the actively
@@ -79,6 +93,10 @@ export const useStore = create<StoreState>((set, get) => ({
   activeSessionId: undefined,
   views: {},
   lastActiveAt: {},
+  updateInfo: undefined,
+  updateState: "idle",
+  setUpdateInfo: (updateInfo) => set({ updateInfo }),
+  setUpdateState: (updateState) => set({ updateState }),
   setToken: (token) => set({ token }),
   setSessions: (sessions) =>
     set((state) => ({ sessions, lastActiveAt: reconcileActivity(state.lastActiveAt, sessions) })),

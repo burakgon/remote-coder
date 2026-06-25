@@ -23,6 +23,25 @@ describe("useStore", () => {
     expect(s.activeSessionId).toBe("s1");
   });
 
+  it("setUpdateInfo / setUpdateState drive the OTA update UX", () => {
+    const info = {
+      current: "v2026.06.20 · a",
+      latest: "v2026.06.25 · b",
+      behind: 3,
+      updatable: true,
+      updateAvailable: true,
+      changelog: [],
+    };
+    useStore.getState().setUpdateInfo(info);
+    useStore.getState().setUpdateState("updating");
+    expect(useStore.getState().updateInfo).toEqual(info);
+    expect(useStore.getState().updateState).toBe("updating");
+    useStore.getState().setUpdateState("failed");
+    expect(useStore.getState().updateState).toBe("failed");
+    useStore.getState().setUpdateInfo(undefined);
+    expect(useStore.getState().updateInfo).toBeUndefined();
+  });
+
   it("applyFrame folds frames into a per-session view and dedups replays", () => {
     const { applyFrame } = useStore.getState();
     applyFrame(

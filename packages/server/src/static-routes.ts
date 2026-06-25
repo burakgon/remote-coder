@@ -21,6 +21,8 @@ export const API_PATH_DENYLIST: RegExp[] = [
   /^\/fs/,
   /^\/health/,
   /^\/push/,
+  /^\/version/,
+  /^\/update/,
   /\/ws$/,
 ];
 

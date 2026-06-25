@@ -111,6 +111,49 @@ describe("ApiClient", () => {
       `${baseUrl}/fs/download?path=${encodeURIComponent("/home/u/a.txt")}&token=tok`,
     );
   });
+
+  it("getVersion GETs /version and returns the version info", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        current: "v2026.06.20 · a",
+        latest: "v2026.06.25 · b",
+        behind: 2,
+        updatable: true,
+        updateAvailable: true,
+        changelog: [{ sha: "b", subject: "new", group: "new", when: "2h", date: "2026-06-25T10:00:00Z" }],
+      }),
+    );
+    const api = createApiClient({ baseUrl, getToken: () => "tok" });
+    const v = await api.getVersion();
+    expect(v.behind).toBe(2);
+    expect(v.updateAvailable).toBe(true);
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${baseUrl}/version`);
+  });
+
+  it("applyUpdate POSTs /update with confirm:true (resolves on a 202, no body)", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 202 }));
+    const api = createApiClient({ baseUrl, getToken: () => "tok" });
+    await expect(api.applyUpdate()).resolves.toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${baseUrl}/update`);
+    expect((init as RequestInit).method).toBe("POST");
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ confirm: true });
+  });
+
+  it("applyUpdate rejects with ApiError when the server refuses (409)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: "not a git checkout" }, 409));
+    const api = createApiClient({ baseUrl, getToken: () => "tok" });
+    await expect(api.applyUpdate()).rejects.toMatchObject({ status: 409 });
+    await expect(api.applyUpdate()).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("getUpdateStatus GETs /update/status", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ state: "building", phase: "building" }));
+    const api = createApiClient({ baseUrl, getToken: () => "tok" });
+    const s = await api.getUpdateStatus();
+    expect(s.state).toBe("building");
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${baseUrl}/update/status`);
+  });
 });
 
 describe("wsUrl", () => {

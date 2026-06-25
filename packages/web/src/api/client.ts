@@ -1,4 +1,11 @@
-import type { DirListing, ResumableSession, ServerFrame, SessionMeta } from "../types/server";
+import type {
+  DirListing,
+  ResumableSession,
+  ServerFrame,
+  SessionMeta,
+  UpdateStatus,
+  VersionInfo,
+} from "../types/server";
 
 export class ApiError extends Error {
   status: number;
@@ -43,6 +50,12 @@ export interface ApiClient {
   getVapidPublicKey(): Promise<string>;
   subscribePush(sub: PushSubscriptionJSON): Promise<void>;
   unsubscribePush(endpoint: string): Promise<void>;
+  /** OTA self-update: GET /version → {current,latest,behind,updatable,updateAvailable,changelog}. */
+  getVersion(): Promise<VersionInfo>;
+  /** OTA: POST /update {confirm:true} → 202; the server spawns the detached pull+build+restart. */
+  applyUpdate(): Promise<void>;
+  /** OTA: GET /update/status → the detached updater's progress {state,phase,error?,target?,log?}. */
+  getUpdateStatus(): Promise<UpdateStatus>;
 }
 
 export interface ApiClientOptions {
@@ -174,6 +187,21 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
         headers: headers({ "content-type": "application/json" }),
         body: JSON.stringify({ endpoint }),
       });
+    },
+    async getVersion() {
+      return req<VersionInfo>("/version", { headers: headers() });
+    },
+    async applyUpdate() {
+      // POST /update {confirm:true} → 202. confirm is the double-gate for an RCE-by-design action
+      // (the server rebuilds + restarts itself from our own repo); the token already gated the call.
+      await reqNoBody("/update", {
+        method: "POST",
+        headers: headers({ "content-type": "application/json" }),
+        body: JSON.stringify({ confirm: true }),
+      });
+    },
+    async getUpdateStatus() {
+      return req<UpdateStatus>("/update/status", { headers: headers() });
     },
   };
 }

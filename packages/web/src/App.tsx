@@ -13,9 +13,12 @@ import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
+import { UpdateBanner } from "./pwa/UpdateBanner";
+import { UpdatePanel } from "./update/UpdatePanel";
 import { useOnline } from "./pwa/online-status";
 import { Icon } from "./ui/Icon";
 import { MobileMenuButton } from "./ui/MobileMenuButton";
+import type { UpdateStatus } from "./types/server";
 
 type Phase = "login" | "validating" | "ready";
 
@@ -37,6 +40,10 @@ export function App() {
     removeSession,
     views,
     lastActiveAt,
+    updateInfo,
+    setUpdateInfo,
+    updateState,
+    setUpdateState,
   } = useStore();
   const [wizardOpen, setWizardOpen] = useState(false);
   // A small, dismissible error surfaced when a close actually FAILS (so we don't silently pretend a
@@ -46,6 +53,14 @@ export function App() {
   // (the directory picker); the in-chat `/resume` slash command opens straight to "resume".
   const [wizardMode, setWizardMode] = useState<"new" | "resume">("new");
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  // OTA self-update UI state. The banner is dismissible PER SESSION (a page reload re-shows it if the
+  // update is still pending). The panel is the "What's new" / confirm sheet. `updateStatus` is the
+  // server-reported updater progress polled while updating. `updatedTo` drives the "Updated to …"
+  // toast after a successful reconnect onto the new version.
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+  const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | undefined>();
+  const [updatedTo, setUpdatedTo] = useState<string | undefined>();
 
   // Open the new-session wizard on a chosen tab. The default `+`/"New session" affordances open the
   // directory picker; `/resume` from the chat composer opens the resume picker.
@@ -147,6 +162,104 @@ export function App() {
     };
   }, [phase, api, mergeSessionMeta]);
 
+  // OTA self-update: poll GET /version on open and every ~15min. The server caches the underlying git
+  // check (≤10min), so this is cheap. A failed poll is ignored (transient / offline / non-updatable);
+  // the store keeps the last known info. When a poll comes back with a NEW current version while we
+  // were updating, that means the server restarted onto the new build — finish the update UX.
+  useEffect(() => {
+    if (phase !== "ready") return;
+    let cancelled = false;
+    const poll = () => {
+      api
+        .getVersion()
+        .then((info) => {
+          if (cancelled) return;
+          // Detect "the server is now on a new version" while/after an update: the polled `current`
+          // differs from the version we were updating FROM (read straight from the store so this is
+          // current even though the effect isn't re-run on every state change). Clear the updating UX
+          // + show the "Updated to …" toast.
+          const { updateState: phaseNow, updateInfo: prevInfo } = useStore.getState();
+          if (phaseNow === "updating" && prevInfo && info.current !== prevInfo.current) {
+            setUpdatedTo(info.current);
+            setUpdatePanelOpen(false);
+            setUpdateBannerDismissed(false);
+            setUpdateState("idle");
+          }
+          setUpdateInfo(info);
+        })
+        .catch(() => {
+          // transient/offline/non-updatable — keep the last known info.
+        });
+    };
+    poll();
+    const interval = setInterval(poll, 15 * 60 * 1000);
+    const onFocus = () => poll();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [phase, api, setUpdateInfo, setUpdateState]);
+
+  // While an update is in flight, poll GET /update/status (~every 2s) so the panel shows the live phase
+  // (pulling → building → restarting). On a `failed` status, flip to the failed UX. Each tick ALSO
+  // re-checks GET /version: when the server restarts onto the new build, `current` changes and we end
+  // the "updating" state + show the toast (the 15-min version poll would be too slow to catch this).
+  useEffect(() => {
+    if (phase !== "ready" || updateState !== "updating") return;
+    let cancelled = false;
+    const poll = () => {
+      api
+        .getUpdateStatus()
+        .then((status) => {
+          if (cancelled) return;
+          setUpdateStatus(status);
+          if (status.state === "failed") setUpdateState("failed");
+        })
+        .catch(() => {
+          // The server is likely mid-restart (the request fails) — that's expected; keep polling.
+        });
+      api
+        .getVersion()
+        .then((info) => {
+          if (cancelled) return;
+          const { updateState: phaseNow, updateInfo: prevInfo } = useStore.getState();
+          if (phaseNow === "updating" && prevInfo && info.current !== prevInfo.current) {
+            setUpdatedTo(info.current);
+            setUpdatePanelOpen(false);
+            setUpdateBannerDismissed(false);
+            setUpdateState("idle");
+          }
+          setUpdateInfo(info);
+        })
+        .catch(() => {
+          // mid-restart — keep polling.
+        });
+    };
+    poll();
+    const interval = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [phase, updateState, api, setUpdateState, setUpdateInfo]);
+
+  // Apply the update: POST /update, flip to the updating UX, and open the panel so the progress overlay
+  // is visible. A failed POST (e.g. the server isn't a git checkout) flips to the failed UX.
+  const applyUpdate = () => {
+    setUpdateState("updating");
+    setUpdatePanelOpen(true);
+    setUpdateStatus({ state: "starting", phase: "starting" });
+    void api.applyUpdate().catch((err: unknown) => {
+      setUpdateState("failed");
+      setUpdateStatus({
+        state: "failed",
+        error: err instanceof ApiError ? err.message : "Couldn't start the update.",
+      });
+    });
+  };
+
   if (phase === "login" || token === undefined) {
     return (
       <LoginScreen
@@ -238,6 +351,43 @@ export function App() {
   return (
     <>
       <ConnectionBanner online={online} />
+      {updateInfo && !updateBannerDismissed && updateState !== "updating" && (
+        <UpdateBanner
+          info={updateInfo}
+          onWhatsNew={() => setUpdatePanelOpen(true)}
+          onUpdate={() => setUpdatePanelOpen(true)}
+          onDismiss={() => setUpdateBannerDismissed(true)}
+        />
+      )}
+      {updatedTo && (
+        <div role="status" className="rc-updated-toast">
+          <Icon name="check" size={15} style={{ color: "var(--coral)" }} />
+          <span>
+            Updated to <span style={{ fontFamily: "var(--font-mono)" }}>{updatedTo}</span>
+          </span>
+          <button type="button" onClick={() => setUpdatedTo(undefined)} aria-label="Dismiss">
+            <Icon name="x" size={14} />
+          </button>
+          <style>{`
+            .rc-updated-toast {
+              position: fixed; left: 50%; transform: translateX(-50%);
+              top: calc(env(safe-area-inset-top, 0px) + var(--sp-4));
+              z-index: 60; max-width: min(92vw, 420px);
+              display: inline-flex; align-items: center; gap: var(--sp-3);
+              padding: var(--sp-2) var(--sp-3);
+              background: var(--surface-2); color: var(--text);
+              border: 1px solid var(--accent-line); border-radius: var(--radius);
+              box-shadow: var(--shadow); font-size: var(--fs-sm);
+            }
+            .rc-updated-toast button {
+              flex: none; display: grid; place-items: center;
+              width: 28px; height: 28px; border-radius: var(--radius-sm);
+              background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+            }
+            .rc-updated-toast button:hover { color: var(--text); background: var(--surface); }
+          `}</style>
+        </div>
+      )}
       {closeError && (
         <div role="alert" className="rc-close-err">
           <span>{closeError}</span>
@@ -396,6 +546,15 @@ export function App() {
             setWizardOpen(false);
             setSessionsOpen(false);
           }}
+        />
+      )}
+      {updatePanelOpen && updateInfo && (
+        <UpdatePanel
+          info={updateInfo}
+          state={updateState}
+          status={updateStatus}
+          onUpdate={applyUpdate}
+          onClose={() => setUpdatePanelOpen(false)}
         />
       )}
     </>

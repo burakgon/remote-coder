@@ -26,6 +26,8 @@ import type { IdempotencyStore } from "./idempotency.js";
 import type { SessionMeta } from "./session-hub.js";
 import type { PushStore } from "./push-store.js";
 import type { ServerFrame } from "./replay-buffer.js";
+import { createUpdater } from "./updater.js";
+import type { Updater } from "./updater.js";
 
 export interface CreateServerDeps {
   store?: SessionStore;
@@ -46,6 +48,13 @@ export interface CreateServerDeps {
    * GET /resumable and the resume-create flow to browse + load past sessions. Overridable for tests.
    */
   projectsDir?: string;
+  /**
+   * In-app OTA self-update (GET /version, POST /update, GET /update/status). Injected here so tests can
+   * pass a fake Updater (FIXTURE git output) without touching real git. When omitted a real Updater is
+   * built from `config.dataDir` — and if the server isn't running from a git checkout, /version simply
+   * reports `updatable:false` (the feature is off).
+   */
+  updater?: Updater;
 }
 
 export interface CreateServerResult {
@@ -80,6 +89,11 @@ export function createServer(
   const inFlight = new Map<string, Promise<SessionMeta>>();
   const authGate = new AuthGate({ token: config.accessToken });
   const fsService = new FsService({ root: config.fsRoot });
+  // OTA self-update. A real Updater reads/writes its status file in the data dir and runs git there;
+  // tests inject a fake with FIXTURE git output (no real git mutation). The real Updater reads the
+  // REMOTE_CODER_SERVICE_LABEL/_MANAGER overrides from process.env (its default) when resolving how to
+  // restart the service after a successful build.
+  const updater = deps.updater ?? createUpdater({ dataDir: config.dataDir });
   // trustProxy makes request.ip honour X-Forwarded-For behind a reverse proxy, so the
   // per-client auth lockout keys on the real client IP (see Task 4's proxy caveat).
   const app = Fastify({ logger: false, trustProxy: config.trustProxy ?? false });
@@ -428,6 +442,52 @@ export function createServer(
     }
     deps.pushStore.remove(endpoint);
     return { ok: true };
+  });
+
+  // OTA self-update (token-gated by the global preHandler).
+  // GET /version → the cached check {current,latest,behind,updatable,updateAvailable,changelog}.
+  app.get("/version", async (_request, reply) => {
+    try {
+      return await updater.getVersion();
+    } catch (err) {
+      // A git/spawn failure must not 500 the open-on-load probe — report a non-updatable version.
+      reply.code(200).send({
+        current: "—",
+        latest: "—",
+        behind: 0,
+        updatable: false,
+        updateAvailable: false,
+        changelog: [],
+        error: (err as Error).message,
+      });
+    }
+  });
+
+  // POST /update {confirm:true} → spawn the detached pull+build+restart updater, return 202. The
+  // confirm flag is a deliberate double-gate (alongside the token + the remote-URL guard) for an
+  // action that is RCE-by-design (it rebuilds + restarts this server from our own repo).
+  app.post<{ Body: { confirm?: boolean } }>("/update", async (request, reply) => {
+    if (request.body?.confirm !== true) {
+      reply.code(400).send({ error: "confirm:true is required to apply an update" });
+      return;
+    }
+    let result;
+    try {
+      result = await updater.startUpdate();
+    } catch (err) {
+      reply.code(409).send({ error: (err as Error).message });
+      return;
+    }
+    if (!result.started) {
+      reply.code(409).send({ error: result.reason ?? "update not available" });
+      return;
+    }
+    reply.code(202).send({ ok: true, state: "starting" });
+  });
+
+  // GET /update/status → the detached updater's status file {state,phase,error?,target?,log?}.
+  app.get("/update/status", async () => {
+    return updater.readStatus();
   });
 
   app.get<{ Querystring: { path?: string } }>("/fs/list", async (request, reply) => {

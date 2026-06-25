@@ -161,6 +161,48 @@ export interface RewoundPayload {
   deletions?: number;
 }
 
+/**
+ * OTA self-update (server-side mirror: packages/server/src/updater.ts). GET /version reports whether a
+ * newer version is on origin/main and a grouped changelog of the behind commits; POST /update spawns
+ * the detached pull+build+restart; GET /update/status reports the updater's progress.
+ */
+export interface ChangelogEntry {
+  sha: string;
+  subject: string;
+  group: "new" | "fixes" | "improvements" | "other";
+  when: string;
+  date: string;
+}
+
+export interface VersionInfo {
+  current: string;
+  latest: string;
+  behind: number;
+  /** False when the server isn't a git checkout / has the wrong remote — hides the whole feature. */
+  updatable: boolean;
+  updateAvailable: boolean;
+  changelog: ChangelogEntry[];
+}
+
+export type UpdateState =
+  | "idle"
+  | "starting"
+  | "pulling"
+  | "installing"
+  | "building"
+  | "restarting"
+  | "done"
+  | "failed";
+
+export interface UpdateStatus {
+  state: UpdateState;
+  phase?: string;
+  error?: string;
+  target?: string;
+  log?: string;
+  updatedAt?: number;
+}
+
 export type OutboundFrame =
   | {
       type: "user";

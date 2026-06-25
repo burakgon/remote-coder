@@ -67,3 +67,30 @@ export { PushDispatcher } from "./push-dispatcher.js";
 export type { PushMessage, PushSendFn, PushDispatcherOptions } from "./push-dispatcher.js";
 export { createWebPushSend } from "./web-push-send.js";
 export type { CreateWebPushSendOptions } from "./web-push-send.js";
+export {
+  Updater,
+  createUpdater,
+  defaultRunGit,
+  defaultUpdaterFs,
+  parseChangelog,
+  parseConventionalSubject,
+  groupForPrefix,
+  relativeWhen,
+  versionLabel,
+  renderRestartCommand,
+  renderUpdaterScript,
+  EXPECTED_REMOTE_SUBSTRING,
+  CHECK_CACHE_MS,
+  FETCH_TIMEOUT_MS,
+} from "./updater.js";
+export type {
+  UpdaterDeps,
+  UpdaterFs,
+  RunGit,
+  RunGitResult,
+  ChangelogEntry,
+  VersionInfo,
+  UpdateState,
+  UpdateStatus,
+  RenderUpdaterScriptOptions,
+} from "./updater.js";
