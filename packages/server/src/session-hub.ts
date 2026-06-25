@@ -130,6 +130,13 @@ interface SessionRecord {
    * deliberate stop (→ dormant/removed, NOT an error) from a real crash. Reset on a fresh resume.
    */
   intentionalStop: boolean;
+  /**
+   * Monotonic attach generation. A respawn (applySettings dangerouslySkip / rewind) bumps this BEFORE
+   * killing the old process; each `attach` captures the value, so the OLD process's late events + exit
+   * (which still fire on the superseded ClaudeProcess) become no-ops instead of emitting a spurious
+   * `exit` frame or flipping the freshly-resumed session to dormant.
+   */
+  generation: number;
 }
 
 export interface SessionHubOptions {
@@ -195,6 +202,7 @@ export class SessionHub {
       pending: new Set(),
       pendingAsks: new Map(),
       intentionalStop: false,
+      generation: 0,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -260,6 +268,7 @@ export class SessionHub {
       pending: new Set(),
       pendingAsks: new Map(),
       intentionalStop: false,
+      generation: 0,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -353,18 +362,26 @@ export class SessionHub {
   }
 
   private attach(proc: ClaudeProcess, record: SessionRecord): void {
+    // This attach's generation. A respawn bumps record.generation BEFORE killing the old process, so a
+    // superseded ClaudeProcess (which still fires its late events/exit) is `stale()` here and no-ops —
+    // no spurious `exit` frame, no flipping the freshly-resumed session to dormant.
+    const gen = record.generation;
+    const stale = () => record.generation !== gen;
     const emit = (kind: ServerFrameKind, payload: unknown) => this.emitFrame(record, kind, payload);
     proc.on("event", (ev: InboundEvent) => {
+      if (stale()) return;
       // Assistant activity (the CLI streams events as it works) counts as conversation activity for
       // sorting; bump lastActivityAt so a session that's actively responding sorts above an idle one.
       this.markActivity(record);
       emit("event", ev);
     });
     proc.on("permission", (perm: PermissionEvent) => {
+      if (stale()) return;
       this.setAwaiting(record, perm.requestId, true);
       emit("permission", perm);
     });
     proc.on("question", (q: QuestionEvent) => {
+      if (stale()) return;
       // SECURITY: remember the CLI's original tool_input for this requestId so answerQuestion
       // replays IT (not a client-echoed value) back into the CLI.
       record.questionToolInputs.set(q.requestId, q.toolInput);
@@ -372,22 +389,28 @@ export class SessionHub {
       emit("question", q);
     });
     proc.on("result", (result: ResultEvent) => {
+      if (stale()) return;
       // A turn finished: nothing is pending anymore (defensive clear in case an answer frame was
       // dropped), and this is real conversation activity.
       this.clearAllAwaiting(record);
       this.markActivity(record);
       emit("result", result);
     });
-    proc.on("diagnostic", (diag: DiagnosticEvent) => emit("diagnostic", diag));
-    // CRITICAL: Node's EventEmitter throws on an "error" event with no listener.
-    // ClaudeProcess.write() emits "error" on write-after-teardown, so every managed
-    // process MUST have an "error" listener. Fold it into a diagnostic frame (spec §10).
+    proc.on("diagnostic", (diag: DiagnosticEvent) => {
+      if (stale()) return;
+      emit("diagnostic", diag);
+    });
+    // CRITICAL: Node's EventEmitter throws on an "error" event with no listener. ClaudeProcess.write()
+    // emits "error" on write-after-teardown, so every managed process MUST keep an "error" listener —
+    // a stale one stays registered (so it never throws) but no-ops on the record.
     proc.on("error", (err: Error) => {
+      if (stale()) return;
       record.meta.status = "errored";
       this.persist(record.meta);
       emit("diagnostic", { source: "parser", message: err.message } satisfies DiagnosticEvent);
     });
     proc.on("exit", (info) => {
+      if (stale()) return;
       // A deliberate stop (deleteSession/stopAll) is being torn down separately — don't fight it by
       // flipping to errored. For a self-driven exit: a clean exit (code 0, or a kill signal from a
       // graceful stop) leaves the session DORMANT (resumable, not an error); a non-zero exit code or
@@ -590,6 +613,9 @@ export class SessionHub {
       // latest model/effort, so no separate control_request is needed for those.
       try {
         if (this.manager.getSession(id)) {
+          // Invalidate the old process's attach listeners (generation bump) so its imminent exit can't
+          // emit a spurious `exit` frame or flip the freshly-resumed session to dormant.
+          record.generation += 1;
           record.intentionalStop = true;
           this.manager.stopSession(id);
         }
@@ -670,6 +696,9 @@ export class SessionHub {
     // rejects --resume together with a live process for the same id, so we kill the current one first.
     try {
       if (this.manager.getSession(id)) {
+        // Invalidate the old process's attach listeners (generation bump) so its imminent exit can't
+        // emit a spurious `exit` frame or flip the resumed session to dormant.
+        record.generation += 1;
         record.intentionalStop = true;
         this.manager.stopSession(id);
       }
@@ -816,6 +845,7 @@ export class SessionHub {
         pending: new Set(),
         pendingAsks: new Map(),
         intentionalStop: false,
+        generation: 0,
       });
     }
   }

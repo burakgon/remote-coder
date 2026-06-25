@@ -70,13 +70,15 @@ export class SessionManager {
     });
     if (this.deps.spawnPrefixArgs) proc.setSpawnPrefixArgsForTest(this.deps.spawnPrefixArgs);
 
-    // Drop a dead session from the map automatically.
+    const session: Session = { id, cwd: opts.cwd, process: proc };
+    // Drop a dead session from the map automatically — but ONLY if it's still THIS session. A respawn
+    // (resumeSession reuses the id) replaces the map entry, so the OLD process's late exit must not
+    // delete the new live one (which would orphan an untracked claude child).
     proc.on("exit", () => {
-      this.sessions.delete(id);
+      if (this.sessions.get(id) === session) this.sessions.delete(id);
     });
 
     await proc.start();
-    const session: Session = { id, cwd: opts.cwd, process: proc };
     this.sessions.set(id, session);
     return session;
   }
@@ -115,11 +117,13 @@ export class SessionManager {
       attach: this.attach,
     });
     if (this.deps.spawnPrefixArgs) proc.setSpawnPrefixArgsForTest(this.deps.spawnPrefixArgs);
+    const session: Session = { id, cwd: opts.cwd, process: proc };
+    // Only drop THIS session on exit — a later respawn reuses the id, and the old proc's late exit must
+    // not evict the new live session (orphaning an untracked claude child). See createSession.
     proc.on("exit", () => {
-      this.sessions.delete(id);
+      if (this.sessions.get(id) === session) this.sessions.delete(id);
     });
     await proc.start();
-    const session: Session = { id, cwd: opts.cwd, process: proc };
     this.sessions.set(id, session);
     return session;
   }

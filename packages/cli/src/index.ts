@@ -45,6 +45,15 @@ function defaultDeps(): RunDeps {
       };
       process.on("SIGTERM", () => shutdown("SIGTERM"));
       process.on("SIGINT", () => shutdown("SIGINT"));
+      // Keep the always-on server up on a stray unhandled rejection or a listener-less EventEmitter
+      // `error` (e.g. a write-after-teardown on a dying claude child) — log instead of crashing.
+      process.on("unhandledRejection", (reason) => {
+        const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+        process.stderr.write(`unhandled rejection (kept serving): ${msg}\n`);
+      });
+      process.on("uncaughtException", (err) => {
+        process.stderr.write(`uncaught exception (kept serving): ${err.stack ?? err.message}\n`);
+      });
     },
   };
 }

@@ -109,6 +109,20 @@ function defaultWebDir(): string | undefined {
   return join(here, "..", "..", "web", "dist");
 }
 
+/** Install process-wide crash guards so a stray unhandled rejection or a listener-less EventEmitter
+ *  `error` (e.g. a write-after-teardown on a dying claude child, or a detached updater spawn failure)
+ *  LOGS instead of taking the whole server down — for an always-on self-hosted server, staying up beats
+ *  crashing. Install ONCE at a process entry (never in startServer, which tests call repeatedly). */
+export function installCrashGuards(): void {
+  process.on("unhandledRejection", (reason) => {
+    const msg = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+    console.error(`[remote-coder] unhandled rejection (kept serving): ${msg}`);
+  });
+  process.on("uncaughtException", (err) => {
+    console.error(`[remote-coder] uncaught exception (kept serving): ${err.stack ?? err.message}`);
+  });
+}
+
 // Run when executed directly (node dist/start.js), not when imported.
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   startServer()
@@ -132,6 +146,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       };
       process.on("SIGTERM", () => shutdown("SIGTERM"));
       process.on("SIGINT", () => shutdown("SIGINT"));
+      installCrashGuards();
     })
     .catch((err: unknown) => {
       console.error(`remote-coder server failed to start: ${(err as Error).message}`);
