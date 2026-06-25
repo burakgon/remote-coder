@@ -12,6 +12,7 @@
  * only thing set via dangerouslySetInnerHTML is shiki's own sanitized, self-produced output.
  */
 import { useEffect, useState } from "react";
+import type { ThemeRegistrationAny } from "shiki";
 
 export interface CodeBlockProps {
   code: string;
@@ -43,7 +44,43 @@ function normalizeLang(language?: string): string | undefined {
   return LANG_ALIAS[l] ?? l;
 }
 
-const THEME = "one-dark-pro";
+// Our own syntax theme — coral-led keywords (the brand accent) + warm muted tones, cohesive with the
+// clean-dark UI instead of a generic cool rainbow. A shiki theme object passed straight to codeToHtml.
+const THEME: ThemeRegistrationAny = {
+  name: "remote-coder",
+  type: "dark",
+  colors: { "editor.background": "#0e0e10", "editor.foreground": "#cdccd4" },
+  tokenColors: [
+    { scope: ["comment", "punctuation.definition.comment"], settings: { foreground: "#615f6b", fontStyle: "italic" } },
+    {
+      scope: [
+        "keyword",
+        "storage",
+        "storage.type",
+        "storage.modifier",
+        "keyword.control",
+        "keyword.operator.expression",
+        "variable.language",
+        "constant.language.boolean",
+        "keyword.operator.new",
+      ],
+      settings: { foreground: "#f0814f" },
+    },
+    { scope: ["string", "string.quoted", "string.template", "punctuation.definition.string"], settings: { foreground: "#a6b88c" } },
+    { scope: ["constant.numeric", "constant.language", "constant.character", "keyword.other.unit"], settings: { foreground: "#e0a96d" } },
+    { scope: ["entity.name.function", "support.function", "meta.function-call", "entity.name.method"], settings: { foreground: "#eac392" } },
+    {
+      scope: ["entity.name.type", "entity.name.class", "support.type", "support.class", "entity.other.inherited-class", "entity.name.namespace"],
+      settings: { foreground: "#d8ac88" },
+    },
+    { scope: ["variable", "variable.other.readwrite", "meta.definition.variable"], settings: { foreground: "#cdccd4" } },
+    { scope: ["variable.parameter", "variable.other.parameter"], settings: { foreground: "#bdb4c2", fontStyle: "italic" } },
+    { scope: ["meta.object-literal.key", "support.type.property-name", "variable.other.property"], settings: { foreground: "#cabb9f" } },
+    { scope: ["keyword.operator", "punctuation", "meta.brace", "meta.delimiter"], settings: { foreground: "#928e9b" } },
+    { scope: ["entity.name.tag"], settings: { foreground: "#f0814f" } },
+    { scope: ["entity.other.attribute-name"], settings: { foreground: "#eac392" } },
+  ],
+};
 
 export function CodeBlock({ code, language }: CodeBlockProps) {
   const [html, setHtml] = useState<string | null>(null);

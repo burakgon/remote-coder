@@ -63,7 +63,7 @@ const SHOTS = [
   // table, and the fenced code block.
   { name: "chat-mobile", scene: "chat", vp: MOBILE, wait: 'header strong.display', waitShiki: true },
   { name: "chat-mobile-top", scene: "chat", vp: MOBILE, wait: 'header strong.display', scrollTop: true, waitShiki: true },
-  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: 'header strong.display', waitShiki: true },
+  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: 'header strong.display', waitShiki: true, scrollTop: true },
   // The interactive ask_user question with ASCII previews.
   { name: "question-mobile", scene: "question", vp: MOBILE, wait: 'button[aria-pressed]' },
   // The New-session directory picker (the headline) — git-aware, mobile-first. Wait for the async
