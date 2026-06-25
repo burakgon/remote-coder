@@ -49,6 +49,8 @@ Remote Coder is the one that closes that gap:
 | Answer multiple-choice questions | — | partial | **✓** |
 | Claude sends you files & images inline | ✗ | Telegram only | **✓** |
 | Stop a turn · rewind code & chat | — | ✗ | **✓** |
+| Watch every subagent live · drill into each | — | ✗ | **✓** |
+| Context meter · know when to `/compact` | — | ✗ | **✓** |
 | Installable app · self-hosted · MIT | — | — | **✓** |
 
 ## What you can do
