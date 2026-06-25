@@ -108,6 +108,19 @@ export const SESSIONS: SessionMeta[] = [
 
 export const ACTIVE_ID = "sess-active";
 
+// A dedicated session for the SUBAGENT scenes (cards + tray + drill-in). Defined OUTSIDE the SESSIONS
+// rail so the other scenes' screenshots are unchanged; its view is seeded directly by id.
+export const AGENTS_ID = "sess-agents";
+export const AGENTS_SESSION: SessionMeta = {
+  id: AGENTS_ID,
+  cwd: "/Users/burakgon/Developer/auth-service",
+  model: "claude-opus-4-8",
+  dangerouslySkip: false,
+  status: "running",
+  createdAt: Date.now() - 1000 * 60 * 11,
+  lastActivityAt: Date.now() - 1000 * 6,
+};
+
 // The checkpoint id of the user turn — the id the rewind affordance + the Rewind sheet target.
 export const CHECKPOINT_ID = "ck-7f3a-aud-1";
 
@@ -265,6 +278,36 @@ function streamFrames(): ServerFrame[] {
   ];
 }
 
+// The SUBAGENT session: the lead dispatches two agents — an Explore agent that finished (with a Grep
+// step + a prose finding in its transcript, plus a result + usage) and a general-purpose agent still
+// running (with a live activity label). Authored in the POST-PARSE shape the reducer reads
+// (camelCase `parentToolUseId`; typed `task`), exactly as parseLine surfaces a real claude stream.
+function subagentFrames(): ServerFrame[] {
+  const ev = (seq: number, payload: unknown): ServerFrame => ({ seq, kind: "event", payload });
+  const AUTH_FINDING =
+    "**Auth flow.** `transport.ts` registers a global `preHandler` that pulls the bearer token and calls `authGate.check(token, ip)` — constant-time, with a per-IP lockout in `auth.ts`. Sessions are authorized in `session-hub.ts`.\n\n**Seams to extend:** add new routes *after* the preHandler to inherit token-gating; `isPublicForRequest` is the only login-screen bypass.";
+  return [
+    ev(1, { type: "user", uuid: "u-ag-1", message: { content: [{ type: "text", text: "Refactor the auth module and add tests — split the work across agents." }] } }),
+    ev(2, { type: "assistant", message: { content: [{ type: "text", text: "I'll dispatch two agents in parallel — one to map the current auth flow, one to draft the test plan." }] } }),
+    // sa-1: Explore agent (will complete) — spawn → its prompt → a Grep step → a prose finding → result.
+    ev(3, { type: "assistant", message: { content: [{ type: "tool_use", id: "sa-1", name: "Agent", input: { description: "Map the auth flow", subagent_type: "Explore", prompt: "Trace the authentication flow across packages/server — the token gate, the per-IP lockout, and where sessions are authorized. Report the files and the seams to extend." } }] } }),
+    ev(4, { type: "system", subtype: "task_started", task: { taskId: "task-a", toolUseId: "sa-1", subagentType: "Explore", description: "Map the auth flow", prompt: "Trace the authentication flow across packages/server…" } }),
+    ev(5, { type: "user", parentToolUseId: "sa-1", message: { content: [{ type: "text", text: "Trace the authentication flow across packages/server — the token gate, the per-IP lockout, and where sessions are authorized. Report the files and the seams to extend." }] } }),
+    ev(6, { type: "system", subtype: "task_progress", task: { taskId: "task-a", toolUseId: "sa-1", subagentType: "Explore", description: "Reading packages/server/src/auth.ts" } }),
+    ev(7, { type: "assistant", parentToolUseId: "sa-1", message: { content: [{ type: "tool_use", id: "g1", name: "Grep", input: { pattern: "authGate", path: "packages/server/src" } }] } }),
+    ev(8, { type: "user", parentToolUseId: "sa-1", message: { content: [{ type: "tool_result", tool_use_id: "g1", content: "7 matches — auth.ts (4), transport.ts (3)" }] } }),
+    ev(9, { type: "assistant", parentToolUseId: "sa-1", message: { content: [{ type: "text", text: "The token gate is a global `preHandler` in `transport.ts`; the per-IP lockout is `AuthGate.check` in `auth.ts`; sessions are authorized in `session-hub.ts`." }] } }),
+    ev(10, { type: "system", subtype: "task_updated", task: { taskId: "task-a", patch: { status: "completed", endTime: Date.now() - 1000 * 30 } } }),
+    ev(11, { type: "system", subtype: "task_notification", task: { taskId: "task-a", toolUseId: "sa-1", status: "completed", summary: "Map the auth flow", usage: { totalTokens: 14200, toolUses: 3, durationMs: 8100 } } }),
+    ev(12, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "sa-1", content: [{ type: "text", text: AUTH_FINDING }, { type: "text", text: "agentId: task-a (use SendMessage with to: 'task-a')\n<usage>subagent_tokens: 14200\ntool_uses: 3\nduration_ms: 8100</usage>" }] }] } }),
+    // sa-2: general-purpose agent (still running) — spawn → its prompt → a live activity label, no result.
+    ev(13, { type: "assistant", message: { content: [{ type: "tool_use", id: "sa-2", name: "Agent", input: { description: "Draft the auth test plan", subagent_type: "general-purpose", prompt: "Draft a test plan for the auth module — the token gate, the per-IP lockout, and the login bypass. List the cases to cover." } }] } }),
+    ev(14, { type: "system", subtype: "task_started", task: { taskId: "task-b", toolUseId: "sa-2", subagentType: "general-purpose", description: "Draft the auth test plan", prompt: "Draft a test plan for the auth module…" } }),
+    ev(15, { type: "user", parentToolUseId: "sa-2", message: { content: [{ type: "text", text: "Draft a test plan for the auth module — the token gate, the per-IP lockout, and the login bypass. List the cases to cover." }] } }),
+    ev(16, { type: "system", subtype: "task_progress", task: { taskId: "task-b", toolUseId: "sa-2", subagentType: "general-purpose", description: "Drafting the per-IP lockout edge cases" } }),
+  ];
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Scene seed data (consumed by AppShot for the non-chat overlays). These are plain fixtures handed to
 // the REAL components (QuestionPrompt, NewSessionWizard/DirectoryPicker, ResumePicker) so each overlay
@@ -366,5 +409,6 @@ export function seedStore(): void {
   store.setSessions(SESSIONS);
   store.applyFrames(ACTIVE_ID, activeFrames());
   store.applyFrames("sess-stream", streamFrames());
+  store.applyFrames(AGENTS_ID, subagentFrames());
   store.setActive(ACTIVE_ID);
 }

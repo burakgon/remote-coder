@@ -26,10 +26,15 @@ import { NewSessionWizard } from "../session/NewSessionWizard";
 import { ResumePicker } from "../session/ResumePicker";
 import { LoginScreen } from "../auth/LoginScreen";
 import { SettingsPanel } from "../settings/SettingsPanel";
+import { SubagentTray } from "../chat/SubagentTray";
+import { SubagentView } from "../chat/SubagentView";
 import { loadDefaults } from "../settings/defaults";
 import { emptyView } from "../store/frame-reducer";
+import type { SessionMeta } from "../types/server";
 import {
   ACTIVE_ID,
+  AGENTS_ID,
+  AGENTS_SESSION,
   CHECKPOINT_ID,
   COMPOSER_TEXT,
   COMPOSER_IMAGES,
@@ -41,7 +46,7 @@ import {
   screenshotDownloadUrl,
 } from "./seed";
 
-type Scene = "chat" | "question" | "wizard" | "resume" | "rewind" | "login" | "settings";
+type Scene = "chat" | "question" | "wizard" | "resume" | "rewind" | "login" | "settings" | "subagents" | "subagentview";
 
 function currentScene(): Scene {
   const s = new URLSearchParams(window.location.search).get("scene");
@@ -51,28 +56,40 @@ function currentScene(): Scene {
     s === "resume" ||
     s === "rewind" ||
     s === "login" ||
-    s === "settings"
+    s === "settings" ||
+    s === "subagents" ||
+    s === "subagentview"
   )
     return s;
   return "chat";
 }
 
-/** A non-interactive mirror of ChatView's JSX (header + log + permission/question gate + composer). */
-function ChatBody({ scene }: { scene: Scene }) {
+/** A non-interactive mirror of ChatView's JSX (header + log + subagent tray + permission/question gate
+ *  + composer). `sessionId`/`sessionOverride` let the subagent scenes render a dedicated session. */
+function ChatBody({
+  scene,
+  sessionId = ACTIVE_ID,
+  sessionOverride,
+}: {
+  scene: Scene;
+  sessionId?: string;
+  sessionOverride?: SessionMeta;
+}) {
   const sessions = useStore((s) => s.sessions);
   const views = useStore((s) => s.views);
-  const session = sessions.find((s) => s.id === ACTIVE_ID)!;
-  const view = views[ACTIVE_ID] ?? emptyView();
+  const session = sessionOverride ?? sessions.find((s) => s.id === sessionId)!;
+  const view = views[sessionId] ?? emptyView();
   const wireState = wireStateForSession(session, view);
   const pending = view.pendingPermission;
+  const isActive = sessionId === ACTIVE_ID;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <ChatHeader session={session} wireState={wireState} needsYou={awaitingCount(sessions)} />
       <div aria-live="polite" style={{ flex: 1, overflowY: "auto" }}>
-        {/* Pass downloadUrl so Claude's sent chart previews inline, and onRewind so user turns carry
-            the rewind affordance — both shipped behaviors, exercised exactly as production does. */}
-        <MessageList view={view} downloadUrl={screenshotDownloadUrl} onRewind={() => {}} />
+        {/* Pass downloadUrl so Claude's sent chart previews inline, onRewind so user turns carry the
+            rewind affordance, and onOpenSubagent so subagent cards render as the live (tappable) look. */}
+        <MessageList view={view} downloadUrl={screenshotDownloadUrl} onRewind={() => {}} onOpenSubagent={() => {}} />
         {scene === "question" ? (
           <div style={{ padding: "var(--sp-4)" }}>
             <QuestionPrompt question={QUESTION} onAnswer={() => {}} onCancel={() => {}} />
@@ -89,11 +106,13 @@ function ChatBody({ scene }: { scene: Scene }) {
           )
         )}
       </div>
+      {/* The subagent tray sits directly above the composer (renders nothing without subagents). */}
+      <SubagentTray subagents={view.subagents} subagentOrder={view.subagentOrder} onOpen={() => {}} />
       <Composer
         onSend={() => {}}
         onUploadFile={async () => {}}
-        initialText={COMPOSER_TEXT}
-        initialImages={COMPOSER_IMAGES}
+        initialText={isActive ? COMPOSER_TEXT : ""}
+        initialImages={isActive ? COMPOSER_IMAGES : []}
       />
     </div>
   );
@@ -141,7 +160,11 @@ export function AppShot() {
   return (
     <>
       <AppLayout sessionList={list} needsYou={awaitingCount(sessions)}>
-        <ChatBody scene={scene} />
+        <ChatBody
+          scene={scene}
+          sessionId={scene === "subagents" || scene === "subagentview" ? AGENTS_ID : ACTIVE_ID}
+          sessionOverride={scene === "subagents" || scene === "subagentview" ? AGENTS_SESSION : undefined}
+        />
       </AppLayout>
       {/* Overlays render on top of the live chat, exactly as App mounts them. */}
       {scene === "wizard" && (
@@ -166,6 +189,16 @@ export function AppShot() {
           onApplyLiveSettings={() => {}}
           onStopSession={() => {}}
           onClose={() => {}}
+        />
+      )}
+      {/* The subagent drill-in sheet — opened over the agents session for the completed Explore agent. */}
+      {scene === "subagentview" && views[AGENTS_ID]?.subagents["sa-1"] && (
+        <SubagentView
+          thread={views[AGENTS_ID]!.subagents["sa-1"]!}
+          subagents={views[AGENTS_ID]!.subagents}
+          onOpenSubagent={() => {}}
+          onClose={() => {}}
+          downloadUrl={screenshotDownloadUrl}
         />
       )}
     </>

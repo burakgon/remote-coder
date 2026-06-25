@@ -77,6 +77,10 @@ const SHOTS = [
   { name: "login-mobile", scene: "login", vp: MOBILE, wait: '.rc-login__connect' },
   // The settings panel (active-session + defaults + the coral primary).
   { name: "settings-mobile", scene: "settings", vp: MOBILE, wait: '.rc-settings__primary' },
+  // Subagents: the in-chat cards + the tray above the composer (the agents session).
+  { name: "subagents-mobile", scene: "subagents", vp: MOBILE, wait: 'div[role="group"][aria-label^="Subagents"]', waitShiki: true },
+  // The subagent drill-in (Task + transcript + Result).
+  { name: "subagent-view-mobile", scene: "subagentview", vp: MOBILE, wait: '.rc-sa-view' },
 ];
 
 async function settle(page, wait) {

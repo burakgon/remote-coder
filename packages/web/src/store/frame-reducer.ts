@@ -397,6 +397,7 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     // whose own message has a parent) creates a CHILD thread (parentId = that parent).
     const added: TurnItem[] = [];
     let sawTool = false;
+    let sawAgentSpawn = false;
     for (const block of content) {
       if (block.type === "text" && typeof block.text === "string") {
         added.push({ kind: "assistant-text", text: block.text });
@@ -405,21 +406,25 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
           const childId = String(block.id);
           seedSubagent(childId, block.input, parent);
           added.push({ kind: "subagent-ref", id: childId });
+          sawAgentSpawn = true;
         } else {
           added.push({ kind: "tool-use", id: String(block.id), name: String(block.name), input: block.input });
           sawTool = true;
         }
       }
     }
+    // Spawning a subagent (the Agent tool) means the turn is now actively running that tool — so the
+    // wire reads "running-tool" (never idle) while agents are out, until the turn's `result` frame.
+    const active = sawTool || sawAgentSpawn;
     if (parent !== undefined) {
       // A subagent's OWN inline message → route into its thread; don't touch the main wire/live text.
-      appendThreadTurns(parent, added, { wire: sawTool ? "running-tool" : undefined, clearLive: true });
+      appendThreadTurns(parent, added, { wire: active ? "running-tool" : undefined, clearLive: true });
       return next;
     }
     next.turns = [...view.turns, ...added];
     next.liveText = "";
     next.thinkingText = "";
-    if (sawTool) next.wireState = "running-tool";
+    if (active) next.wireState = "running-tool";
     return next;
   }
   if (ev.type === "user") {

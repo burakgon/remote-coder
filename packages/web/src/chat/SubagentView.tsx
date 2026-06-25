@@ -13,6 +13,14 @@ import { AgentGlyph, SubagentDot, formatUsage, statusLabel } from "./subagent-ui
  * chat — its tool calls + prose, and any NESTED subagent cards), and its final Result. A depth-2
  * subagent (no inline turns) shows Task + status + Result only, with a quiet "nested" note.
  */
+/** Concatenate the text of a user turn's content blocks (to match the prompt echo). */
+function turnText(blocks: unknown[]): string {
+  return blocks
+    .map((b) => (b && typeof b === "object" && (b as { type?: string }).type === "text" ? ((b as { text?: string }).text ?? "") : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function SubagentView({
   thread,
   subagents,
@@ -43,14 +51,21 @@ export function SubagentView({
   const running = thread.status === "running";
   const usage = formatUsage(thread.usage);
   const nested = thread.parentId !== undefined;
+  // The subagent's first inline message is its PROMPT echoed back — it's already shown verbatim in the
+  // "Task" section above, so drop it from the transcript (which should show only the WORK: tools + prose).
+  const promptText = (thread.prompt ?? "").trim();
+  const transcriptTurns =
+    promptText.length > 0
+      ? thread.turns.filter((t) => !(t.kind === "user" && turnText(t.blocks).trim() === promptText))
+      : thread.turns;
   // Depth-2 subagents never inline their internal steps — only status + result are known.
-  const hasTranscript = thread.turns.length > 0;
+  const hasTranscript = transcriptTurns.length > 0;
   const resultText = subagentResultText(thread.result?.content);
 
   // Synthesize a SessionView so <MessageList> renders this thread's turns identically to the main chat.
   const transcriptView = {
     ...emptyView(),
-    turns: thread.turns,
+    turns: transcriptTurns,
     subagents,
     liveText: thread.liveText,
     thinkingText: thread.thinkingText,
