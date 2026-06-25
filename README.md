@@ -16,9 +16,9 @@ A self-hosted web app that runs the **real `claude` CLI** with your Claude subsc
 
 <br/>
 
-<img src="docs/mockups/chat-mobile-top.png" alt="remote-coder chat on a phone — streaming markdown, a syntax-highlighted code block and a coverage table" width="365">
+<img src="docs/media/chat-mobile-top.png" alt="remote-coder chat on a phone — streaming markdown, a syntax-highlighted code block and a coverage table" width="365">
 &nbsp;
-<img src="docs/mockups/question-mobile.png" alt="Answering one of Claude's multiple-choice questions from the phone, with code previews per option" width="365">
+<img src="docs/media/question-mobile.png" alt="Answering one of Claude's multiple-choice questions from the phone, with code previews per option" width="365">
 
 <br/><br/>
 
@@ -57,16 +57,16 @@ remote-coder is the one that closes that gap:
 Streaming responses with full markdown, syntax-highlighted code, tables, and collapsible tool steps. Manage many sessions at once from a live rail that shows you exactly which one needs you.
 
 <div align="center">
-<img src="docs/mockups/chat-desktop.png" alt="remote-coder on desktop — the session rail, the chat, and a syntax-highlighted code block" width="900">
+<img src="docs/media/chat-desktop.png" alt="remote-coder on desktop — the session rail, the chat, and a syntax-highlighted code block" width="900">
 </div>
 
 ### Answer Claude's prompts — from anywhere
 When Claude asks to run a tool you get a clean **Allow / Deny / Always-allow** card (destructive commands are flagged). When it asks a question you get real options — with an **“Other…”** free-text answer and **previews per choice** so you can *see* before you pick. This is the thing the chat bots can't do.
 
 <div align="center">
-<img src="docs/mockups/wizard-mobile.png" alt="The git-aware directory picker for starting a new session" width="280">
-<img src="docs/mockups/rewind-mobile.png" alt="The rewind sheet — restore code, rewind the conversation, or both" width="280">
-<img src="docs/mockups/login-mobile.png" alt="The token login screen" width="280">
+<img src="docs/media/wizard-mobile.png" alt="The git-aware directory picker for starting a new session" width="280">
+<img src="docs/media/rewind-mobile.png" alt="The rewind sheet — restore code, rewind the conversation, or both" width="280">
+<img src="docs/media/login-mobile.png" alt="The token login screen" width="280">
 </div>
 
 ### Files both ways · resume · stop · rewind

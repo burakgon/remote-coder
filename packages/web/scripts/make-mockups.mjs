@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SS = join(__dirname, "..", "..", "..", "docs", "screenshots");
-const OUT = join(__dirname, "..", "..", "..", "docs", "mockups");
+const OUT = join(__dirname, "..", "..", "..", "docs", "media");
 const dataURI = (name) => "data:image/png;base64," + readFileSync(join(SS, `${name}.png`)).toString("base64");
 
 // Phone shots → a clean dark bezel (rounded screen, soft drop shadow, transparent around).
