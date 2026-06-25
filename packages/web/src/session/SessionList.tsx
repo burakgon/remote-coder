@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Icon } from "../ui/Icon";
 import { LiveWire } from "../ui/LiveWire";
 import type { LiveWireState } from "../ui/LiveWire";
@@ -30,6 +31,9 @@ export interface SessionListProps {
   updateAvailable?: boolean;
   /** Open the update panel (from the footer's "Update available" affordance). */
   onShowUpdate?: () => void;
+  /** Force a fresh update check (the footer's "Check for updates"). Resolves true if an update is now
+   * available. When provided + no update is pending, the footer shows the check button. */
+  onCheckUpdate?: () => Promise<boolean>;
 }
 
 function basename(p: string): string {
@@ -39,6 +43,37 @@ function basename(p: string): string {
 
 function absoluteTime(ms: number): string {
   return new Date(ms).toLocaleString();
+}
+
+/** The footer's "Check for updates" — forces a fresh server-side check so you never wait on the poll.
+ * Shows "Checking…" in flight; if an update turns up the parent swaps this for the coral "Update
+ * available" pill, otherwise it briefly confirms "Up to date". */
+function CheckUpdateButton({ onCheck }: { onCheck: () => Promise<boolean> }) {
+  const [state, setState] = useState<"idle" | "checking" | "uptodate">("idle");
+  return (
+    <button
+      type="button"
+      className="rc-sl__check"
+      disabled={state === "checking"}
+      aria-label="Check for updates"
+      onClick={async () => {
+        setState("checking");
+        try {
+          const found = await onCheck();
+          if (found) {
+            setState("idle"); // parent re-renders into the "Update available" pill
+          } else {
+            setState("uptodate");
+            setTimeout(() => setState("idle"), 2500);
+          }
+        } catch {
+          setState("idle");
+        }
+      }}
+    >
+      {state === "checking" ? "Checking…" : state === "uptodate" ? "Up to date ✓" : "Check for updates"}
+    </button>
+  );
 }
 
 /** Count of sessions with a pending permission/question (`meta.awaiting`). Drives the global badge. */
@@ -85,6 +120,7 @@ export function SessionList({
   version,
   updateAvailable,
   onShowUpdate,
+  onCheckUpdate,
 }: SessionListProps) {
   const ordered = sortSessionsByActivity(sessions, lastActiveAt);
   const needs = awaitingCount(sessions);
@@ -201,10 +237,12 @@ export function SessionList({
           <span className="rc-sl__version" title={version}>
             {version}
           </span>
-          {updateAvailable && onShowUpdate && (
+          {updateAvailable && onShowUpdate ? (
             <button type="button" className="rc-sl__update" onClick={onShowUpdate} aria-label="Update available">
               Update available
             </button>
+          ) : (
+            onCheckUpdate && <CheckUpdateButton onCheck={onCheckUpdate} />
           )}
         </div>
       )}
@@ -233,6 +271,15 @@ const sessionListCss = `
   border-radius: var(--radius-pill); padding: 2px var(--sp-2);
 }
 .rc-sl__update:hover { filter: brightness(1.08); }
+/* Secondary, quiet "Check for updates" — a hairline pill, never coral (that's reserved for an actual
+   available update). */
+.rc-sl__check {
+  flex: none; font: inherit; font-size: var(--fs-xs); cursor: pointer;
+  color: var(--text-muted); background: transparent; border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 2px var(--sp-2); white-space: nowrap;
+}
+.rc-sl__check:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.rc-sl__check:disabled { opacity: 0.6; cursor: default; }
 /* The rail header — a flat surface bar with a hairline below (no glass blur). */
 .rc-sl__head {
   flex: none;

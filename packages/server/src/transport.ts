@@ -453,9 +453,11 @@ export function createServer(
 
   // OTA self-update (token-gated by the global preHandler).
   // GET /version → the cached check {current,latest,behind,updatable,updateAvailable,changelog}.
-  app.get("/version", async (_request, reply) => {
+  app.get("/version", async (request, reply) => {
     try {
-      return await updater.getVersion();
+      // `?force=1` (the in-app "Check for updates") bypasses the cached git check for a fresh fetch.
+      const force = (request.query as { force?: string } | undefined)?.force === "1";
+      return await updater.getVersion(force);
     } catch (err) {
       // A git/spawn failure must not 500 the open-on-load probe — report a non-updatable version.
       reply.code(200).send({

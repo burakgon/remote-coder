@@ -187,6 +187,28 @@ describe("SessionList", () => {
     const { container } = renderList(); // no usage prop
     expect(container.querySelector(".rc-usage")).toBeNull();
   });
+
+  it("shows the running version in the footer, and nothing when there's no version yet", () => {
+    const { container } = renderList();
+    expect(container.querySelector(".rc-sl__footer")).toBeNull();
+    renderList({ version: "v2026.06.26 · ebe4bd3" });
+    expect(screen.getByText("v2026.06.26 · ebe4bd3")).toBeInTheDocument();
+  });
+
+  it("offers 'Update available' (→ onShowUpdate) when an update is out", async () => {
+    const onShowUpdate = vi.fn();
+    renderList({ version: "v1", updateAvailable: true, onShowUpdate });
+    await userEvent.click(screen.getByRole("button", { name: "Update available" }));
+    expect(onShowUpdate).toHaveBeenCalled();
+  });
+
+  it("offers 'Check for updates' when up to date and confirms when none is found", async () => {
+    const onCheckUpdate = vi.fn().mockResolvedValue(false);
+    renderList({ version: "v1", updateAvailable: false, onCheckUpdate });
+    await userEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(onCheckUpdate).toHaveBeenCalled();
+    expect(await screen.findByText("Up to date ✓")).toBeInTheDocument();
+  });
 });
 
 describe("awaitingCount", () => {

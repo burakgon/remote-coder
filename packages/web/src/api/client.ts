@@ -51,8 +51,9 @@ export interface ApiClient {
   getVapidPublicKey(): Promise<string>;
   subscribePush(sub: PushSubscriptionJSON): Promise<void>;
   unsubscribePush(endpoint: string): Promise<void>;
-  /** OTA self-update: GET /version → {current,latest,behind,updatable,updateAvailable,changelog}. */
-  getVersion(): Promise<VersionInfo>;
+  /** OTA self-update: GET /version → {current,latest,behind,updatable,updateAvailable,changelog}.
+   * `force` (the in-app "Check for updates") bypasses the server's cached git check for a fresh fetch. */
+  getVersion(force?: boolean): Promise<VersionInfo>;
   /** OTA: POST /update {confirm:true} → 202; the server spawns the detached pull+build+restart. */
   applyUpdate(): Promise<void>;
   /** OTA: GET /update/status → the detached updater's progress {state,phase,error?,target?,log?}. */
@@ -191,8 +192,8 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
         body: JSON.stringify({ endpoint }),
       });
     },
-    async getVersion() {
-      return req<VersionInfo>("/version", { headers: headers() });
+    async getVersion(force?: boolean) {
+      return req<VersionInfo>(`/version${force ? "?force=1" : ""}`, { headers: headers() });
     },
     async applyUpdate() {
       // POST /update {confirm:true} → 202. confirm is the double-gate for an RCE-by-design action

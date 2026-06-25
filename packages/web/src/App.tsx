@@ -365,6 +365,12 @@ export function App() {
       version={updateInfo?.current}
       updateAvailable={updateInfo?.updateAvailable}
       onShowUpdate={() => setUpdatePanelOpen(true)}
+      onCheckUpdate={async () => {
+        // Force a fresh server-side git check (bypass the cached one) so the user never waits on the poll.
+        const info = await api.getVersion(true);
+        setUpdateInfo(info);
+        return Boolean(info.updateAvailable);
+      }}
       onSelect={(id) => {
         setActive(id);
         setSessionsOpen(false);
