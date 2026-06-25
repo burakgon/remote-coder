@@ -70,8 +70,8 @@ describe("vite build PWA artifacts", () => {
       icons: { src: string; sizes: string }[];
     };
     expect(m.name).toBe("remote-coder");
-    expect(m.theme_color).toBe("#0D0A07");
-    expect(m.background_color).toBe("#0D0A07");
+    expect(m.theme_color).toBe("#0a0a0b");
+    expect(m.background_color).toBe("#0a0a0b");
     expect(m.display).toBe("standalone");
     expect(m.icons.map((i) => i.src)).toEqual(expect.arrayContaining(["icon-192.svg", "icon-512.svg"]));
   });

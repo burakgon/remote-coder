@@ -49,7 +49,7 @@ export function RewindSheet({ checkpointId, onConfirm, onCancel }: RewindSheetPr
     >
       <div
         ref={dialogRef}
-        className="rc-glass"
+        className="rc-glass--float"
         role="dialog"
         aria-modal="true"
         aria-labelledby="rewind-title"
@@ -63,7 +63,7 @@ export function RewindSheet({ checkpointId, onConfirm, onCancel }: RewindSheetPr
         style={SHEET}
       >
         <div style={HEADER}>
-          <span aria-hidden style={{ display: "inline-flex", color: "var(--accent)" }}>
+          <span aria-hidden style={{ display: "inline-flex", color: "var(--text-muted)" }}>
             <Icon name="history" size={17} />
           </span>
           <span id="rewind-title" style={TITLE}>
@@ -197,7 +197,7 @@ const CANCEL_BTN: CSSProperties = {
   minHeight: "var(--tap-min)",
   padding: "0 var(--sp-4)",
   borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--border)",
+  border: "1px solid var(--border-strong)",
   background: "transparent",
   color: "var(--text)",
   fontWeight: 500,
@@ -205,13 +205,13 @@ const CANCEL_BTN: CSSProperties = {
 };
 
 const CONFIRM_BTN: CSSProperties = {
+  // The single coral primary — a FLAT coral fill, dark ink label. No glow.
   minHeight: "var(--tap-min)",
   padding: "0 var(--sp-4)",
   borderRadius: "var(--radius-sm)",
   border: "1px solid transparent",
   background: "var(--accent-grad)",
   color: "var(--on-accent)",
-  boxShadow: "var(--shadow-pop)",
   fontWeight: 600,
   cursor: "pointer",
 };

@@ -29,41 +29,38 @@ const midDot: CSSProperties = { fontFamily: "var(--font-mono)", color: "var(--te
 export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions, needsYou = 0 }: ChatHeaderProps) {
   return (
     <header
-      className="rc-glass"
       style={{
         display: "flex",
         alignItems: "center",
         gap: "10px",
-        // Floating liquid-glass top bar (spec .bar.glass): the .rc-glass material (translucent warm
-        // fill + heavy blur, the 4-layer thickness shadow, refraction rim + specular sweep), inset a
-        // touch from the edges so it reads as floating chrome over the warm-dark atmosphere.
-        margin: "calc(10px + env(safe-area-inset-top, 0px)) 10px 4px",
-        padding: "11px 14px",
-        borderRadius: "17px",
+        // Compact, flat top bar (spec .bar): a single hairline border-bottom, no glass, no float.
+        // Sits flush against the chat — small + precise, neutral status.
+        padding: "calc(11px + env(safe-area-inset-top, 0px)) 16px 11px",
+        borderBottom: "1px solid var(--border)",
+        background: "var(--bg)",
       }}
     >
       {/* Top-left, IN-FLOW mobile menu button — the first item in the header row, before the cwd, so
           it never overlaps the session name (the name sits to its right). Mobile-only (hidden at the
           desktop breakpoint where the rail is always visible). Replaces the old floating FAB. */}
       {onShowSessions && <MobileMenuButton onShowSessions={onShowSessions} needsYou={needsYou} />}
-      {/* The coral brand mark — a small clay-coral tile with a soft glow + inset top highlight (spec
-          .mark). The ONE coral moment on the left of the bar; the terminal glyph reads in dark ink. */}
+      {/* The brand mark — a small flat elevated tile + a --line-2 edge; the ONE coral here is the
+          GLYPH itself (spec .mark), NOT a coral fill. Compact, neutral, no glow. */}
       <span
         aria-hidden
         style={{
-          width: 33,
-          height: 33,
+          width: 26,
+          height: 26,
           flex: "none",
-          borderRadius: 10,
+          borderRadius: 7,
           display: "grid",
           placeItems: "center",
           background: "var(--tile-bg)",
-          color: "#fff3ea",
-          boxShadow:
-            "inset 0 1px 0 rgba(255,240,230,.6), 0 6px 16px -6px rgba(247,124,68,.85), 0 0 16px -3px rgba(247,124,68,.45)",
+          border: "1px solid var(--tile-edge)",
+          color: "var(--coral)",
         }}
       >
-        <Icon name="terminal" size={17} />
+        <Icon name="terminal" size={15} />
       </span>
       {/* `flex: 1` so the identity column takes the slack between the menu button and the right-side
           status group (keeping that group pinned right); `min-width: 0` lets the path ellipsis clip.
@@ -73,8 +70,9 @@ export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions,
         <strong
           className="display"
           style={{
-            fontSize: "var(--fs-base)",
-            letterSpacing: "0.005em",
+            fontSize: "13px",
+            fontWeight: 600,
+            letterSpacing: "0.2px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -111,7 +109,7 @@ export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions,
             </>
           )}
           {session.permissionMode === "bypassPermissions" ? (
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--accent)", flex: "none" }}>
+            <span style={{ fontFamily: "var(--font-mono)", color: "var(--warn)", flex: "none" }}>
               · skip-permissions
             </span>
           ) : (
@@ -135,22 +133,22 @@ export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions,
             aria-label="Session settings"
             className="rc-hdr-iconbtn"
             style={{
-              // Mockup .iconbtn — a compact 38px glassy tile (radius 11px) that warms to accent on
-              // hover, NOT a full --tap-min/--radius tile. Sits flush in the right status group.
-              width: 38,
-              height: 38,
+              // A compact 34px neutral icon tile (spec .ib) that brightens to text on hover — NEUTRAL,
+              // no coral. Sits flush in the right status group.
+              width: 34,
+              height: 34,
               flex: "none",
               display: "grid",
               placeItems: "center",
-              borderRadius: 11,
+              borderRadius: 9,
               background: "var(--surface-2)",
               border: "1px solid var(--border)",
               color: "var(--text-muted)",
               cursor: "pointer",
             }}
           >
-            <Icon name="settings" size={18} />
-            <style>{`.rc-hdr-iconbtn:hover { color: var(--accent); border-color: var(--accent-line); }`}</style>
+            <Icon name="settings" size={17} />
+            <style>{`.rc-hdr-iconbtn:hover { color: var(--text); border-color: var(--border-strong); }`}</style>
           </button>
         )}
       </div>

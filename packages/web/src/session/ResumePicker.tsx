@@ -225,10 +225,10 @@ export function ResumePicker({ getResumable, scopeCwd, now, onResume, topSlot, o
 const resumeCss = `
 .rc-resume {
   position: fixed; inset: 0; z-index: 50;
-  /* Mobile full-bleed takeover — paints the same warm-dark atmosphere as the app base (an opaque
-     cover over the chat, not a see-through pane); desktop becomes a centered liquid-glass card. */
+  /* Mobile full-bleed takeover — paints the same clean near-black base + faint top glow as the app (an
+     opaque cover over the chat, not a see-through pane); desktop becomes a centered floating-glass card. */
   background-color: var(--bg);
-  background-image: var(--atmosphere);
+  background-image: var(--top-glow);
   display: flex; flex-direction: column;
   animation: rc-resume-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -240,6 +240,7 @@ const resumeCss = `
     background: var(--glass-strong);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--glass-shadow);
   }
@@ -253,7 +254,7 @@ const resumeCss = `
 .rc-resume__title { font-size: var(--fs-lg); }
 .rc-resume__cancel {
   min-height: 36px; padding: 0 var(--sp-3);
-  background: transparent; border: none; color: var(--accent);
+  background: transparent; border: none; color: var(--text-muted);
   font: inherit; font-weight: 500; cursor: pointer; border-radius: var(--radius-sm);
 }
 .rc-resume__cancel:hover { background: var(--surface); }
@@ -277,7 +278,9 @@ const resumeCss = `
   color: var(--text-muted); cursor: pointer; font: inherit; font-size: var(--fs-xs); font-weight: 600;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
-.rc-resume__scope-btn--on { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+/* The selected scope reads as a NEUTRAL lift (a bright label + an elevated surface) — coral stays
+   reserved. */
+.rc-resume__scope-btn--on { color: var(--text); border-color: var(--border-strong); background: var(--surface-3); }
 .rc-resume__body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2) 0; }
 .rc-resume__hint { padding: var(--sp-5) var(--sp-4); color: var(--text-muted); font-size: var(--fs-sm); }
 .rc-resume__error {
@@ -322,7 +325,7 @@ const resumeCss = `
   font-variant-numeric: tabular-nums;
 }
 .rc-resume__chip time { color: var(--text-muted); }
-.rc-resume__chip--busy { color: var(--accent); }
+.rc-resume__chip--busy { color: var(--text); }
 .rc-resume__row-error {
   display: flex; align-items: center; gap: var(--sp-2);
   margin: 0 var(--sp-4) var(--sp-3);

@@ -16,7 +16,7 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
   const [token, setToken] = useState("");
   return (
     <div className="rc-login">
-      <section className="rc-login__card rc-glass">
+      <section className="rc-login__card rc-glass--float">
         <header className="rc-login__brand">
           <span className="rc-login__mark" aria-hidden="true">
             <Icon name="terminal" size={20} />
@@ -82,13 +82,13 @@ const loginCss = `
   min-height: 100%;
   display: grid; place-items: center;
   padding: var(--sp-5);
-  /* Transparent so the global warm-dark atmosphere (grain + vignette + the soft top lift) shows
-     through behind the floating glass card — the accents are the coral mark + the Connect CTA. */
-  background: transparent;
+  /* The clean near-black base + the one faint top glow behind the floating card; the accents are the
+     coral mark glyph + the Connect CTA. */
+  background-color: var(--bg);
+  background-image: var(--top-glow);
 }
-/* The login card — liquid glass (translucent warm fill + heavy blur, the 4-layer thickness shadow,
-   refraction rim + specular sweep) floating over the warm-dark atmosphere. The .rc-glass class on the
-   element supplies the material + the ::before/::after; this only sizes + rounds it. */
+/* The login card — a clean floating-glass card (the .rc-glass--float class supplies the subtle fill +
+   blur + the --line-2 border); this only sizes + rounds it. */
 .rc-login__card {
   width: min(92vw, 400px);
   display: grid; gap: var(--sp-4);
@@ -96,16 +96,15 @@ const loginCss = `
   border-radius: var(--radius-lg);
 }
 .rc-login__brand { display: flex; align-items: center; gap: var(--sp-3); }
-/* The coral brand mark — a clay-coral tile with a soft glow + inset top highlight (spec .mark). The
-   ONE coral moment in the brand row; the terminal glyph reads in warm near-white. */
+/* The brand mark — a flat elevated tile + a --line-2 edge; the ONE coral here is the GLYPH (spec
+   .mark), NOT a coral fill. No glow. */
 .rc-login__mark {
-  width: 40px; height: 40px; flex: none;
+  width: 36px; height: 36px; flex: none;
   display: grid; place-items: center;
   border-radius: var(--radius-sm);
   background: var(--tile-bg);
-  color: #fff3ea;
-  box-shadow: inset 0 1px 0 rgba(255, 240, 230, 0.6), 0 6px 16px -6px rgba(247, 124, 68, 0.85),
-    0 0 16px -3px rgba(247, 124, 68, 0.45);
+  border: 1px solid var(--tile-edge);
+  color: var(--coral);
 }
 .rc-login__wordmark { font-size: var(--fs-2xl); letter-spacing: 0.01em; color: var(--text); }
 .rc-login__lede { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.5; }
@@ -133,26 +132,25 @@ const loginCss = `
   color: var(--text); font-family: var(--font-mono); font-size: var(--fs-base);
 }
 .rc-login__input input::placeholder { color: var(--text-faint); }
-/* The single coral primary — the Connect CTA. A clay-coral gradient with the liquid-glass glow halo
-   + inset top highlight, DARK ink label (--on-accent), never white (spec). */
+/* The single coral primary — the Connect CTA. A FLAT coral fill, DARK ink label (--on-accent), never
+   white (spec). No glow. */
 .rc-login__connect {
   min-height: var(--tap-min);
   border: none; border-radius: var(--radius); cursor: pointer;
   background: var(--accent-grad);
   color: var(--on-accent);
   font-family: var(--font-display); font-weight: 600; font-size: var(--fs-base);
-  box-shadow: var(--shadow-pop);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition: filter 120ms ease;
 }
-.rc-login__connect:hover { transform: translateY(-1px); box-shadow: var(--shadow-pop), 0 12px 44px -8px rgba(247, 124, 68, 0.55); }
+.rc-login__connect:hover { filter: brightness(1.08); }
 .rc-login__divider { height: 1px; background: var(--border); }
 .rc-login__dev {
   min-height: var(--tap-min);
-  background: transparent; border: 1px solid var(--border);
+  background: transparent; border: 1px solid var(--border-strong);
   border-radius: var(--radius); cursor: pointer;
   color: var(--text-muted); font: inherit;
   transition: color 120ms ease, border-color 120ms ease;
 }
-.rc-login__dev:hover { color: var(--text); border-color: var(--text-faint); }
+.rc-login__dev:hover { color: var(--text); border-color: var(--border-strong); }
 .rc-login__note { margin: 0; color: var(--text-faint); font-size: var(--fs-xs); text-align: center; }
 `;

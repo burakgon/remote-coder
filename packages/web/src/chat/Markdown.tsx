@@ -25,11 +25,12 @@ const components: Components = {
       <code
         {...props}
         style={{
+          // Inline code (spec .msg code) — a quiet elevated surface + hairline, neutral mono text.
           fontFamily: "var(--font-mono)",
-          fontSize: "0.92em",
-          background: "var(--code-bg)",
-          border: "1px solid var(--code-border)",
-          color: "var(--code-text)",
+          fontSize: "0.86em",
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text)",
           padding: "1px 5px",
           borderRadius: 5,
         }}
@@ -89,11 +90,11 @@ const components: Components = {
       {children}
     </td>
   ),
-  // Links pick up the violet accent with a soft underline edge.
+  // Links stay NEUTRAL (coral is reserved) — bright text + a quiet hairline underline.
   a: ({ children, href }) => (
     <a
       href={href}
-      style={{ color: "var(--accent)", textDecoration: "none", borderBottom: "1px solid var(--accent-line)" }}
+      style={{ color: "var(--text)", textDecoration: "none", borderBottom: "1px solid var(--border-strong)" }}
     >
       {children}
     </a>

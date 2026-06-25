@@ -1,10 +1,11 @@
 /**
- * Warm frosted-terminal code block (spec .term). A blurred deep-warm panel with a header bar carrying
- * three warm traffic-light dots + an optional language/filename label, and the code body in mono.
+ * Clean dark code block (spec .code). A flat #0e0e10 card with a hairline border + a quiet header
+ * carrying an optional filename/language label and a "copy" affordance — NO traffic-light dots. The
+ * code body is monochrome neutral mono.
  *
  * Shiki highlighting is intentionally deferred to keep render synchronous and test-friendly; a plain
  * <pre> in the mono face is the always-available baseline. (A later enhancement can swap in shiki's
- * async highlight using the warm --code-keyword/--code-string/--code-comment/--code-function tokens
+ * async highlight using the neutral --code-keyword/--code-string/--code-comment/--code-function tokens
  * without changing this component's props.)
  *
  * SECURITY: `code` is rendered as a text child of <code>, never via dangerouslySetInnerHTML, so
@@ -16,9 +17,6 @@ export interface CodeBlockProps {
   language?: string;
 }
 
-// The three warm traffic-light dots in the terminal header (spec .term .h s) — warm clay / amber / sage.
-const DOT_COLORS = ["#d97757", "#d9a657", "#8a9a6b"];
-
 export function CodeBlock({ code, language }: CodeBlockProps) {
   return (
     <div
@@ -26,43 +24,36 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
       style={{
         borderRadius: "var(--radius-sm)",
         overflow: "hidden",
-        margin: "4px 0 10px",
-        // The warm frosted terminal: a deep warm-ink panel, blurred, with a hairline ring + a soft drop.
+        margin: "2px 0 9px",
+        // A clean dark card: a flat #0e0e10 panel with a hairline (no blur, no glass).
         background: "var(--code-bg)",
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
-        boxShadow: "inset 0 0 0 1px var(--code-border), 0 14px 32px -22px #000",
+        border: "1px solid var(--code-border)",
       }}
     >
+      {/* Quiet header — a filename/language label + a "copy" affordance (text), no traffic-light dots. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          padding: "8px 11px",
-          background: "rgba(247, 241, 230, 0.035)",
+          gap: 8,
+          padding: "7px 11px",
           borderBottom: "1px solid var(--code-border)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "11px",
+          color: "var(--text-muted)",
         }}
       >
-        {DOT_COLORS.map((c) => (
-          <span
-            key={c}
-            aria-hidden
-            style={{ width: 9, height: 9, borderRadius: "50%", display: "inline-block", opacity: 0.85, background: c }}
-          />
-        ))}
-        {language && (
-          <span style={{ marginLeft: 6, color: "var(--text-faint)", fontFamily: "var(--font-mono)", fontSize: "10.5px" }}>
-            {language}
-          </span>
-        )}
+        <span>{language ?? "code"}</span>
+        <span aria-hidden style={{ marginLeft: "auto", color: "var(--text-faint)" }}>
+          copy
+        </span>
       </div>
       <pre
         style={{
           padding: "11px 13px",
           overflowX: "auto",
           fontFamily: "var(--font-mono)",
-          fontSize: "var(--fs-sm)",
+          fontSize: "12px",
           lineHeight: 1.65,
           color: "var(--code-text)",
           margin: 0,

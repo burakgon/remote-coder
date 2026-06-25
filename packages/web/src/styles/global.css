@@ -15,9 +15,8 @@ body,
   margin: 0;
 }
 body {
-  /* The warm-dark base ink (the atmosphere — the radial lift + grain + vignette — is
-     drawn as fixed layers behind #root below, so it sits under every surface without
-     being an app surface itself). */
+  /* Near-black neutral base ink. The ONE very faint top glow is the single fixed
+     layer behind #root below (no grain, no vignette, no colored blobs). */
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
@@ -28,36 +27,18 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   GLOBAL ATMOSPHERE — a restrained, expensive warm-dark backdrop behind the whole
-   app (spec .bgwrap + .grain + .vignette). A near-flat deep warm-charcoal with only
-   a whisper of lift up top — NO colored blobs. Depth comes from the glass + fine
-   grain; color lives ONLY in the coral accent. These three fixed layers render
-   behind #root (which is z-indexed above them); the app's own surfaces are the
-   translucent glass that lets this show through.
+   ATMOSPHERE — clean, near-flat near-black + ONE very faint coral top glow (spec
+   body::before). No film grain, no vignette, no heavy glass shadows. Depth lives
+   in hairline borders + a subtle elevation shadow, not atmosphere. This single
+   fixed layer renders behind #root (z-indexed above it).
    --------------------------------------------------------------------------- */
-body::before,
-body::after,
-#root::before {
+body::before {
   content: "";
   position: fixed;
   inset: 0;
-  pointer-events: none;
-}
-/* The base atmosphere (radial lift over a warm near-black gradient). */
-body::before {
-  z-index: -3;
-  background: var(--atmosphere);
-}
-/* The vignette — a soft darkening toward the lower edges. */
-body::after {
   z-index: -1;
-  background: var(--vignette);
-}
-/* The fine film grain — a static feTurbulence noise overlay at low opacity. */
-#root::before {
-  z-index: -2;
-  opacity: 0.04;
-  background-image: var(--grain-url);
+  pointer-events: none;
+  background: var(--top-glow);
 }
 #root {
   position: relative;
@@ -80,9 +61,10 @@ button {
   outline-offset: var(--focus-offset);
 }
 
-/* Selection + scrollbars — tuned to the clay-coral accent so even the chrome reads on-theme. */
+/* Selection + scrollbars — a quiet, restrained coral selection; thin NEUTRAL
+   scrollbars (no coral on the chrome). */
 ::selection {
-  background: rgba(247, 124, 68, 0.32);
+  background: rgba(247, 124, 68, 0.28);
   color: var(--text);
 }
 * {
@@ -90,8 +72,8 @@ button {
   scrollbar-color: var(--border-strong) transparent;
 }
 *::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 *::-webkit-scrollbar-thumb {
   background: var(--border-strong);
@@ -100,7 +82,7 @@ button {
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-line);
+  background: rgba(255, 255, 255, 0.18);
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-track {
@@ -108,55 +90,32 @@ button {
 }
 
 /* ---------------------------------------------------------------------------
-   LIQUID GLASS material (spec .glass) — a warm-tinted translucent surface with a
-   specular rim + thickness, used for floating chrome (header, composer, rail head,
-   dialogs). The fill + heavy blur let the atmosphere show through; the 4-layer
-   shadow gives it weight; ::before is the refraction rim (a bright top-left edge
-   fading to a faint coral at the bottom-right), ::after the specular sweep. Apply
-   via the `.rc-glass` class OR opt-in with the matching tokens.
+   SURFACE treatment (.rc-glass) — in the clean system MOST surfaces are FLAT (a
+   solid neutral fill + a hairline border), NOT glass. The default .rc-glass is a
+   flat elevated surface + hairline. Floating chrome that should read as glass
+   (the composer + bottom sheets / dialogs) opts in with .rc-glass--float, which
+   adds the subtle translucent fill + blur + a --line-2 border (spec .composer).
+   No refraction rim, no specular sweep, no 4-layer warm shadow.
    --------------------------------------------------------------------------- */
 .rc-glass {
   position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+}
+/* The floating-glass variant — used by the composer + sheets that genuinely float
+   over content. Subtle blur + a --line-2 border (spec). */
+.rc-glass--float {
   background: var(--glass);
-  backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-strong);
   box-shadow: var(--glass-shadow);
 }
-.rc-glass::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  pointer-events: none;
-  background: linear-gradient(
-    140deg,
-    rgba(255, 248, 238, 0.64),
-    rgba(255, 248, 238, 0.06) 30%,
-    transparent 55%,
-    rgba(247, 124, 68, 0.26)
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-.rc-glass::after {
-  content: "";
-  position: absolute;
-  left: 7%;
-  right: 7%;
-  top: 0;
-  height: 46%;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(120% 100% at 28% -55%, rgba(255, 248, 238, 0.15), transparent 72%);
-}
 .rc-glow {
-  box-shadow: var(--glow-accent);
+  box-shadow: none;
 }
-/* A quiet glassy hairline tool-step row — surfaces a subtle highlight on hover/focus. */
+/* A quiet hairline tool-step row — surfaces a subtle highlight on hover/focus. */
 .rc-tool-step:hover,
 .rc-tool-step:focus-visible {
   background: var(--surface-2) !important;
@@ -166,8 +125,8 @@ button {
    Motion — restrained, quick, calm. Each keyframe is defined once here so any
    component (the awaiting card, the live-wire, popovers) can reference it by name;
    all of it is neutralized by the prefers-reduced-motion block below. Chrome should
-   never call attention to itself; only the coral "awaiting you" card + the "working"
-   pulse earn deliberate motion.
+   never call attention to itself; only the coral "awaiting you" card + the
+   awaiting pulse earn deliberate motion.
    --------------------------------------------------------------------------- */
 /* The awaiting card's deliberate entrance: a small rise + fade. */
 @keyframes rc-rise {
@@ -183,16 +142,16 @@ button {
 /* The awaiting "pulse" halo on the awaiting-you dot — a slow, soft expanding CORAL ring. */
 @keyframes rc-halo {
   0% {
-    box-shadow: 0 0 0 0 rgba(247, 124, 68, 0.6);
+    box-shadow: 0 0 0 0 rgba(247, 124, 68, 0.5);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(247, 124, 68, 0);
+    box-shadow: 0 0 0 9px rgba(247, 124, 68, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(247, 124, 68, 0);
   }
 }
-/* The "live"/working ping ring — a soft expanding warm halo on the working dot. */
+/* A soft expanding "ping" ring — neutral, used by the live/working dot. */
 @keyframes rc-ping {
   0% {
     transform: scale(0.6);

@@ -222,13 +222,14 @@ const wizardCss = `
   animation: rc-wizard-in 180ms ease;
 }
 @keyframes rc-wizard-in { from { opacity: 0; } to { opacity: 1; } }
-/* The wizard card — liquid glass (translucent warm fill + heavy blur + the 4-layer thickness shadow)
-   floating over the scrim. The accents are the coral icon tile + the Start gradient. */
+/* The wizard card — a clean floating-glass dialog (subtle fill + blur + a --line-2 border) over the
+   scrim. The one accent is the Start CTA. */
 .rc-wizard__card {
   width: min(92vw, 460px);
   background: var(--glass-strong);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
 }
@@ -237,15 +238,15 @@ const wizardCss = `
   display: grid; gap: var(--sp-4);
 }
 .rc-wizard__head { display: flex; align-items: center; gap: var(--sp-2); }
-/* The accent icon tile — a FLAT --accent-soft wash + --accent-line hairline (mockup .empty .mark /
-   .attach .ficon). No glow. */
+/* The wizard head-icon tile — NEUTRAL (spec: coral lives on the Start CTA only): an elevated surface +
+   a --line-2 edge, the glyph in muted text. No coral. */
 .rc-wizard__head-icon {
-  width: 32px; height: 32px; flex: none;
+  width: 28px; height: 28px; flex: none;
   display: grid; place-items: center;
   border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-  color: var(--accent);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
 }
 .rc-wizard__title { font-size: var(--fs-lg); }
 .rc-wizard__dir {
@@ -259,7 +260,7 @@ const wizardCss = `
 .rc-wizard__change {
   flex: none; min-height: 32px; padding: 0 var(--sp-2);
   background: transparent; border: none; cursor: pointer;
-  color: var(--accent); font: inherit; font-weight: 500;
+  color: var(--text-muted); font: inherit; font-weight: 500;
   border-radius: var(--radius-sm);
 }
 .rc-wizard__change:hover { background: var(--surface); }
@@ -288,20 +289,19 @@ const wizardCss = `
   font-size: var(--fs-sm);
 }
 .rc-wizard__actions { display: flex; gap: var(--sp-3); }
-/* The single coral primary — Start. A clay-coral gradient with the liquid-glass glow halo, DARK ink
-   label (--on-accent). */
+/* The single coral primary — Start. A FLAT coral fill, DARK ink label (--on-accent). No glow. */
 .rc-wizard__start {
   flex: 1; min-height: var(--tap-min);
   border: none; border-radius: var(--radius-sm); cursor: pointer;
   background: var(--accent-grad); color: var(--on-accent);
   font: inherit; font-weight: 600; padding: 0 var(--sp-4);
-  box-shadow: var(--shadow-pop);
-  transition: box-shadow 120ms ease;
+  transition: filter 120ms ease;
 }
-.rc-wizard__start:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.rc-wizard__start:hover:not(:disabled) { filter: brightness(1.08); }
+.rc-wizard__start:disabled { opacity: 0.5; cursor: default; }
 .rc-wizard__cancel {
   min-height: var(--tap-min);
-  background: transparent; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: transparent; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   color: var(--text); cursor: pointer; font: inherit; padding: 0 var(--sp-4);
 }
 .rc-wizard__cancel:hover { border-color: var(--text-faint); }

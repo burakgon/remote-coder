@@ -136,21 +136,25 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                     onClick={() => togglePreset(qi, opt.label, q.multiSelect)}
                     style={optionStyle(selected)}
                   >
-                    <span style={{ fontWeight: 500 }}>{opt.label}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+                      <span style={{ fontWeight: 500, color: "var(--text)" }}>{opt.label}</span>
+                      {/* The selected coral tick — the ONE coral on the option row (spec). */}
+                      {selected && <Tick />}
+                    </span>
                     {opt.description && (
                       <span
                         style={{
-                          color: selected ? "var(--coral-2)" : "var(--text-muted)",
+                          color: "var(--text-muted)",
                           fontSize: "var(--fs-xs)",
                         }}
                       >
                         {opt.description}
                       </span>
                     )}
-                    {/* A concrete artifact to SEE (ASCII mockup / code / config) — a monospace box so
+                    {/* A concrete artifact to SEE (ASCII mockup / code / config) — a clean code box so
                         the user can visually compare options. <pre> is non-interactive, so it's valid
                         inside the option <button>; tapping anywhere on the card still selects it. The
-                        preview stays the warm frosted-terminal panel; selection only warms its edge. */}
+                        preview stays the clean dark code panel; selection only lights its edge coral. */}
                     {opt.preview && (
                       <pre
                         style={{
@@ -183,10 +187,11 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                 onClick={() => toggleOther(qi, q.multiSelect)}
                 style={optionStyle(other)}
               >
-                <span style={{ fontWeight: 500 }}>Other…</span>
-                <span
-                  style={{ color: other ? "var(--coral-2)" : "var(--text-muted)", fontSize: "var(--fs-xs)" }}
-                >
+                <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+                  <span style={{ fontWeight: 500, color: "var(--text)" }}>Other…</span>
+                  {other && <Tick />}
+                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)" }}>
                   Type a custom answer
                 </span>
               </button>
@@ -232,8 +237,9 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
   );
 }
 
-/** Shared styling for an option / "Other…" toggle row — a neutral warm-glass row that takes a coral
- *  wash + coral border + coral label when selected (spec: glass rows, coral selected state). */
+/** Shared styling for an option / "Other…" toggle row — a NEUTRAL row (elevated surface + hairline)
+ *  that takes a subtle coral ring + faint coral wash when selected (spec: neutral rows, coral
+ *  ring/tick on the selected state). The label text stays neutral-bright; coral lives in the ring/tick. */
 function optionStyle(selected: boolean): React.CSSProperties {
   return {
     display: "grid",
@@ -245,9 +251,32 @@ function optionStyle(selected: boolean): React.CSSProperties {
     borderRadius: "var(--radius-sm)",
     border: `1px solid ${selected ? "var(--accent-line)" : "var(--border)"}`,
     background: selected ? "var(--accent-soft)" : "var(--surface-2)",
-    color: selected ? "var(--coral-2)" : "var(--text)",
+    color: "var(--text)",
     boxShadow: selected ? "inset 0 0 0 1px var(--accent-line)" : "none",
     font: "inherit",
     cursor: "pointer",
   };
+}
+
+/** The selected coral tick — a small coral check dot. The ONE coral on a selected option row. */
+function Tick() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 15,
+        height: 15,
+        flex: "none",
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        background: "var(--coral)",
+        color: "var(--on-accent)",
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 6L9 17l-5-5" />
+      </svg>
+    </span>
+  );
 }

@@ -117,18 +117,19 @@ function UserTurn({
         )}
         <div
           style={{
-            maxWidth: "84%",
+            // Neutral elevated surface + hairline, compact, right-aligned (spec .you) — NOT coral.
+            maxWidth: "86%",
             background: "var(--user-bubble-bg)",
             border: "1px solid var(--user-bubble-border)",
             color: "var(--user-bubble-text)",
-            padding: "11px 15px",
-            borderRadius: "var(--radius-lg) var(--radius-lg) 7px var(--radius-lg)",
+            padding: "9px 13px",
+            borderRadius: "13px 13px 4px 13px",
             fontSize: "var(--fs-base)",
             boxShadow: "var(--user-shadow)",
             display: "grid",
             gap: "var(--sp-2)",
             overflowWrap: "anywhere",
-            lineHeight: 1.5,
+            lineHeight: 1.45,
           }}
         >
           {renderBlocks(item.blocks)}
@@ -161,7 +162,7 @@ const REWIND_AFFORDANCE: CSSProperties = {
  * tint so the user knows it didn't take. Color is never the only signal — the text says it too.
  */
 function RewoundMarker({ item }: { item: Extract<TurnItem, { kind: "rewound" }> }) {
-  const color = item.ok ? "var(--accent)" : "var(--err)";
+  const color = item.ok ? "var(--text-muted)" : "var(--err)";
   const modeLabel = item.mode === "code" ? "code" : item.mode === "conversation" ? "conversation" : "code + conversation";
   return (
     <div
@@ -472,7 +473,7 @@ function AttachmentCard({
             borderTop: "1px solid var(--border)",
           }}
         >
-          <Icon name="image" size={15} style={{ color: "var(--accent)" }} />
+          <Icon name="image" size={15} style={{ color: "var(--text-muted)" }} />
           <Mono muted>{item.name}</Mono>
           <a
             href={href}
@@ -506,15 +507,17 @@ function AttachmentCard({
       <span
         aria-hidden
         style={{
+          // Neutral file-type tile (spec: attachment cards are neutral) — an elevated surface +
+          // hairline, the glyph in muted text. No coral.
           width: 46,
           height: 46,
           flex: "none",
           borderRadius: "var(--radius-sm)",
           display: "grid",
           placeItems: "center",
-          background: "var(--accent-soft)",
-          border: "1px solid var(--accent-line)",
-          color: "var(--accent)",
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text-muted)",
         }}
       >
         <Icon name={fileIcon} size={20} />

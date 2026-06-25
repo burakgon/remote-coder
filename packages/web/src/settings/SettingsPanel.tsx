@@ -288,18 +288,20 @@ export function SettingsPanel({
 const settingsCss = `
 .rc-settings {
   position: fixed; inset: 0; z-index: 50;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--top-glow);
   display: grid; place-items: center;
   padding: var(--sp-5);
   overflow-y: auto;
 }
-/* The settings card — liquid glass (translucent warm fill + heavy blur + the 4-layer thickness
-   shadow) floating over the scrim. The one accent is the Save/Apply coral gradient primary. */
+/* The settings card — a clean floating-glass dialog (subtle fill + blur + a --line-2 border). The one
+   accent is the Save/Apply coral primary. */
 .rc-settings__card {
   width: min(92vw, 480px);
   background: var(--glass-strong);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--glass-shadow);
   overflow: hidden;
@@ -311,8 +313,8 @@ const settingsCss = `
   background: var(--surface-2);
 }
 .rc-settings__head-id { display: flex; align-items: center; gap: var(--sp-2); }
-/* The violet-tinted Settings glyph tile — a small icon-headed accent. */
-.rc-settings__head-icon { color: var(--accent); display: grid; place-items: center; }
+/* The Settings glyph — NEUTRAL (coral is reserved for the Save/Apply primary). */
+.rc-settings__head-icon { color: var(--text-muted); display: grid; place-items: center; }
 .rc-settings__title { font-size: var(--fs-lg); }
 .rc-settings__close {
   width: var(--tap-min); height: var(--tap-min); flex: none;
@@ -361,11 +363,11 @@ const settingsCss = `
   border-radius: var(--radius-sm); cursor: pointer; font: inherit; font-weight: 500;
   padding: 0 var(--sp-4);
 }
-/* The single coral primary — a clay-coral gradient with the liquid-glass glow halo, DARK ink label. */
+/* The single coral primary — a FLAT coral fill, DARK ink label. No glow. */
 .rc-settings__primary {
   background: var(--accent-grad); color: var(--on-accent); border: 1px solid transparent;
-  box-shadow: var(--shadow-pop);
 }
+.rc-settings__primary:hover { filter: brightness(1.08); }
 .rc-settings__secondary {
   background: transparent; color: var(--text); border: 1px solid var(--border);
 }

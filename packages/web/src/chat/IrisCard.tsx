@@ -31,44 +31,43 @@ export function IrisCard({ title, ariaLabel, regionRef, children }: IrisCardProp
       style={{
         borderRadius: "var(--radius)",
         border: "1px solid var(--iris-card-border)",
-        background: "linear-gradient(180deg, var(--iris-card-bg-top), var(--iris-card-bg-bottom))",
+        background: "var(--iris-card-bg-top)",
         boxShadow: "var(--iris-halo)",
         overflow: "hidden",
         animation: "rc-rise 0.35s ease-out",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--sp-2)",
-          padding: "var(--sp-3) var(--sp-4)",
-          borderBottom: "1px solid var(--iris-card-divider)",
-        }}
-      >
-        <span aria-hidden style={IRIS_DOT} />
-        <span
-          style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 600,
-            color: "var(--iris)",
-            fontSize: "var(--fs-sm)",
-            letterSpacing: "0.02em",
-          }}
-        >
-          {title}
-        </span>
+      {/* The ONE coral lead — a 2px coral top-bar (spec .await .bar2). */}
+      <div aria-hidden style={{ height: 2, background: "var(--coral)" }} />
+      <div style={{ padding: "13px 14px", display: "grid", gap: "11px" }}>
+        {/* Uppercase coral label (spec .await .t) — the attention signal, paired with the pulsing dot
+            so it's never color-only (a11y). */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+          <span aria-hidden style={IRIS_DOT} />
+          <span
+            style={{
+              fontFamily: "var(--font-display)",
+              fontWeight: 600,
+              color: "var(--coral-2)",
+              fontSize: "11px",
+              letterSpacing: "0.3px",
+              textTransform: "uppercase",
+            }}
+          >
+            {title}
+          </span>
+        </div>
+        {children}
       </div>
-      <div style={{ padding: "var(--sp-4)", display: "grid", gap: "var(--sp-3)" }}>{children}</div>
     </div>
   );
 }
 
 const IRIS_DOT: CSSProperties = {
-  width: 9,
-  height: 9,
+  width: 7,
+  height: 7,
   flex: "none",
   borderRadius: "50%",
-  background: "var(--iris)",
+  background: "var(--coral)",
   animation: "rc-halo 1.6s infinite",
 };

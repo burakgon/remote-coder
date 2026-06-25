@@ -21,16 +21,17 @@ const base: React.CSSProperties = {
 };
 
 const variants: Record<NonNullable<ButtonProps["variant"]>, React.CSSProperties> = {
-  // The single coral primary — a clay-coral gradient with the liquid-glass "pop" glow. The label is
-  // DARK ink (--on-accent) reading on the warm coral, never white (spec).
+  // The single coral primary — a FLAT coral fill with DARK ink (--on-accent), never white (spec).
+  // Depth comes from contrast, not a glow.
   primary: {
     background: "var(--accent-grad)",
     color: "var(--on-accent)",
     borderColor: "transparent",
-    boxShadow: "var(--shadow-pop)",
+    fontWeight: 600,
   },
-  ghost: { background: "transparent", color: "var(--text)" },
-  danger: { background: "transparent", color: "var(--err)", borderColor: "var(--err)" },
+  // Secondary / ghost — neutral outline (hairline) + neutral text.
+  ghost: { background: "transparent", color: "var(--text)", borderColor: "var(--border-strong)" },
+  danger: { background: "transparent", color: "var(--err)", borderColor: "var(--err-line)" },
 };
 
 export function Button({

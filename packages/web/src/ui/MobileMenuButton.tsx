@@ -30,25 +30,24 @@ export function MobileMenuButton({ onShowSessions, needsYou = 0 }: MobileMenuBut
         </span>
       )}
       <style>{`
-        /* Mockup .iconbtn — a compact 38px glassy tile (radius 11px) that warms to accent on hover. */
+        /* A compact 34px neutral icon tile (spec .ib) that brightens to text on hover — NO coral. */
         .rc-menu-btn {
           position: relative; flex: none;
-          width: 38px; height: 38px;
+          width: 34px; height: 34px;
           display: grid; place-items: center;
-          border-radius: 11px;
+          border-radius: 9px;
           background: var(--surface-2); border: 1px solid var(--border);
           color: var(--text-muted); cursor: pointer;
           transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
         }
-        .rc-menu-btn:hover { color: var(--accent); border-color: var(--accent-line); }
-        /* The iris "needs you" count pip pinned to the top-right corner — tabular so 1/2/9 line up,
-           ringed in --bg so it lifts off the surface. Restrained (no loud halo) — the loud awaiting
-           signal lives on the rail row + the iris card; this is a quiet at-a-glance count. */
+        .rc-menu-btn:hover { color: var(--text); border-color: var(--border-strong); }
+        /* The "needs you" count pip — the ONE coral here (it IS the needs-you signal), pinned to the
+           top-right corner; tabular so 1/2/9 line up, ringed in --bg so it lifts off the surface. */
         .rc-menu-btn__badge {
           position: absolute; top: -4px; right: -4px;
           min-width: 18px; height: 18px; padding: 0 5px;
           display: grid; place-items: center;
-          background: var(--iris); color: var(--on-iris);
+          background: var(--coral); color: var(--on-accent);
           border: 2px solid var(--bg); border-radius: 999px;
           font-family: var(--font-mono); font-size: 11px; font-weight: 700; line-height: 1;
           font-variant-numeric: tabular-nums;

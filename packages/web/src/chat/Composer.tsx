@@ -46,9 +46,9 @@ const iconBtn: React.CSSProperties = {
   flex: "none",
   display: "grid",
   placeItems: "center",
-  borderRadius: "var(--radius)",
-  background: "var(--surface-2)",
-  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  background: "transparent",
+  border: "1px solid transparent",
   color: "var(--text-muted)",
   cursor: "pointer",
 };
@@ -178,27 +178,24 @@ export function Composer({
 
   return (
     <div
-      className="rc-composer rc-glass"
+      className="rc-composer rc-glass--float"
       style={{
-        // Floating liquid-glass composer (spec .composer.glass): the .rc-glass material (translucent
-        // warm fill + heavy blur, the 4-layer thickness shadow, the refraction rim + specular sweep).
-        // A larger radius reads as a floating bar; Send is the one coral primary affordance.
+        // Clean floating composer (spec .composer): a subtle translucent fill + blur + a --line-2
+        // border (the .rc-glass--float variant). Compact; Send is the one coral primary affordance.
         margin: "var(--sp-2) var(--sp-3) 0",
         borderRadius: "var(--radius-lg)",
-        padding: "var(--sp-3)",
+        padding: "var(--sp-2)",
         display: "grid",
         gap: "var(--sp-2)",
       }}
     >
-      {/* On mobile the "Sessions" FAB floats over the bottom-right corner. Reserve clearance below
-          the controls so the Image/File/Send row is never covered by it (and clears the safe-area
-          inset). Removed on desktop, where the FAB is hidden. */}
+      {/* Clear the safe-area inset at the bottom of the bar. */}
       <style>{`
-        .rc-composer { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tap-min) + var(--sp-4)); }
-        @media (min-width: 768px) { .rc-composer { padding-bottom: var(--sp-3); } }
-        /* Mockup .composer-btn hover — the quiet ghost icon tile warms to accent (color + hairline). */
-        .rc-composer-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-line); }
-        /* Mockup .input-row .field:focus-within — the field's hairline lights to accent + a soft glow. */
+        .rc-composer { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sp-2)); }
+        @media (min-width: 768px) { .rc-composer { padding-bottom: var(--sp-2); } }
+        /* Neutral icon-button hover — brightens to text + a hairline, NO coral. */
+        .rc-composer-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+        /* The field's hairline lights to the coral focus edge + a soft glow on focus. */
         .rc-composer textarea:focus-visible, .rc-composer textarea:focus {
           outline: none; border-color: var(--accent-line); box-shadow: var(--focus-glow);
         }
@@ -330,6 +327,8 @@ export function Composer({
           rows={1}
           placeholder="Message claude…"
           style={{
+            // The textarea sits directly on the floating glass bar (spec .composer .ph) — transparent,
+            // borderless, the placeholder in --faint. The focus glow lands on the bar's own field below.
             flex: 1,
             minWidth: 0,
             minHeight: "var(--tap-min)",
@@ -337,9 +336,9 @@ export function Composer({
             resize: "none",
             overflowY: "auto",
             lineHeight: 1.45,
-            background: "var(--surface)",
-            border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius)",
+            background: "transparent",
+            border: "1px solid transparent",
+            borderRadius: "var(--radius-sm)",
             color: "var(--text)",
             padding: "var(--sp-2) var(--sp-3)",
             font: "inherit",
@@ -386,8 +385,8 @@ export function Composer({
           <Icon name="paperclip" size={19} />
         </button>
         {/* Primary control. While a turn is RUNNING (thinking/streaming/running-tool) this is a STOP
-            button — a neutral square in an error/neutral tint (NOT the violet Send) that interrupts
-            the turn. Idle/awaiting it is the normal violet Send. */}
+            button — a neutral square with a restrained err outline (NOT the coral Send) that interrupts
+            the turn. Idle/awaiting it is the normal coral Send. */}
         {running ? (
           <button
             type="button"
@@ -401,11 +400,11 @@ export function Composer({
               flex: "none",
               display: "grid",
               placeItems: "center",
-              borderRadius: "var(--radius)",
-              // Neutral/err-tinted surface — deliberately NOT the violet Send gradient, so Stop reads as
-              // a distinct, calm-but-clear "halt", not the primary positive action.
+              borderRadius: "var(--radius-sm)",
+              // Neutral surface + a restrained err outline — deliberately NOT the coral Send, so Stop
+              // reads as a distinct, calm-but-clear "halt", not the primary positive action.
               background: "var(--surface-2)",
-              border: "1px solid var(--err)",
+              border: "1px solid var(--err-line)",
               color: "var(--err)",
               cursor: stopping ? "default" : "pointer",
               opacity: stopping ? 0.6 : 1,
@@ -414,8 +413,8 @@ export function Composer({
             <Icon name="stop" size={16} />
           </button>
         ) : (
-          /* Send — the ONE coral primary affordance in the composer: a clay-coral gradient with the
-             liquid-glass glow halo + inset top highlight, dark ink glyph (spec .send). */
+          /* Send — the ONE coral primary affordance in the composer: a FLAT coral fill, dark ink glyph
+             (spec .send). No glow. */
           <button
             type="button"
             onClick={send}
@@ -431,12 +430,11 @@ export function Composer({
               border: 0,
               background: "var(--accent-grad)",
               color: "var(--on-accent)",
-              boxShadow: canSend ? "var(--shadow-pop)" : "none",
               cursor: canSend ? "pointer" : "default",
-              opacity: canSend ? 1 : 0.5,
+              opacity: canSend ? 1 : 0.4,
             }}
           >
-            <Icon name="arrow-up" size={19} />
+            <Icon name="arrow-up" size={18} />
           </button>
         )}
       </div>

@@ -4,15 +4,15 @@ import type { ManifestOptions } from "vite-plugin-pwa";
  * The web app manifest, extracted so it can be unit-tested (name/theme/icons) independently
  * of a full `vite build`. `vite.config.ts` feeds this straight into `VitePWA({ manifest })`.
  *
- * Theme + background use the liquid-glass warm-dark `--bg` ink (#0D0A07); the icons are the
- * clay-coral "live wire" mark on that ink. `display: "standalone"` makes it an installable, app-like PWA.
+ * Theme + background use the clean near-black neutral `--bg` ink (#0a0a0b); the icons are the coral
+ * terminal mark on that ink. `display: "standalone"` makes it an installable, app-like PWA.
  */
 export const pwaManifest: Partial<ManifestOptions> = {
   name: "remote-coder",
   short_name: "remote-coder",
   description: "Operate Claude Code sessions on your machine, remotely.",
-  theme_color: "#0D0A07",
-  background_color: "#0D0A07",
+  theme_color: "#0a0a0b",
+  background_color: "#0a0a0b",
   display: "standalone",
   start_url: "/",
   icons: [

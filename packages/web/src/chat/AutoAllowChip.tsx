@@ -27,13 +27,14 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
         aria-expanded={open}
         aria-label={`${tools.length} auto-allowed ${tools.length === 1 ? "tool" : "tools"}${open ? ", collapse" : ", expand"}`}
         style={{
+          // A quiet NEUTRAL chip (no coral) — an elevated surface + hairline, muted label.
           display: "inline-flex",
           alignItems: "center",
           gap: "var(--sp-2)",
           minHeight: 32,
-          background: "var(--accent-soft)",
-          border: "1px solid var(--accent-line)",
-          color: "var(--accent)",
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text-muted)",
           borderRadius: 999,
           padding: "5px 12px",
           fontFamily: "var(--font-display)",
@@ -42,12 +43,12 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
           cursor: "pointer",
         }}
       >
-        <Icon name="bolt" size={15} style={{ color: "var(--accent)" }} />
-        <span style={{ color: "var(--accent)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+        <Icon name="bolt" size={15} style={{ color: "var(--text-muted)" }} />
+        <span style={{ color: "var(--text)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
           {tools.length}
         </span>
         <span>auto-allowed</span>
-        <Icon name={open ? "chevron-down" : "chevron-right"} size={13} style={{ color: "var(--accent)" }} />
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={13} style={{ color: "var(--text-faint)" }} />
       </button>
 
       {open && (

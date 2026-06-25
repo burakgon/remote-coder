@@ -75,6 +75,8 @@ const SHOTS = [
   { name: "rewind-mobile", scene: "rewind", vp: MOBILE, wait: '#rewind-title' },
   // The login / token screen.
   { name: "login-mobile", scene: "login", vp: MOBILE, wait: '.rc-login__connect' },
+  // The settings panel (active-session + defaults + the coral primary).
+  { name: "settings-mobile", scene: "settings", vp: MOBILE, wait: '.rc-settings__primary' },
 ];
 
 async function settle(page, wait) {

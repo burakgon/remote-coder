@@ -20,15 +20,17 @@ const LABELS: Record<LiveWireState, string> = {
 };
 
 const COLORS: Record<LiveWireState, string> = {
+  // NEUTRAL grayscale for every non-attention state — coral never bleeds onto Working/Streaming/Idle
+  // (spec). The ONE coral status is "awaiting you"; error keeps a restrained red.
   idle: "var(--text-muted)",
-  // Dormant = resumable, process not live. A CALM, idle-ish look (faint, not the error tint): the
-  // session is fine, just sleeping. Never reads as an error.
+  // Dormant = resumable, process not live. A CALM, idle-ish look (faint): the session is fine, just
+  // sleeping. Never reads as an error.
   dormant: "var(--text-faint)",
-  thinking: "var(--accent)",
-  streaming: "var(--accent)",
-  awaiting: "var(--iris)",
-  "running-tool": "var(--cyan)",
-  success: "var(--ok)",
+  thinking: "var(--text-muted)",
+  streaming: "var(--text-muted)",
+  awaiting: "var(--coral-2)",
+  "running-tool": "var(--text-muted)",
+  success: "var(--text-muted)",
   error: "var(--err)",
 };
 
@@ -44,18 +46,14 @@ export interface LiveWireProps {
  * label so it is never the sole signal (a11y).
  */
 export function LiveWire({ state, ...rest }: LiveWireProps) {
-  // The "live"/active states pulse: thinking/streaming (violet accent), the awaiting violet, and the
-  // working/running-tool CYAN dot. All pulses are neutralized under prefers-reduced-motion (global.css).
+  // The live states pulse the dot subtly (thinking/streaming/running-tool/awaiting). All pulses are
+  // neutralized under prefers-reduced-motion (global.css).
   const animated =
     state === "thinking" || state === "streaming" || state === "awaiting" || state === "running-tool";
-  // The "working" (running-tool) dot is the LIVE signal: a pulsing warm core wrapped in a soft
-  // expanding "ping" halo (rc-ping, defined in global.css) — the one chrome dot that earns motion.
-  const working = state === "running-tool";
+  // The ONE coral status is "awaiting you" — its dot is coral. Every other state is a NEUTRAL dot +
+  // muted label (spec): no coral chip, no coral wash, no glow on Working/Streaming/Idle.
+  const awaiting = state === "awaiting";
   const color = COLORS[state];
-  // The ACTIVE / AWAITING states read as a coral status chip (spec .chip): a warm coral wash with a
-  // coral hairline, the glowing dot, and the label in coral-2. Calm states (idle/dormant/done/error)
-  // stay a quiet inline dot + muted label so coral never bleeds onto non-attention states.
-  const chip = animated;
   return (
     <span
       role="status"
@@ -64,44 +62,28 @@ export function LiveWire({ state, ...rest }: LiveWireProps) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: chip ? "7px" : "var(--sp-2)",
+        gap: "6px",
         fontFamily: "var(--font-mono)",
         fontSize: "var(--fs-xs)",
-        fontWeight: chip ? 600 : 400,
-        color: chip ? "var(--coral-2)" : color,
-        ...(chip
-          ? {
-              padding: "5px 11px 5px 9px",
-              borderRadius: "999px",
-              background: "var(--awaiting-soft)",
-              boxShadow: "inset 0 0 0 1px var(--awaiting-line)",
-            }
-          : {}),
+        color: "var(--text-muted)",
       }}
     >
       <span
-        className={working ? "rc-wire-dot rc-wire-dot--live" : "rc-wire-dot"}
+        className="rc-wire-dot"
         aria-hidden
         style={{
           position: "relative",
-          width: chip ? 6 : 8,
-          height: chip ? 6 : 8,
+          width: 6,
+          height: 6,
           borderRadius: "50%",
           background: color,
-          boxShadow: animated ? "0 0 9px rgba(247,124,68,.9)" : "0 0 6px transparent",
+          // The coral awaiting dot earns a soft coral halo; neutral dots stay flat.
+          boxShadow: awaiting ? "0 0 0 3px rgba(247,124,68,.12)" : "none",
           animation: animated ? "rc-pulse 1.2s ease-in-out infinite" : "none",
         }}
       />
-      <span style={{ color: chip ? "var(--coral-2)" : "var(--text-muted)" }}>{LABELS[state]}</span>
-      <style>{`
-        @keyframes rc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
-        /* The "working" ping ring — a soft expanding warm halo around the live dot. */
-        .rc-wire-dot--live::after {
-          content: ""; position: absolute; inset: -3px;
-          border-radius: 50%; border: 1.5px solid var(--working); opacity: 0.5;
-          animation: rc-ping 1.9s ease-out infinite;
-        }
-      `}</style>
+      <span style={{ color: awaiting ? "var(--coral-2)" : "var(--text-muted)" }}>{LABELS[state]}</span>
+      <style>{`@keyframes rc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
     </span>
   );
 }

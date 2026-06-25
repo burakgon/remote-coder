@@ -25,6 +25,8 @@ import { RewindSheet } from "../chat/RewindSheet";
 import { NewSessionWizard } from "../session/NewSessionWizard";
 import { ResumePicker } from "../session/ResumePicker";
 import { LoginScreen } from "../auth/LoginScreen";
+import { SettingsPanel } from "../settings/SettingsPanel";
+import { loadDefaults } from "../settings/defaults";
 import { emptyView } from "../store/frame-reducer";
 import {
   ACTIVE_ID,
@@ -39,11 +41,19 @@ import {
   screenshotDownloadUrl,
 } from "./seed";
 
-type Scene = "chat" | "question" | "wizard" | "resume" | "rewind" | "login";
+type Scene = "chat" | "question" | "wizard" | "resume" | "rewind" | "login" | "settings";
 
 function currentScene(): Scene {
   const s = new URLSearchParams(window.location.search).get("scene");
-  if (s === "question" || s === "wizard" || s === "resume" || s === "rewind" || s === "login") return s;
+  if (
+    s === "question" ||
+    s === "wizard" ||
+    s === "resume" ||
+    s === "rewind" ||
+    s === "login" ||
+    s === "settings"
+  )
+    return s;
   return "chat";
 }
 
@@ -148,6 +158,16 @@ export function AppShot() {
         <ResumePicker getResumable={mockApi.getResumable} now={Date.now()} onResume={async () => {}} onCancel={() => {}} />
       )}
       {scene === "rewind" && <RewindSheet checkpointId={CHECKPOINT_ID} onConfirm={() => {}} onCancel={() => {}} />}
+      {scene === "settings" && (
+        <SettingsPanel
+          session={sessions.find((s) => s.id === ACTIVE_ID)}
+          defaults={loadDefaults()}
+          onSaveDefaults={() => {}}
+          onApplyLiveSettings={() => {}}
+          onStopSession={() => {}}
+          onClose={() => {}}
+        />
+      )}
     </>
   );
 }

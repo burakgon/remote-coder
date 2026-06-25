@@ -13,10 +13,18 @@ import type {
 } from "../types/server";
 import type { PendingImage } from "../chat/Composer";
 
-// A small, valid 48×48 PNG (amber gradient) so the composer thumbnail renders a real image, not a
-// broken-image glyph. Generated once; the bytes are inert and self-contained.
-export const THUMB_B64 =
-  "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAmUlEQVR4nO3OYWbCAQCH4f/F3nslmSRJkkmSJEmSmSRJkiRJkmRmZ3iP0S326fec4CksYRkr+IFVrGEdG9jEFraxg5/YxR72cYBDHOEYJzjFGc5xgV/4jUtc4Ro3uMUd7vGARzzhGS94xRve8YFPfOEP/uIfRUIJJZRQQgkllFBCCSWUUEIJJZRQQgkllFBCCSWUUEIJ/V/oDaLwLPEQMX96AAAAAElFTkSuQmCC";
+// A small, neutral 48×48 SVG thumbnail (a clean dark tile with a faint coral data accent) so the
+// composer thumbnail renders a real image, not a broken-image glyph. Inert, self-contained — matches
+// the clean look (not the old amber gradient). Rendered as `data:${mediaType};base64,${dataBase64}`,
+// so the mediaType for this seed is image/svg+xml (see COMPOSER_IMAGES).
+export const THUMB_B64 = btoa(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+    <rect width="48" height="48" rx="9" fill="#1c1c20"/>
+    <rect x="0.5" y="0.5" width="47" height="47" rx="8.5" fill="none" stroke="rgba(255,255,255,.12)"/>
+    <path d="M12 30l7-8 6 6 5-6 6 8" fill="none" stroke="#94939b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="31" cy="16" r="3" fill="#f77a44"/>
+  </svg>`,
+);
 
 export const SCREENSHOT_TOKEN = "screenshot-demo-token";
 
@@ -24,33 +32,30 @@ export const SCREENSHOT_TOKEN = "screenshot-demo-token";
 // exact path to an inline image data-URI so the AttachmentCard previews a real picture (below).
 export const ATTACHMENT_IMG_PATH = "/Users/burakgon/Developer/remote-coder/docs/coverage-heatmap.png";
 
-// A 640×300 warm clay-coral gradient PNG used as the inline preview for the chart Claude sent. Inert
+// A 640×300 clean near-black bar-chart PNG used as the inline preview for the chart Claude sent. Inert
 // bytes, self-contained — a real <img> source so the attachment card looks like the shipped product,
-// not a placeholder. (Tiny base64; decodes to a smooth liquid-glass clay-coral gradient.)
+// not a placeholder. The chart is the clean look: a near-black panel, neutral bars rising into a
+// single coral accent at the tallest (data color, not chrome). (Tiny base64.)
 export const ATTACHMENT_IMG_DATA_URI =
   "data:image/svg+xml;base64," +
   btoa(
     `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300" viewBox="0 0 640 300">
       <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#0d0a07"/>
-          <stop offset="1" stop-color="#1c130c"/>
-        </linearGradient>
         <linearGradient id="b" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0" stop-color="#d6592c"/>
-          <stop offset="1" stop-color="#ff9c64"/>
+          <stop offset="0" stop-color="#2a2a30"/>
+          <stop offset="1" stop-color="#f77a44"/>
         </linearGradient>
       </defs>
-      <rect width="640" height="300" fill="url(#g)"/>
+      <rect width="640" height="300" fill="#0e0e10"/>
       ${[42, 70, 58, 86, 64, 92, 78, 110, 96, 128, 116, 150]
         .map((h, i) => {
           const x = 36 + i * 48;
           const y = 250 - h;
-          return `<rect x="${x}" y="${y}" width="30" height="${h}" rx="4" fill="url(#b)" opacity="${(0.55 + i * 0.035).toFixed(2)}"/>`;
+          return `<rect x="${x}" y="${y}" width="30" height="${h}" rx="4" fill="url(#b)" opacity="${(0.6 + i * 0.033).toFixed(2)}"/>`;
         })
         .join("")}
-      <text x="36" y="34" fill="#f1ebdf" font-family="monospace" font-size="18" font-weight="600">coverage by package</text>
-      <line x1="36" y1="250" x2="604" y2="250" stroke="#3a2f24" stroke-width="1"/>
+      <text x="36" y="34" fill="#ededee" font-family="monospace" font-size="18" font-weight="600">coverage by package</text>
+      <line x1="36" y1="250" x2="604" y2="250" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
     </svg>`,
   );
 
@@ -340,7 +345,7 @@ export const RESUMABLE: ResumableSession[] = [
     sessionId: "r-3",
     cwd: "/Users/burakgon/Developer/design-system",
     gitBranch: "release/4.2",
-    summary: "Migrate the Button tokens to the liquid-glass palette and fix focus rings.",
+    summary: "Migrate the Button tokens to the clean palette and fix focus rings.",
     lastActivity: Date.now() - 1000 * 60 * 60 * 26,
     messageCount: 65,
   },
@@ -356,7 +361,7 @@ export const RESUMABLE: ResumableSession[] = [
 // The composer pre-fill: a draft message + one attached image thumbnail (REAL <img>).
 export const COMPOSER_TEXT = "Then open a PR and send me the diff stat.";
 export const COMPOSER_IMAGES: PendingImage[] = [
-  { id: "img-1", mediaType: "image/png", dataBase64: THUMB_B64, name: "diagram.png" },
+  { id: "img-1", mediaType: "image/svg+xml", dataBase64: THUMB_B64, name: "diagram.png" },
 ];
 
 /** Seed the REAL Zustand store via its own setters + reducer, then mark the harness ready. */

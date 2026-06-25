@@ -245,10 +245,10 @@ const pickerCss = `
 .rc-picker {
   position: fixed; inset: 0; z-index: 50;
   /* Mobile full-bleed sheet — it OWNS the viewport (a takeover over the chat), so it paints the same
-     warm-dark atmosphere as the app base (an opaque cover, not a see-through pane); desktop becomes a
-     centered liquid-glass card instead. */
+     clean near-black base + the one faint top glow as the app (an opaque cover, not a see-through
+     pane); desktop becomes a centered floating-glass card instead. */
   background-color: var(--bg);
-  background-image: var(--atmosphere);
+  background-image: var(--top-glow);
   display: flex; flex-direction: column;
   animation: rc-picker-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -259,6 +259,7 @@ const pickerCss = `
     background: var(--glass-strong);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     box-shadow: var(--glass-shadow);
     overflow: hidden;
@@ -305,7 +306,7 @@ const pickerCss = `
 }
 .rc-picker__crumb:hover { color: var(--text); background: var(--surface-2); }
 .rc-picker__crumb[aria-current="location"] { color: var(--text); font-weight: 600; }
-.rc-picker__crumb--up { color: var(--accent); }
+.rc-picker__crumb--up { color: var(--text-muted); }
 .rc-picker__crumb-sep { color: var(--border); padding: 0 1px; }
 .rc-picker__body {
   flex: 1; min-height: 0; overflow-y: auto;
@@ -331,13 +332,14 @@ const pickerCss = `
 .rc-picker__row-main { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .rc-picker__folder { color: var(--text-muted); display: grid; place-items: center; flex: none; }
 .rc-picker__slash { color: var(--text-faint); font-family: var(--font-mono); }
-.rc-picker__star { color: var(--accent); display: grid; place-items: center; flex: none; }
-.rc-picker__row:hover .rc-picker__folder { color: var(--accent); }
+.rc-picker__star { color: var(--text-muted); display: grid; place-items: center; flex: none; }
+.rc-picker__row:hover .rc-picker__folder { color: var(--text); }
+/* git-branch chip — a NEUTRAL chip (spec: not coral): an elevated surface + hairline, muted mono. */
 .rc-picker__git {
-  flex: none; color: var(--accent);
+  flex: none; color: var(--text-muted);
   font-family: var(--font-mono); font-size: var(--fs-xs);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 2px var(--sp-2); white-space: nowrap;
 }
 .rc-picker__hint { color: var(--text-muted); padding: var(--sp-2); }

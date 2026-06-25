@@ -179,15 +179,13 @@ export function SessionList({
 
 const sessionListCss = `
 .rc-sl { display: flex; flex-direction: column; height: 100%; }
-/* The rail header — a glassy bar so the ambient glow shows through it, with a hairline below. */
+/* The rail header — a flat surface bar with a hairline below (no glass blur). */
 .rc-sl__head {
   flex: none;
   display: flex; align-items: center; gap: 9px;
   padding: calc(12px + env(safe-area-inset-top, 0px)) 13px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bar-glass);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
   position: sticky; top: 0; z-index: 1;
 }
 .rc-sl__title {
@@ -209,18 +207,18 @@ const sessionListCss = `
 .rc-needs__n { font-weight: 700; font-variant-numeric: tabular-nums; }
 .rc-needs__label { color: var(--awaiting); }
 .rc-sl__needs { margin-left: var(--sp-2); margin-right: auto; }
-/* The "+" new-session button — a compact 38px glassy tile (mockup .sl-new) that warms to accent
-   (color + hairline only) on hover/focus. No glow/fill. */
+/* The "+" new-session button — the coral PRIMARY (spec): a compact 34px FLAT coral tile with a dark
+   ink glyph. The one coral CTA in the rail. */
 .rc-sl__new {
-  width: 38px; height: 38px; flex: none;
+  width: 34px; height: 34px; flex: none;
   display: grid; place-items: center;
-  border-radius: 11px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text-muted); cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
+  border-radius: 9px;
+  background: var(--coral); border: 1px solid transparent;
+  color: var(--on-accent); cursor: pointer;
+  transition: filter 120ms ease;
 }
 .rc-sl__new:hover, .rc-sl__new:focus-visible {
-  color: var(--accent); border-color: var(--accent-line);
+  filter: brightness(1.08);
 }
 .rc-sl__list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
 /* The row + its ✕ live side by side in the list item; a hairline divider sits on the item so it
@@ -242,16 +240,16 @@ const sessionListCss = `
   transition: background 120ms ease;
 }
 .rc-sl__row:hover { background: var(--surface); }
-/* The ACTIVE row is a FLAT surface lift (mockup .sl-row.active) — quiet, scannable, not a wash. */
+/* The ACTIVE row is a FLAT surface lift — quiet, scannable, not a wash. */
 .rc-sl__row--active { background: var(--surface-2); }
-/* The selected accent edge — a FLAT violet left rail (mockup .sl-row.active .sl-rail). The one violet
-   accent on the row; no bloom, so it never out-shouts an awaiting row. */
-.rc-sl__rail { flex: none; width: 3px; background: transparent; }
-.rc-sl__row--active .rc-sl__rail { background: var(--accent); }
-/* An awaiting row (mockup .sl-item.awaiting): a flat --awaiting-soft wash + a flat awaiting left edge.
-   The pulsing chip dot is the motion; the row itself stays restrained (no glow). */
+/* The selected edge — a NEUTRAL left rail (coral is reserved for awaiting/needs-you, so the active
+   marker is grayscale and never competes). */
+.rc-sl__rail { flex: none; width: 2px; background: transparent; }
+.rc-sl__row--active .rc-sl__rail { background: var(--border-strong); }
+/* An awaiting row: a flat --awaiting-soft (coral) wash + a coral left edge — the ONE place a row uses
+   coral, because it IS the needs-you signal. The pulsing chip dot is the motion. */
 .rc-sl__item--awaiting { background: var(--awaiting-soft); }
-.rc-sl__row--awaiting .rc-sl__rail { width: 3px; background: var(--awaiting); }
+.rc-sl__row--awaiting .rc-sl__rail { width: 2px; background: var(--awaiting); }
 /* The per-row "needs you" chip — a FLAT awaiting pill (mockup .await-chip): --awaiting-soft wash,
    --awaiting-line hairline. The only motion is the pulsing dot (color paired with the "needs you"
    text so it's never color-only). */

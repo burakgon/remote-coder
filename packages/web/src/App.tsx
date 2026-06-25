@@ -325,38 +325,36 @@ export function App() {
                 textAlign: "center",
               }}
             >
-              {/* The landing mark — a clay-coral tile with a soft glow + inset top highlight (spec
-                  .mark). The on-brand focal point; the ONE coral moment on the empty state. */}
+              {/* The landing mark — a flat elevated tile + a --line-2 edge; the ONE coral here is the
+                  GLYPH (spec .mark), NOT a coral fill. No glow. */}
             <span
               aria-hidden="true"
               style={{
-                width: 64,
-                height: 64,
+                width: 56,
+                height: 56,
                 display: "grid",
                 placeItems: "center",
                 borderRadius: "var(--radius)",
                 background: "var(--tile-bg)",
-                color: "#fff3ea",
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,240,230,.6), 0 8px 22px -8px rgba(247,124,68,.85), 0 0 20px -4px rgba(247,124,68,.45)",
+                border: "1px solid var(--tile-edge)",
+                color: "var(--coral)",
               }}
             >
-              <Icon name="terminal" size={28} />
+              <Icon name="terminal" size={26} />
             </span>
             <span className="display" style={{ fontSize: "var(--fs-lg)", color: "var(--text)" }}>
               Select or start a session
             </span>
             <span style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", maxWidth: "26ch", lineHeight: 1.5 }}>
               No active session. Tap{" "}
-              <span aria-hidden="true" style={{ color: "var(--accent)", fontWeight: 600 }}>
+              <span aria-hidden="true" style={{ color: "var(--text)", fontWeight: 600 }}>
                 +
               </span>{" "}
               to start one and drive Claude from your phone.
             </span>
             {/* A landing-state CTA so a new session is reachable without first opening the mobile
                 sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile).
-                The single coral primary — a clay-coral gradient with the liquid-glass glow halo + dark
-                ink label. */}
+                The single coral primary — a FLAT coral fill, dark ink label. No glow. */}
             <button
               type="button"
               onClick={() => openWizard("new")}
@@ -374,7 +372,6 @@ export function App() {
                 cursor: "pointer",
                 fontFamily: "var(--font-display)",
                 fontWeight: 600,
-                boxShadow: "var(--shadow-pop)",
               }}
             >
               <Icon name="plus" size={16} />
