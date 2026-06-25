@@ -88,14 +88,15 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
   const wireState = wireStateForSession(session, view);
   const safeView = view ?? emptyView();
 
-  // "Running" = a turn is actively in flight (thinking / streaming / running a tool). This drives the
-  // composer's Stop button. It reads the live VIEW wire state (the session's own activity), NOT the
-  // meta-derived wireState — an `awaiting` permission/question is deliberately NOT "running" (the user
-  // should answer, not stop), and it must work even for the live session you're connected to.
+  // "Running" = a turn is actively in flight (thinking / streaming / running a tool), which swaps the
+  // composer's Send for a Stop. It reads the META-AWARE wireState, NOT the raw view wireState: a
+  // reopened DORMANT/stopped session whose last turn never settled with a `result` leaves the view
+  // stuck at a running state — but the session isn't actually live, so it must NOT show Stop (and must
+  // let the user type). `wireStateForSession` collapses dormant→"dormant", stopped→"idle",
+  // awaiting→"awaiting" (none of which are "running"), and only defers to the live view's wire state
+  // for a genuinely-running session — so a live turn still shows Stop.
   const running =
-    safeView.wireState === "thinking" ||
-    safeView.wireState === "streaming" ||
-    safeView.wireState === "running-tool";
+    wireState === "thinking" || wireState === "streaming" || wireState === "running-tool";
 
   // Client-side "Always allow" — a per-session set of tool names the user has chosen to auto-allow.
   // When a future permission for such a tool arrives we answer `allow` for the user (with a visible
