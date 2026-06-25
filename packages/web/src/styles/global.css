@@ -27,14 +27,16 @@ body {
 }
 
 /* iOS Safari auto-ZOOMS the viewport when a focused field's font-size is < 16px (our compact 15px
-   body). On touch devices keep every real text field at >=16px so focusing the composer (or any
-   input) never zooms the screen — the user no longer has to pinch back out. Desktop keeps 15px, and
-   pinch-zoom stays fully available (no user-scalable=no). */
+   body). On touch devices keep every real text field at >=16px so focusing the composer (or ANY input)
+   never zooms the screen — the user no longer has to pinch back out. `!important` is required because
+   several fields set their size via an inline `font`/`font-size` (e.g. the composer's `font: inherit`),
+   and an inline style would otherwise win over this rule. Desktop keeps 15px; pinch-zoom stays fully
+   available (no user-scalable=no). */
 @media (pointer: coarse) {
   textarea,
   input,
   select {
-    font-size: 16px;
+    font-size: 16px !important;
   }
 }
 
