@@ -16,15 +16,24 @@ export function usageFillColor(percent: number): string {
 }
 
 /**
- * Shorten a reset string for the tight caption: drop a trailing "(timezone)" and collapse a
- * "<date> at <time>" to just the time. "Jun 25 at 11:30pm (Europe/Istanbul)" → "11:30pm";
- * "in 2h" stays "in 2h". Pure.
+ * Shorten a reset string for the tight caption. Drops a trailing "(timezone)", then: if the reset is
+ * LATER today, show just the time ("Jun 25 at 11:30pm …" → "11:30pm"); if it's a DIFFERENT day, KEEP
+ * the date ("Jul 2 at 10pm …" → "Jul 2") so a week-away weekly reset never reads like a time that has
+ * already passed. Anything not in "<Mon> <day> at <time>" form (e.g. "in 2h") passes through. Pure.
  */
-export function shortenReset(resets: string): string {
-  let s = resets.replace(/\s*\([^)]*\)\s*$/, "").trim();
-  const atIdx = s.toLowerCase().lastIndexOf(" at ");
-  if (atIdx !== -1) s = s.slice(atIdx + 4).trim();
-  return s || resets.trim();
+export function shortenReset(resets: string, now: number = Date.now()): string {
+  const s = resets.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const m = /^([A-Za-z]{3,}\s+\d{1,2})\s+at\s+(.+)$/.exec(s);
+  if (!m) return s || resets.trim();
+  const date = m[1]!.trim();
+  const time = m[2]!.trim();
+  let today = "";
+  try {
+    today = new Date(now).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch {
+    today = "";
+  }
+  return date === today ? time : date;
 }
 
 function UsageBarRow({ label, bar }: { label: string; bar: UsageBar }) {
@@ -73,7 +82,7 @@ const usageBarsCss = `
 .rc-usage {
   flex: none;
   display: flex; flex-direction: column; gap: var(--sp-3);
-  padding: calc(11px + env(safe-area-inset-top, 0px)) 13px 12px;
+  padding: 11px 13px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bar-glass);
 }

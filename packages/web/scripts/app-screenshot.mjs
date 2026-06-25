@@ -81,6 +81,9 @@ const SHOTS = [
   { name: "subagents-mobile", scene: "subagents", vp: MOBILE, wait: 'div[role="group"][aria-label^="Subagents"]', waitShiki: true },
   // The subagent drill-in (Task + transcript + Result).
   { name: "subagent-view-mobile", scene: "subagentview", vp: MOBILE, wait: '.rc-sa-view' },
+  // The mobile sessions bottom-sheet OPEN — the grab-handle + close-X chrome row above the usage bars
+  // and the session rows (verifies the close button alignment).
+  { name: "sessions-mobile", scene: "sessions", vp: MOBILE, wait: '[data-testid="sessions-rail"][data-open="true"]' },
 ];
 
 async function settle(page, wait) {

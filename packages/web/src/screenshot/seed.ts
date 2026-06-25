@@ -407,7 +407,7 @@ export const COMPOSER_IMAGES: PendingImage[] = [
 // reset-string format so shortenReset is exercised. Passed to SessionList by AppShot.
 export const USAGE: UsageInfo = {
   session: { percent: 12, resets: "Jun 25 at 11:30pm (Europe/Istanbul)" },
-  week: { percent: 72, resets: "Jun 25 at 10pm (Europe/Istanbul)" },
+  week: { percent: 72, resets: "Jul 2 at 10pm (Europe/Istanbul)" },
   weekSonnet: { percent: 2, resets: "Jun 25 at 9:59pm (Europe/Istanbul)" },
   fetchedAt: Date.now(),
 };

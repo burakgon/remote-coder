@@ -47,7 +47,17 @@ import {
   screenshotDownloadUrl,
 } from "./seed";
 
-type Scene = "chat" | "question" | "wizard" | "resume" | "rewind" | "login" | "settings" | "subagents" | "subagentview";
+type Scene =
+  | "chat"
+  | "question"
+  | "wizard"
+  | "resume"
+  | "rewind"
+  | "login"
+  | "settings"
+  | "subagents"
+  | "subagentview"
+  | "sessions";
 
 function currentScene(): Scene {
   const s = new URLSearchParams(window.location.search).get("scene");
@@ -59,7 +69,8 @@ function currentScene(): Scene {
     s === "login" ||
     s === "settings" ||
     s === "subagents" ||
-    s === "subagentview"
+    s === "subagentview" ||
+    s === "sessions"
   )
     return s;
   return "chat";
@@ -161,7 +172,12 @@ export function AppShot() {
 
   return (
     <>
-      <AppLayout sessionList={list} needsYou={awaitingCount(sessions)}>
+      <AppLayout
+        sessionList={list}
+        needsYou={awaitingCount(sessions)}
+        sessionsOpen={scene === "sessions"}
+        onHideSessions={() => {}}
+      >
         <ChatBody
           scene={scene}
           sessionId={scene === "subagents" || scene === "subagentview" ? AGENTS_ID : ACTIVE_ID}

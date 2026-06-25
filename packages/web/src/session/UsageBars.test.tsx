@@ -71,11 +71,16 @@ describe("usageFillColor", () => {
 });
 
 describe("shortenReset", () => {
-  it("drops the timezone and collapses '<date> at <time>' to the time", () => {
-    expect(shortenReset("Jun 25 at 11:30pm (Europe/Istanbul)")).toBe("11:30pm");
-    expect(shortenReset("Jun 25 at 10pm")).toBe("10pm");
+  // A fixed local "now" on Jun 25 so "today" is deterministic regardless of the runner's clock/timezone.
+  const NOW = new Date(2026, 5, 25, 12, 0, 0).getTime();
+  it("drops the timezone and shows just the time when the reset is later TODAY", () => {
+    expect(shortenReset("Jun 25 at 11:30pm (Europe/Istanbul)", NOW)).toBe("11:30pm");
+    expect(shortenReset("Jun 25 at 10pm", NOW)).toBe("10pm");
+  });
+  it("keeps the DATE when the reset is a different day (a week-away reset must not read as past)", () => {
+    expect(shortenReset("Jul 2 at 10pm (Europe/Istanbul)", NOW)).toBe("Jul 2");
   });
   it("keeps strings without an 'at' clause (e.g. relative)", () => {
-    expect(shortenReset("in 2h")).toBe("in 2h");
+    expect(shortenReset("in 2h", NOW)).toBe("in 2h");
   });
 });

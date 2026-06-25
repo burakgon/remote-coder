@@ -26,6 +26,18 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* iOS Safari auto-ZOOMS the viewport when a focused field's font-size is < 16px (our compact 15px
+   body). On touch devices keep every real text field at >=16px so focusing the composer (or any
+   input) never zooms the screen — the user no longer has to pinch back out. Desktop keeps 15px, and
+   pinch-zoom stays fully available (no user-scalable=no). */
+@media (pointer: coarse) {
+  textarea,
+  input,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    ATMOSPHERE — clean, near-flat near-black + ONE very faint coral top glow (spec
    body::before). No film grain, no vignette, no heavy glass shadows. Depth lives

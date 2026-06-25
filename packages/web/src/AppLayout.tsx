@@ -78,9 +78,11 @@ export function AppLayout({
       )}
 
       <aside className="rc-rail" data-testid="sessions-rail" data-open={open}>
-        {/* The sheet's grab-handle + close affordance (mobile only). Hairline, restrained chrome. */}
-        <div className="rc-rail__handle" aria-hidden="true" />
-        <div className="rc-rail__close">
+        {/* Mobile-only sheet chrome: a centered grab-handle + a right-aligned close, in their OWN
+            fixed-height row, so the content below (the usage bars, the session list) never sits under
+            the close button. Hidden on desktop. */}
+        <div className="rc-rail__chrome">
+          <span className="rc-rail__handle" aria-hidden="true" />
           <button type="button" className="rc-rail__close-btn" aria-label="Hide sessions" onClick={onHideSessions}>
             <Icon name="x" size={18} />
           </button>
@@ -110,18 +112,15 @@ export function AppLayout({
         }
         @keyframes rc-rail-in { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .rc-rail[data-open="false"] { display: none; }
-        /* The sheet grab-handle — a small centered hairline pill (mobile-only). */
+        /* Mobile sheet chrome row — its OWN height so the close never overlaps the content below. */
+        .rc-rail__chrome { position: relative; flex: none; height: 40px; }
+        /* The sheet grab-handle — a small centered hairline pill, absolutely centered in the chrome row. */
         .rc-rail__handle {
-          width: 40px; height: 4px; flex: none;
-          margin: var(--sp-2) auto 0;
-          border-radius: 999px; background: var(--border-strong);
-        }
-        .rc-rail__close {
-          display: flex; justify-content: flex-end;
-          padding: var(--sp-1) var(--sp-2) 0;
-          margin-top: -34px; /* float the close over the handle row so the list starts higher */
+          position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+          width: 40px; height: 4px; border-radius: 999px; background: var(--border-strong);
         }
         .rc-rail__close-btn {
+          position: absolute; top: 0; right: 6px;
           width: var(--tap-min); height: var(--tap-min); flex: none;
           display: grid; place-items: center;
           background: transparent; border: none;
@@ -148,7 +147,7 @@ export function AppLayout({
             box-shadow: none;
             display: block !important; animation: none;
           }
-          .rc-rail__handle, .rc-rail__close, .rc-scrim { display: none; }
+          .rc-rail__chrome, .rc-scrim { display: none; }
         }
       `}</style>
     </div>
