@@ -80,8 +80,10 @@ describe("ChatView", () => {
   it("loads history into the store and renders it", async () => {
     await renderSettled(apiStub());
     // Every replayed frame is applied in a single store update, flushed inside act() above.
-    expect(screen.getByText(/all set/i)).toBeInTheDocument();
+    // The assistant message renders; the turn-end marker is a quiet "done" (it no longer re-prints the
+    // result text, which just duplicated the message — "All set" was the result copy).
     expect(screen.getByText(/hello from history/i)).toBeInTheDocument();
+    expect(screen.getByText("done")).toBeInTheDocument();
   });
 
   it("on open, loads the FULL transcript (user + assistant in order) and sets lastSeq = sinceSeq", async () => {

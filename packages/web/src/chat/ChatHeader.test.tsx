@@ -20,12 +20,13 @@ describe("ChatHeader", () => {
 
   it("truncates the cwd so a long path cannot overprint the right-side group", () => {
     render(<ChatHeader session={session} />);
-    // The cwd lives inside a wrapper that clips with an ellipsis (mobile 390px overlap fix).
+    // The cwd is the flexible element — it ellipsises so the pinned runtime flags (model/effort/
+    // skip-permissions) are never clipped on a narrow screen.
     const cwd = screen.getByText(session.cwd);
-    const wrapper = cwd.parentElement as HTMLElement;
-    expect(wrapper.style.overflow).toBe("hidden");
-    expect(wrapper.style.textOverflow).toBe("ellipsis");
-    expect(wrapper.style.whiteSpace).toBe("nowrap");
+    expect(cwd.style.overflow).toBe("hidden");
+    expect(cwd.style.textOverflow).toBe("ellipsis");
+    expect(cwd.style.whiteSpace).toBe("nowrap");
+    expect(cwd.style.flex).toBe("1 1 auto");
   });
 
   it("surfaces the active model/effort and clearly flags skip-permissions", () => {

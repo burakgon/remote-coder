@@ -78,52 +78,64 @@ export function ChatHeader({ session, onOpenSettings, onShowSessions, needsYou =
         >
           {basename(session.cwd)}
         </strong>
-        {/* ONE compact mono meta line (mockup .hdr-id .meta): the full cwd, then the active
-            model/effort, then — most importantly — that --dangerously-skip-permissions is in effect
-            (flagged in accent). Truncated as one ellipsised row so a long path can't overprint the
-            right-side status group at 390px. */}
+        {/* ONE compact mono meta line: the cwd, then the active model/effort and — most importantly —
+            that --dangerously-skip-permissions is in effect (flagged in accent). The PATH is the
+            flexible part (it ellipsises); the runtime flags on the right are pinned (flex:none) so a
+            long path can never clip skip-permissions at 390px (the old single-ellipsis row cut it to
+            "ski…"). */}
         <div
           style={{
             display: "flex",
             gap: "6px",
             alignItems: "center",
-            whiteSpace: "nowrap",
+            minWidth: 0,
             overflow: "hidden",
-            textOverflow: "ellipsis",
             fontSize: "var(--fs-xs)",
           }}
         >
-          <Mono muted>{session.cwd}</Mono>
-          {session.model && (
-            <>
-              <span aria-hidden style={midDot}>
-                ·
-              </span>
-              <Mono muted>{session.model}</Mono>
-            </>
-          )}
-          {session.effort && (
-            <>
-              <span aria-hidden style={midDot}>
-                ·
-              </span>
-              <Mono muted>{session.effort}</Mono>
-            </>
-          )}
-          {session.permissionMode === "bypassPermissions" ? (
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--warn)", flex: "none" }}>
-              · skip-permissions
-            </span>
-          ) : (
-            session.permissionMode && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              color: "var(--text-muted)",
+              flex: "1 1 auto",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {session.cwd}
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: "6px", flex: "none", whiteSpace: "nowrap" }}>
+            {session.model && (
               <>
                 <span aria-hidden style={midDot}>
                   ·
                 </span>
-                <Mono muted>{session.permissionMode}</Mono>
+                <Mono muted>{session.model}</Mono>
               </>
-            )
-          )}
+            )}
+            {session.effort && (
+              <>
+                <span aria-hidden style={midDot}>
+                  ·
+                </span>
+                <Mono muted>{session.effort}</Mono>
+              </>
+            )}
+            {session.permissionMode === "bypassPermissions" ? (
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--warn)" }}>· skip-permissions</span>
+            ) : (
+              session.permissionMode && (
+                <>
+                  <span aria-hidden style={midDot}>
+                    ·
+                  </span>
+                  <Mono muted>{session.permissionMode}</Mono>
+                </>
+              )
+            )}
+          </span>
         </div>
       </div>
       {/* `flex: none` so the status/settings group keeps its intrinsic width and is never

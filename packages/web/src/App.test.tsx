@@ -666,7 +666,9 @@ describe("App full flow", () => {
       payload: { type: "result", result: "Created the file", permissionDenials: [] },
     });
     await waitFor(() => expect(screen.queryByRole("region", { name: /permission request/i })).not.toBeInTheDocument());
-    expect(screen.getByText(/created the file/i)).toBeInTheDocument();
+    // The turn-end marker renders as a quiet "done" (it no longer re-prints the result text, which
+    // duplicated the assistant message — "Created the file" was that copy).
+    expect(screen.getByText("done")).toBeInTheDocument();
   });
 });
 

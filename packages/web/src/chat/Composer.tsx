@@ -218,17 +218,17 @@ export function Composer({
       style={{
         // Clean floating composer (spec .composer): a subtle translucent fill + blur + a --line-2
         // border (the .rc-glass--float variant). Compact; Send is the one coral primary affordance.
-        margin: "var(--sp-2) var(--sp-3) 0",
+        // The bottom margin clears the iOS home indicator + the screen's rounded corners (env() is 0 on
+        // desktop). It MUST be inline: the inline `padding` shorthand below would otherwise override a
+        // stylesheet `padding-bottom`, which is why the old safe-area rule never took effect.
+        margin: "var(--sp-2) var(--sp-3) calc(env(safe-area-inset-bottom, 0px) + var(--sp-2))",
         borderRadius: "var(--radius-lg)",
         padding: "var(--sp-2)",
         display: "grid",
         gap: "var(--sp-2)",
       }}
     >
-      {/* Clear the safe-area inset at the bottom of the bar. */}
       <style>{`
-        .rc-composer { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--sp-2)); }
-        @media (min-width: 768px) { .rc-composer { padding-bottom: var(--sp-2); } }
         /* Neutral icon-button hover — brightens to text + a hairline, NO coral. */
         .rc-composer-btn:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
         /* The field's hairline lights to the coral focus edge + a soft glow on focus. */

@@ -30,10 +30,11 @@ const STATUS_LABEL: Record<LiveWireState, string> = {
   error: "Error",
 };
 
-/** Match the rail's status palette: coral ONLY for "awaiting you", red for error, neutral otherwise. */
+/** The live states earn the coral accent so "Claude is working / needs you" is unmistakable right by
+ * the composer — error stays red, idle/done/dormant stay quiet neutral. */
 function statusColor(state: LiveWireState): string {
-  if (state === "awaiting") return "var(--coral-2)";
   if (state === "error") return "var(--err)";
+  if (state === "awaiting" || WORKING.has(state)) return "var(--coral-2)";
   return "var(--text-muted)";
 }
 
@@ -79,7 +80,7 @@ export function ChatTelemetry({ wireState, contextTokens }: ChatTelemetryProps) 
         data-state={wireState}
         aria-label={`Model ${STATUS_LABEL[wireState]}`}
       >
-        <span className="rc-tele__dot" style={{ background: color }}>
+        <span className={`rc-tele__dot${pinging ? " rc-tele__dot--live" : ""}`} style={{ background: color }}>
           {pinging && <span className="rc-tele__ping" style={{ background: color }} aria-hidden="true" />}
         </span>
         <span className="rc-tele__label" style={{ color }}>
@@ -127,29 +128,37 @@ const telemetryCss = `
 .rc-tele__status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 /* The live-wire dot. While the agent works it emits a single expanding radar ring (the ::ping sibling)
    — calmer + more "alive" than a blunt opacity blink. */
-.rc-tele__dot { position: relative; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.rc-tele__dot { position: relative; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* Live (working / awaiting): the dot BREATHES with a coral glow AND emits an expanding ring — a strong,
+   unmistakable "Claude is working" pulse right next to the input. */
+.rc-tele__dot--live { animation: rc-tele-glow 1.3s ease-in-out infinite; }
+@keyframes rc-tele-glow {
+  0%, 100% { box-shadow: 0 0 4px 0 rgba(247, 124, 68, 0.55); transform: scale(1); }
+  50% { box-shadow: 0 0 11px 2px rgba(247, 124, 68, 0.95); transform: scale(1.2); }
+}
 .rc-tele__ping {
   position: absolute; inset: 0; border-radius: 50%;
-  animation: rc-tele-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  animation: rc-tele-ping 1.3s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 @keyframes rc-tele-ping {
-  0% { transform: scale(1); opacity: 0.55; }
-  80%, 100% { transform: scale(2.8); opacity: 0; }
+  0% { transform: scale(1); opacity: 0.7; }
+  80%, 100% { transform: scale(3.4); opacity: 0; }
 }
 .rc-tele__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Typing-style trailing dots while working — the universal "it's responding" cue, right by the input. */
-.rc-tele__dots { display: inline-flex; align-items: center; gap: 2px; flex: none; }
-.rc-tele__dots i { width: 3px; height: 3px; border-radius: 50%; background: var(--text-faint); opacity: 0.25; animation: rc-tele-typing 1.4s ease-in-out infinite; }
-.rc-tele__dots i:nth-child(2) { animation-delay: 0.18s; }
-.rc-tele__dots i:nth-child(3) { animation-delay: 0.36s; }
-@keyframes rc-tele-typing { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 0.9; } }
+/* Typing-style trailing dots while working — the universal "it's responding" cue, right by the input.
+   Bright coral + a bounce so it reads clearly on the dark bar (the old faint dots were near-invisible). */
+.rc-tele__dots { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.rc-tele__dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--coral-2); opacity: 0.3; animation: rc-tele-typing 1.1s ease-in-out infinite; }
+.rc-tele__dots i:nth-child(2) { animation-delay: 0.16s; }
+.rc-tele__dots i:nth-child(3) { animation-delay: 0.32s; }
+@keyframes rc-tele-typing { 0%, 70%, 100% { opacity: 0.3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-3px); } }
 .rc-tele__ctx { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--text-faint); }
 .rc-tele__ctx-key { letter-spacing: 0.04em; }
 .rc-tele__track { width: 52px; height: 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
 .rc-tele__fill { display: block; height: 100%; border-radius: 999px; transition: width 0.4s ease, background 0.3s ease; }
 .rc-tele__ctx-num { color: var(--text-muted); }
 @media (prefers-reduced-motion: reduce) {
-  .rc-tele__ping, .rc-tele__dots i { animation: none; }
+  .rc-tele__ping, .rc-tele__dots i, .rc-tele__dot--live { animation: none; }
   .rc-tele__ping { display: none; }
 }
 `;

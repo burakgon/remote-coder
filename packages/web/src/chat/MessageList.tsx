@@ -415,9 +415,9 @@ function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> })
         <Icon name={icon} size={13} />
         {tone}
       </span>
-      {/* A stopped turn's `result` text is the CLI's internal "aborted" string — suppress it so the
-          marker reads simply "stopped" (the user knows why). Cost still shows when present. */}
-      {!item.stopped && item.result ? <span style={{ color: "var(--text-muted)" }}>· {item.result}</span> : null}
+      {/* We deliberately DON'T echo `item.result` — the CLI's result text is a copy of the assistant
+          message already shown above, so printing it here duplicated every turn. The marker stays a
+          quiet "done · $cost" (a stopped turn's result is just the internal "aborted" string anyway). */}
       {item.totalCostUsd !== undefined && item.totalCostUsd > 0 && (
         <span style={{ color: "var(--text-muted)" }}>· ${item.totalCostUsd.toFixed(4)}</span>
       )}
