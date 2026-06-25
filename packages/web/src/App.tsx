@@ -132,7 +132,7 @@ export function App() {
   }, [phase, setActive]);
 
   // Keep the rail honest across ALL sessions — not just the one we're connected to. A lightweight poll
-  // of GET /sessions every ~6s (and on window focus + when the connection comes back online, e.g. a WS
+  // of GET /sessions every ~15s (and on window focus + when the connection comes back online, e.g. a WS
   // reconnect after sleep) refreshes status, `awaiting` and `lastActivityAt` for every session, and
   // drops any that no longer exist. It merges META ONLY (mergeSessionMeta keeps the live `views`
   // intact), so the actively-connected conversation is never disturbed. A poll that errors is ignored
@@ -150,7 +150,7 @@ export function App() {
           // transient — keep the current list; the next tick retries.
         });
     };
-    const interval = setInterval(refresh, 6_000);
+    const interval = setInterval(refresh, 15_000);
     const onFocusOrOnline = () => refresh();
     window.addEventListener("focus", onFocusOrOnline);
     window.addEventListener("online", onFocusOrOnline);
