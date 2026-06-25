@@ -43,6 +43,7 @@ import {
   QUESTION,
   RESUMABLE,
   SESSIONS,
+  USAGE,
   screenshotDownloadUrl,
 } from "./seed";
 
@@ -145,6 +146,7 @@ export function AppShot() {
       activeId={activeId}
       lastActiveAt={lastActiveAt}
       now={Date.now()}
+      usage={USAGE}
       onSelect={(id) => setActive(id)}
       onNew={() => {}}
       onClose={() => {}}

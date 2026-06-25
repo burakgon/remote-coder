@@ -10,6 +10,7 @@ import type {
   ResumableSession,
   ServerFrame,
   SessionMeta,
+  UsageInfo,
 } from "../types/server";
 import type { PendingImage } from "../chat/Composer";
 
@@ -402,6 +403,15 @@ export const COMPOSER_IMAGES: PendingImage[] = [
   { id: "img-1", mediaType: "image/svg+xml", dataBase64: THUMB_B64, name: "diagram.png" },
 ];
 
+// Usage limit bars atop the rail: session low (coral) + weekly mid (amber) — two thresholds, real
+// reset-string format so shortenReset is exercised. Passed to SessionList by AppShot.
+export const USAGE: UsageInfo = {
+  session: { percent: 12, resets: "Jun 25 at 11:30pm (Europe/Istanbul)" },
+  week: { percent: 72, resets: "Jun 25 at 10pm (Europe/Istanbul)" },
+  weekSonnet: { percent: 2, resets: "Jun 25 at 9:59pm (Europe/Istanbul)" },
+  fetchedAt: Date.now(),
+};
+
 /** Seed the REAL Zustand store via its own setters + reducer, then mark the harness ready. */
 export function seedStore(): void {
   const store = useStore.getState();
@@ -410,5 +420,6 @@ export function seedStore(): void {
   store.applyFrames(ACTIVE_ID, activeFrames());
   store.applyFrames("sess-stream", streamFrames());
   store.applyFrames(AGENTS_ID, subagentFrames());
+  store.setUsage(USAGE);
   store.setActive(ACTIVE_ID);
 }
