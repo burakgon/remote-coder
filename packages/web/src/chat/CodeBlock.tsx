@@ -1,23 +1,85 @@
 /**
  * Clean dark code block (spec .code). A flat #0e0e10 card with a hairline border + a quiet header
- * carrying an optional filename/language label and a "copy" affordance — NO traffic-light dots. The
- * code body is monochrome neutral mono.
+ * carrying the language label and a working "copy" button — NO traffic-light dots.
  *
- * Shiki highlighting is intentionally deferred to keep render synchronous and test-friendly; a plain
- * <pre> in the mono face is the always-available baseline. (A later enhancement can swap in shiki's
- * async highlight using the neutral --code-keyword/--code-string/--code-comment/--code-function tokens
- * without changing this component's props.)
+ * Syntax highlighting is done with **shiki** (the elegant, muted `vitesse-dark` theme), loaded lazily
+ * via `import("shiki")` so it code-splits out of the main bundle and only loads when a code block is
+ * shown. The highlight runs async in an effect; until it resolves — and for an unknown language, a
+ * load error, or no language at all — a plain mono <pre> is the always-available baseline.
  *
- * SECURITY: `code` is rendered as a text child of <code>, never via dangerouslySetInnerHTML, so
- * untrusted model output cannot inject HTML. A future shiki pass must likewise receive `code` as
- * text and only set the (sanitized, shiki-produced) highlight HTML it generates itself.
+ * SECURITY: `code` is given to shiki as TEXT (shiki escapes it and emits only its own coloured spans),
+ * and to the fallback as a text child of <code>. Untrusted model output can never inject HTML — the
+ * only thing set via dangerouslySetInnerHTML is shiki's own sanitized, self-produced output.
  */
+import { useEffect, useState } from "react";
+
 export interface CodeBlockProps {
   code: string;
   language?: string;
 }
 
+// Common fence labels → shiki language ids. Anything not resolvable falls back to plain mono.
+const LANG_ALIAS: Record<string, string> = {
+  ts: "typescript",
+  js: "javascript",
+  py: "python",
+  sh: "bash",
+  shell: "bash",
+  zsh: "bash",
+  console: "bash",
+  yml: "yaml",
+  md: "markdown",
+  rb: "ruby",
+  rs: "rust",
+  kt: "kotlin",
+  "c++": "cpp",
+  cs: "csharp",
+  golang: "go",
+};
+
+function normalizeLang(language?: string): string | undefined {
+  if (!language) return undefined;
+  const l = language.toLowerCase();
+  return LANG_ALIAS[l] ?? l;
+}
+
+const THEME = "one-dark-pro";
+
 export function CodeBlock({ code, language }: CodeBlockProps) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const lang = normalizeLang(language);
+    if (!lang) {
+      setHtml(null); // no language → plain mono (don't guess)
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { codeToHtml } = await import("shiki");
+        const out = await codeToHtml(code, { lang, theme: THEME });
+        if (!cancelled) setHtml(out);
+      } catch {
+        if (!cancelled) setHtml(null); // unsupported language / load failure → plain fallback
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [code, language]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // clipboard unavailable (insecure context / denied) — silently no-op
+    }
+  }
+
   return (
     <div
       data-language={language}
@@ -30,7 +92,7 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
         border: "1px solid var(--code-border)",
       }}
     >
-      {/* Quiet header — a filename/language label + a "copy" affordance (text), no traffic-light dots. */}
+      {/* Quiet header — a language label + a working copy button, no traffic-light dots. */}
       <div
         style={{
           display: "flex",
@@ -44,23 +106,45 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
         }}
       >
         <span>{language ?? "code"}</span>
-        <span aria-hidden style={{ marginLeft: "auto", color: "var(--text-faint)" }}>
-          copy
-        </span>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : "Copy code"}
+          style={{
+            marginLeft: "auto",
+            background: "transparent",
+            border: 0,
+            padding: "2px 4px",
+            cursor: "pointer",
+            fontFamily: "var(--font-mono)",
+            fontSize: "11px",
+            color: copied ? "var(--accent)" : "var(--text-faint)",
+          }}
+        >
+          {copied ? "copied" : "copy"}
+        </button>
       </div>
-      <pre
-        style={{
-          padding: "11px 13px",
-          overflowX: "auto",
-          fontFamily: "var(--font-mono)",
-          fontSize: "12px",
-          lineHeight: 1.65,
-          color: "var(--code-text)",
-          margin: 0,
-        }}
-      >
-        <code style={{ fontFamily: "var(--font-mono)", color: "inherit" }}>{code}</code>
-      </pre>
+      {html ? (
+        <div
+          className="rc-code"
+          // SECURITY: shiki-produced HTML only (code was passed as escaped text) — never raw model HTML.
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      ) : (
+        <pre
+          style={{
+            padding: "11px 13px",
+            overflowX: "auto",
+            fontFamily: "var(--font-mono)",
+            fontSize: "12px",
+            lineHeight: 1.65,
+            color: "var(--code-text)",
+            margin: 0,
+          }}
+        >
+          <code style={{ fontFamily: "var(--font-mono)", color: "inherit" }}>{code}</code>
+        </pre>
+      )}
     </div>
   );
 }

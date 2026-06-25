@@ -61,9 +61,9 @@ const SHOTS = [
   // and the iris permission card. The mobile log auto-scrolls to the newest turn (the chart + the
   // permission card); a second mobile shot scrolls the log to the TOP to show the prose, the markdown
   // table, and the fenced code block.
-  { name: "chat-mobile", scene: "chat", vp: MOBILE, wait: 'header strong.display' },
-  { name: "chat-mobile-top", scene: "chat", vp: MOBILE, wait: 'header strong.display', scrollTop: true },
-  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: 'header strong.display' },
+  { name: "chat-mobile", scene: "chat", vp: MOBILE, wait: 'header strong.display', waitShiki: true },
+  { name: "chat-mobile-top", scene: "chat", vp: MOBILE, wait: 'header strong.display', scrollTop: true, waitShiki: true },
+  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: 'header strong.display', waitShiki: true },
   // The interactive ask_user question with ASCII previews.
   { name: "question-mobile", scene: "question", vp: MOBILE, wait: 'button[aria-pressed]' },
   // The New-session directory picker (the headline) — git-aware, mobile-first. Wait for the async
@@ -95,6 +95,12 @@ try {
     });
     await page.goto(`${base}?scene=${shot.scene}`, { waitUntil: "networkidle" });
     await settle(page, shot.wait);
+    // Code scenes: wait for shiki's async highlight to land in the DOM (attached, not necessarily
+    // visible — the block may be above the auto-scrolled fold) so the shot shows highlighted code.
+    if (shot.waitShiki) {
+      await page.waitForSelector(".rc-code .shiki", { state: "attached", timeout: 8000 }).catch(() => {});
+      await page.waitForTimeout(150);
+    }
     if (shot.scrollTop) {
       // The conversation lives in an internal scroll region (the chat log auto-scrolls to the newest
       // turn). Scroll it to the top so this shot frames the prose + markdown table + fenced code, and
