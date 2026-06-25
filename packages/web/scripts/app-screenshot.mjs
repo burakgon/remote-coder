@@ -1,6 +1,8 @@
-// Real-component PWA screenshots for design sign-off. Serves the built screenshot harness
-// (dist-shot/, produced by `vite build --config vite.screenshot.config.ts`) and captures the REAL
-// app shell + chat at mobile (390px) and desktop (1280px) into docs/design/.
+// Real-component PWA screenshots for the README + design sign-off. Serves the built screenshot harness
+// (dist-shot/, produced by `vite build --config vite.screenshot.config.ts`) and captures the REAL app
+// shell + chat + overlays. The harness reads `?scene=<name>` to pick which surface to render, so we
+// drive one URL per scene and capture each — mobile (390px, dsf 2) plus a couple at desktop width —
+// into docs/screenshots/.
 //
 // Run: pnpm -C packages/web build:shot && node packages/web/scripts/app-screenshot.mjs
 import { createServer } from "node:http";
@@ -11,7 +13,7 @@ import { mkdirSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = join(__dirname, "..", "dist-shot");
-const outDir = join(__dirname, "..", "..", "..", "docs", "design");
+const outDir = join(__dirname, "..", "..", "..", "docs", "screenshots");
 mkdirSync(outDir, { recursive: true });
 
 const MIME = {
@@ -49,30 +51,65 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const { port } = server.address();
 const base = `http://127.0.0.1:${port}/`;
 
-// Wait until the harness has mounted (the chat header text is present) and all @font-face files
-// have finished loading, so we never capture a fallback-font frame.
-async function ready(page) {
-  // The chat header (always visible on both viewports) renders the active session basename.
-  await page.waitForSelector("header strong.display", { state: "visible", timeout: 15000 });
+// The capture matrix. `wait` is a CSS selector that proves the target scene actually mounted, so we
+// never snap a fallback frame. Mobile shots are 390px / dsf 2 (the PWA's primary form factor).
+const MOBILE = { width: 390, height: 844, dsf: 2 };
+const DESKTOP = { width: 1280, height: 860, dsf: 2 };
+
+const SHOTS = [
+  // The hero chat at both form factors — prose, table, code, the "Worked" cluster, the sent chart,
+  // and the iris permission card. The mobile log auto-scrolls to the newest turn (the chart + the
+  // permission card); a second mobile shot scrolls the log to the TOP to show the prose, the markdown
+  // table, and the fenced code block.
+  { name: "chat-mobile", scene: "chat", vp: MOBILE, wait: 'header strong.display' },
+  { name: "chat-mobile-top", scene: "chat", vp: MOBILE, wait: 'header strong.display', scrollTop: true },
+  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: 'header strong.display' },
+  // The interactive ask_user question with ASCII previews.
+  { name: "question-mobile", scene: "question", vp: MOBILE, wait: 'button[aria-pressed]' },
+  // The New-session directory picker (the headline) — git-aware, mobile-first. Wait for the async
+  // listing to render rows.
+  { name: "wizard-mobile", scene: "wizard", vp: MOBILE, wait: '.rc-picker__row' },
+  // Resume past conversations — at desktop width to show the scannable list.
+  { name: "resume-desktop", scene: "resume", vp: DESKTOP, wait: '.rc-resume__row' },
+  // The Rewind / checkpoint sheet.
+  { name: "rewind-mobile", scene: "rewind", vp: MOBILE, wait: '#rewind-title' },
+  // The login / token screen.
+  { name: "login-mobile", scene: "login", vp: MOBILE, wait: '.rc-login__connect' },
+];
+
+async function settle(page, wait) {
+  await page.waitForSelector(wait, { state: "visible", timeout: 15000 });
   await page.evaluate(() => document.fonts.ready);
-  // One frame of settle for layout/paint.
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(250);
 }
 
 const { chromium } = await import("playwright");
 const browser = await chromium.launch();
 try {
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
-  await mobile.goto(base, { waitUntil: "networkidle" });
-  await ready(mobile);
-  await mobile.screenshot({ path: join(outDir, "2026-06-23-pwa-app-mobile.png"), fullPage: true });
-
-  const desktop = await browser.newPage({ viewport: { width: 1280, height: 832 }, deviceScaleFactor: 2 });
-  await desktop.goto(base, { waitUntil: "networkidle" });
-  await ready(desktop);
-  await desktop.screenshot({ path: join(outDir, "2026-06-23-pwa-app-desktop.png"), fullPage: true });
-
-  console.log(`Saved real-component screenshots to ${outDir}`);
+  for (const shot of SHOTS) {
+    const page = await browser.newPage({
+      viewport: { width: shot.vp.width, height: shot.vp.height },
+      deviceScaleFactor: shot.vp.dsf,
+    });
+    await page.goto(`${base}?scene=${shot.scene}`, { waitUntil: "networkidle" });
+    await settle(page, shot.wait);
+    if (shot.scrollTop) {
+      // The conversation lives in an internal scroll region (the chat log auto-scrolls to the newest
+      // turn). Scroll it to the top so this shot frames the prose + markdown table + fenced code, and
+      // capture at viewport height (not fullPage, which would re-frame the bottom of the same region).
+      await page.evaluate(() => {
+        const log = document.querySelector('[aria-live="polite"]');
+        if (log) log.scrollTop = 0;
+      });
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: join(outDir, `${shot.name}.png`) });
+    } else {
+      await page.screenshot({ path: join(outDir, `${shot.name}.png`), fullPage: true });
+    }
+    await page.close();
+    console.log(`  captured ${shot.name}.png`);
+  }
+  console.log(`Saved screenshots to ${outDir}`);
 } finally {
   await browser.close();
   server.close();

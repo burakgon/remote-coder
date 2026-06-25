@@ -1,11 +1,16 @@
 // Dev-only screenshot harness. Renders the REAL app shell + REAL chat components seeded with a
-// realistic transcript so the captured PNGs show the built UI (not the static Task-1 mockup).
+// realistic transcript so the captured PNGs show the built UI (not a static mockup).
 //
 // It composes the same components the production App composes — AppLayout, SessionList, ChatHeader,
-// MessageList, PermissionPrompt, Composer — reading from the REAL Zustand store. The only thing it
-// does NOT use is ChatView's live WebSocket/REST plumbing (useSessionSocket + api.getSession), which
-// would require a running server; instead the store is pre-seeded through the REAL frame reducer.
-// Every visible pixel is produced by a shipped component with the real design tokens.
+// MessageList, PermissionPrompt, Composer, QuestionPrompt, NewSessionWizard, ResumePicker, RewindSheet,
+// LoginScreen — reading from the REAL Zustand store / shipped prop contracts. The only thing it does
+// NOT use is ChatView's live WebSocket/REST plumbing (useSessionSocket + api.getSession), which would
+// require a running server; instead the store is pre-seeded through the REAL frame reducer and the
+// overlay components get static fixtures. Every visible pixel is a shipped component with real tokens.
+//
+// A `?scene=<name>` query selects which surface to capture (one PNG per scene): chat | question |
+// wizard | resume | rewind | login. Default is the chat. The scene switch is the ONLY harness-specific
+// addition; it never touches the production bundle (this module is imported only by screenshot.tsx).
 
 import { useStore } from "../store/store";
 import { AppLayout } from "../AppLayout";
@@ -14,12 +19,36 @@ import { wireStateForSession } from "../session/status";
 import { ChatHeader } from "../chat/ChatHeader";
 import { MessageList } from "../chat/MessageList";
 import { PermissionPrompt } from "../chat/PermissionPrompt";
+import { QuestionPrompt } from "../chat/QuestionPrompt";
 import { Composer } from "../chat/Composer";
+import { RewindSheet } from "../chat/RewindSheet";
+import { NewSessionWizard } from "../session/NewSessionWizard";
+import { ResumePicker } from "../session/ResumePicker";
+import { LoginScreen } from "../auth/LoginScreen";
 import { emptyView } from "../store/frame-reducer";
-import { ACTIVE_ID, COMPOSER_TEXT, COMPOSER_IMAGES } from "./seed";
+import {
+  ACTIVE_ID,
+  CHECKPOINT_ID,
+  COMPOSER_TEXT,
+  COMPOSER_IMAGES,
+  DIR_LISTING,
+  PICKER_RECENTS,
+  QUESTION,
+  RESUMABLE,
+  SESSIONS,
+  screenshotDownloadUrl,
+} from "./seed";
 
-/** A non-interactive mirror of ChatView's JSX (header + log + permission gate + composer). */
-function ChatBody() {
+type Scene = "chat" | "question" | "wizard" | "resume" | "rewind" | "login";
+
+function currentScene(): Scene {
+  const s = new URLSearchParams(window.location.search).get("scene");
+  if (s === "question" || s === "wizard" || s === "resume" || s === "rewind" || s === "login") return s;
+  return "chat";
+}
+
+/** A non-interactive mirror of ChatView's JSX (header + log + permission/question gate + composer). */
+function ChatBody({ scene }: { scene: Scene }) {
   const sessions = useStore((s) => s.sessions);
   const views = useStore((s) => s.views);
   const session = sessions.find((s) => s.id === ACTIVE_ID)!;
@@ -29,13 +58,25 @@ function ChatBody() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <ChatHeader session={session} wireState={wireState} />
+      <ChatHeader session={session} wireState={wireState} needsYou={awaitingCount(sessions)} />
       <div aria-live="polite" style={{ flex: 1, overflowY: "auto" }}>
-        <MessageList view={view} />
-        {pending && (
+        {/* Pass downloadUrl so Claude's sent chart previews inline, and onRewind so user turns carry
+            the rewind affordance — both shipped behaviors, exercised exactly as production does. */}
+        <MessageList view={view} downloadUrl={screenshotDownloadUrl} onRewind={() => {}} />
+        {scene === "question" ? (
           <div style={{ padding: "var(--sp-4)" }}>
-            <PermissionPrompt permission={pending} onAnswer={() => {}} onAlwaysAllow={() => {}} />
+            <QuestionPrompt question={QUESTION} onAnswer={() => {}} onCancel={() => {}} />
           </div>
+        ) : (
+          pending && (
+            <div style={{ padding: "var(--sp-4)" }}>
+              <PermissionPrompt
+                permission={pending}
+                onAnswer={() => {}}
+                onAlwaysAllow={() => {}}
+              />
+            </div>
+          )
         )}
       </div>
       <Composer
@@ -48,12 +89,26 @@ function ChatBody() {
   );
 }
 
+// A mock API for the wizard / resume scenes: resolves the seeded directory listing + resumable list so
+// the REAL DirectoryPicker / ResumePicker render from shipped code, no server.
+const mockApi = {
+  listDir: async () => DIR_LISTING,
+  getResumable: async () => RESUMABLE,
+  createSession: async () => SESSIONS[0]!,
+};
+
 export function AppShot() {
   const sessions = useStore((s) => s.sessions);
   const activeId = useStore((s) => s.activeSessionId);
   const views = useStore((s) => s.views);
   const lastActiveAt = useStore((s) => s.lastActiveAt);
   const setActive = useStore((s) => s.setActive);
+  const scene = currentScene();
+
+  // Login is a full-screen surface with no shell — render it standalone, exactly as App does pre-auth.
+  if (scene === "login") {
+    return <LoginScreen onAuthenticated={() => {}} />;
+  }
 
   const list = (
     <SessionList
@@ -74,8 +129,25 @@ export function AppShot() {
   );
 
   return (
-    <AppLayout sessionList={list} needsYou={awaitingCount(sessions)}>
-      <ChatBody />
-    </AppLayout>
+    <>
+      <AppLayout sessionList={list} needsYou={awaitingCount(sessions)}>
+        <ChatBody scene={scene} />
+      </AppLayout>
+      {/* Overlays render on top of the live chat, exactly as App mounts them. */}
+      {scene === "wizard" && (
+        <NewSessionWizard
+          api={mockApi}
+          recents={PICKER_RECENTS}
+          now={Date.now()}
+          initialMode="new"
+          onCreated={() => {}}
+          onClose={() => {}}
+        />
+      )}
+      {scene === "resume" && (
+        <ResumePicker getResumable={mockApi.getResumable} now={Date.now()} onResume={async () => {}} onCancel={() => {}} />
+      )}
+      {scene === "rewind" && <RewindSheet checkpointId={CHECKPOINT_ID} onConfirm={() => {}} onCancel={() => {}} />}
+    </>
   );
 }
