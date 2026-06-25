@@ -16,9 +16,9 @@ A self-hosted web app that runs the **real `claude` CLI** with your Claude subsc
 
 <br/>
 
-<img src="docs/media/chat-mobile-top.png" alt="Remote Coder chat on a phone — streaming markdown, a syntax-highlighted code block and a coverage table" width="365">
+<img src="docs/media/chat-mobile-top.png" alt="Remote Coder chat on a phone — streaming markdown, a syntax-highlighted code block and a coverage table" width="48%">
 &nbsp;
-<img src="docs/media/question-mobile.png" alt="Answering one of Claude's multiple-choice questions from the phone, with code previews per option" width="365">
+<img src="docs/media/question-mobile.png" alt="Answering one of Claude's multiple-choice questions from the phone, with code previews per option" width="48%">
 
 <br/><br/>
 
@@ -66,9 +66,9 @@ Streaming responses with full markdown, syntax-highlighted code, tables, and col
 When Claude asks to run a tool you get a clean **Allow / Deny / Always-allow** card (destructive commands are flagged). When it asks a question you get real options — with an **“Other…”** free-text answer and **previews per choice** so you can *see* before you pick. This is the thing the chat bots can't do.
 
 <div align="center">
-<img src="docs/media/wizard-mobile.png" alt="The git-aware directory picker for starting a new session" width="280">
-<img src="docs/media/rewind-mobile.png" alt="The rewind sheet — restore code, rewind the conversation, or both" width="280">
-<img src="docs/media/login-mobile.png" alt="The token login screen" width="280">
+<img src="docs/media/wizard-mobile.png" alt="The git-aware directory picker for starting a new session" width="31%">
+<img src="docs/media/rewind-mobile.png" alt="The rewind sheet — restore code, rewind the conversation, or both" width="31%">
+<img src="docs/media/login-mobile.png" alt="The token login screen" width="31%">
 </div>
 
 ### Files both ways · resume · stop · rewind
@@ -78,8 +78,8 @@ Upload images and files, browse and download host files, and just ask Claude to 
 When Claude dispatches a **subagent**, it surfaces as a live **mission card** in the chat and a chip in the **agents tray** above the composer — each carrying its type, status, and what it's doing right now. Tap one to drill into its own **transcript**: the task it was handed, its tool calls and findings, its result, and its token/time cost. Parallel agents, nested agents — the same visibility the `claude` CLI gives you under the textbox, now in your pocket.
 
 <div align="center">
-<img src="docs/media/subagents-mobile.png" alt="Subagent mission cards in the chat and the agents tray above the composer — each with type, status, and live activity" width="280">
-<img src="docs/media/subagent-view-mobile.png" alt="The subagent drill-in — its task, its transcript, and its result with token and time usage" width="280">
+<img src="docs/media/subagents-mobile.png" alt="Subagent mission cards in the chat and the agents tray above the composer — each with type, status, and live activity" width="48%">
+<img src="docs/media/subagent-view-mobile.png" alt="The subagent drill-in — its task, its transcript, and its result with token and time usage" width="48%">
 </div>
 
 ### Built to live on your phone
