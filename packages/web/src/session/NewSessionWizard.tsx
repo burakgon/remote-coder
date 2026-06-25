@@ -88,10 +88,42 @@ export function NewSessionWizard({
         getResumable={api.getResumable}
         scopeCwd={cwd}
         now={nowMs}
-        topSlot={toggle}
+        topSlot={
+          <>
+            {toggle}
+            {/* Resume can be dangerous-skip too — seeded from the saved default; self-styled because the
+                resume branch renders the picker alone (the wizard's CSS isn't mounted here). */}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--sp-2)",
+                minHeight: "var(--tap-min)",
+                fontSize: "var(--fs-sm)",
+                color: dangerouslySkip ? "var(--err)" : "var(--text)",
+              }}
+            >
+              <input
+                type="checkbox"
+                aria-label="dangerously skip permissions"
+                checked={dangerouslySkip}
+                onChange={(e) => setDangerouslySkip(e.target.checked)}
+                style={{ width: 20, height: 20, accentColor: "var(--err)" }}
+              />
+              <span>Dangerously skip permissions (RCE risk)</span>
+            </label>
+          </>
+        }
         onCancel={onClose}
         onResume={async (resumeSessionId) => {
-          const session = await api.createSession({ resumeSessionId });
+          // Honor dangerouslySkip + effort/model on resume (the server already supports them); the web
+          // used to send only { resumeSessionId }, so a resumed session could never skip permissions.
+          const session = await api.createSession({
+            resumeSessionId,
+            dangerouslySkip,
+            effort,
+            model: model || undefined,
+          });
           onCreated(session);
         }}
       />

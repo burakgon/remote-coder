@@ -201,7 +201,12 @@ describe("NewSessionWizard", () => {
     await screen.findByText("Pick this up");
     await userEvent.click(screen.getByRole("button", { name: /resume pick this up/i }));
     await waitFor(() => expect(createSession).toHaveBeenCalled());
-    expect(createSession.mock.calls[0]![0]).toMatchObject({ resumeSessionId: "r-9" });
+    const resumePayload = createSession.mock.calls[0]![0];
+    expect(resumePayload).toMatchObject({ resumeSessionId: "r-9" });
+    // Resume now ALSO forwards dangerouslySkip + effort (seeded from the saved defaults) so a resumed
+    // session can skip permissions — the web used to send only { resumeSessionId }.
+    expect(resumePayload).toHaveProperty("dangerouslySkip");
+    expect(resumePayload).toHaveProperty("effort");
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: "new-1" })));
   });
 });

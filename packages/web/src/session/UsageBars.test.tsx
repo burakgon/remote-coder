@@ -11,8 +11,10 @@ const usage: UsageInfo = {
 };
 
 describe("UsageBars", () => {
+  // A fixed local "now" on Jun 25 so the fixture's same-day resets shorten to just the time.
+  const NOW = new Date(2026, 5, 25, 12, 0, 0).getTime();
   it("renders the Session + Weekly bars with their percent and reset captions", () => {
-    render(<UsageBars usage={usage} />);
+    render(<UsageBars usage={usage} now={NOW} />);
     expect(screen.getByText("Session")).toBeInTheDocument();
     expect(screen.getByText("Weekly")).toBeInTheDocument();
     expect(screen.getByText("12%")).toBeInTheDocument();

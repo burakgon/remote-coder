@@ -3,6 +3,9 @@ import type { UsageBar, UsageInfo } from "../types/server";
 export interface UsageBarsProps {
   /** The latest GET /usage snapshot. Null/undefined or with no bars → renders nothing. */
   usage?: UsageInfo | null;
+  /** Clock for the reset caption's "is it today" decision (the rail already owns a `now` tick).
+   *  Defaults to Date.now() when omitted. */
+  now?: number;
 }
 
 /**
@@ -36,7 +39,7 @@ export function shortenReset(resets: string, now: number = Date.now()): string {
   return date === today ? time : date;
 }
 
-function UsageBarRow({ label, bar }: { label: string; bar: UsageBar }) {
+function UsageBarRow({ label, bar, now }: { label: string; bar: UsageBar; now?: number }) {
   // Clamp the rendered width to 0–100 even if the server ever reports out-of-range; the displayed
   // percent text stays the raw value so it's honest.
   const width = Math.max(0, Math.min(100, bar.percent));
@@ -56,7 +59,7 @@ function UsageBarRow({ label, bar }: { label: string; bar: UsageBar }) {
       >
         <span className="rc-usage__fill" style={{ width: `${width}%`, background: usageFillColor(bar.percent) }} />
       </div>
-      <span className="rc-usage__reset">resets {shortenReset(bar.resets)}</span>
+      <span className="rc-usage__reset">resets {shortenReset(bar.resets, now)}</span>
     </div>
   );
 }
@@ -67,12 +70,12 @@ function UsageBarRow({ label, bar }: { label: string; bar: UsageBar }) {
  * coral accent until a bar crosses the warning thresholds. Renders NOTHING when there's no usage data
  * (the feature is unavailable) or neither bar is present.
  */
-export function UsageBars({ usage }: UsageBarsProps) {
+export function UsageBars({ usage, now }: UsageBarsProps) {
   if (!usage || (!usage.session && !usage.week)) return null;
   return (
     <div className="rc-usage" aria-label="Claude usage limits">
-      {usage.session && <UsageBarRow label="Session" bar={usage.session} />}
-      {usage.week && <UsageBarRow label="Weekly" bar={usage.week} />}
+      {usage.session && <UsageBarRow label="Session" bar={usage.session} now={now} />}
+      {usage.week && <UsageBarRow label="Weekly" bar={usage.week} now={now} />}
       <style>{usageBarsCss}</style>
     </div>
   );

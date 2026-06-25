@@ -70,6 +70,12 @@ export interface LiveSettings {
   /** Optional human label for the effort the maxThinkingTokens came from, mirrored into meta.effort. */
   effort?: string;
   permissionMode?: string;
+  /**
+   * Flip --dangerously-skip-permissions on the RUNNING session. The permission boundary + the PreToolUse
+   * hook are fixed at claude SPAWN, so a CHANGE here can't be a control_request — applySettings RESPAWNS
+   * (resume the same conversation with the new flag). Unchanged → no-op.
+   */
+  dangerouslySkip?: boolean;
 }
 
 export type FrameListener = (frame: ServerFrame) => void;
@@ -569,17 +575,48 @@ export class SessionHub {
   async applySettings(id: string, settings: LiveSettings): Promise<SessionMeta> {
     await this.ensureLive(id);
     const record = this.require(id);
-    if (settings.model !== undefined) {
-      this.manager.setModel(id, settings.model);
-      record.meta.model = settings.model;
-    }
-    if (settings.maxThinkingTokens !== undefined) {
-      this.manager.setMaxThinkingTokens(id, settings.maxThinkingTokens);
-      if (settings.effort !== undefined) record.meta.effort = settings.effort;
-    }
-    if (settings.permissionMode !== undefined) {
-      this.manager.setPermissionMode(id, settings.permissionMode);
-      record.meta.permissionMode = settings.permissionMode;
+    // Update the metadata model/effort first so a respawn (below) carries the latest values.
+    if (settings.model !== undefined) record.meta.model = settings.model;
+    if (settings.maxThinkingTokens !== undefined && settings.effort !== undefined) record.meta.effort = settings.effort;
+
+    // Local const so the `!== undefined` check narrows it to `boolean` for the whole branch (a property
+    // access would re-widen after the await).
+    const nextSkip = settings.dangerouslySkip;
+
+    if (nextSkip !== undefined && nextSkip !== record.meta.dangerouslySkip) {
+      // The permission boundary + the PreToolUse hook are fixed at SPAWN, so flipping dangerouslySkip
+      // can't be a control_request — RESPAWN: stop the live process and resume the SAME conversation
+      // with the new flag (mirrors the rewind conversation/both respawn). The resume carries the
+      // latest model/effort, so no separate control_request is needed for those.
+      try {
+        if (this.manager.getSession(id)) {
+          record.intentionalStop = true;
+          this.manager.stopSession(id);
+        }
+        const session = await this.manager.resumeSession(id, {
+          cwd: record.meta.cwd,
+          model: record.meta.model,
+          effort: record.meta.effort,
+          dangerouslySkip: nextSkip,
+        });
+        record.meta.status = "running";
+        record.meta.dangerouslySkip = nextSkip;
+        record.meta.permissionMode = nextSkip ? "bypassPermissions" : "default";
+        record.intentionalStop = false;
+        this.clearAllAwaiting(record);
+        this.attach(session.process, record);
+      } catch {
+        record.meta.status = "errored";
+        record.intentionalStop = false;
+      }
+    } else {
+      // No permission-boundary change → apply live via control_requests (no restart).
+      if (settings.model !== undefined) this.manager.setModel(id, settings.model);
+      if (settings.maxThinkingTokens !== undefined) this.manager.setMaxThinkingTokens(id, settings.maxThinkingTokens);
+      if (settings.permissionMode !== undefined) {
+        this.manager.setPermissionMode(id, settings.permissionMode);
+        record.meta.permissionMode = settings.permissionMode;
+      }
     }
     this.persist(record.meta);
     return record.meta;

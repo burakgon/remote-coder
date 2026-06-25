@@ -29,3 +29,30 @@ test("applySettings sends controls and mirrors model/effort into the session met
   // getSession reflects the mutation.
   expect(hub.getSession(meta.id)?.model).toBe("claude-opus-4-8");
 });
+
+test("applySettings flips dangerouslySkip live by RESPAWNING the session (permission boundary is spawn-time)", async () => {
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
+  hub = new SessionHub(manager);
+  const meta = await hub.createSession({ cwd: process.cwd(), dangerouslySkip: false });
+  expect(meta.dangerouslySkip).toBe(false);
+
+  // Turning it ON respawns the session (resume) with the flag → meta flips + permissionMode bypasses.
+  const on = await hub.applySettings(meta.id, { dangerouslySkip: true });
+  expect(on.dangerouslySkip).toBe(true);
+  expect(on.permissionMode).toBe("bypassPermissions");
+  expect(on.status).toBe("running");
+  expect(hub.getSession(meta.id)?.dangerouslySkip).toBe(true);
+
+  // Turning it OFF respawns back to gated (permissionMode default).
+  const off = await hub.applySettings(meta.id, { dangerouslySkip: false });
+  expect(off.dangerouslySkip).toBe(false);
+  expect(off.permissionMode).toBe("default");
+
+  // Re-sending the SAME value is a no-op (no respawn needed) — still off, still running.
+  const noop = await hub.applySettings(meta.id, { dangerouslySkip: false });
+  expect(noop.dangerouslySkip).toBe(false);
+  expect(noop.status).toBe("running");
+});

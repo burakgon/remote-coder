@@ -11,8 +11,14 @@ export interface SettingsPanelProps {
   defaults: SessionDefaults;
   onSaveDefaults: (d: SessionDefaults) => void;
   onStopSession?: (id: string) => void;
-  /** When provided, the active-session block becomes editable and applies changes live. */
-  onApplyLiveSettings?: (s: { model?: string; effort?: string; permissionMode?: string }) => void;
+  /** When provided, the active-session block becomes editable and applies changes live. A changed
+   * `dangerouslySkip` is applied by the server via a respawn (the permission boundary is set at spawn). */
+  onApplyLiveSettings?: (s: {
+    model?: string;
+    effort?: string;
+    permissionMode?: string;
+    dangerouslySkip?: boolean;
+  }) => void;
   /** Push opt-in handlers. When omitted, the Notifications section is hidden (e.g. in tests/screenshots). */
   pushState?: "subscribed" | "unsubscribed" | "unsupported";
   onEnablePush?: () => void;
@@ -44,9 +50,11 @@ export function SettingsPanel({
   const seededModel = session?.model ?? "";
   const seededEffort = session?.effort ?? "medium";
   const seededPermissionMode = session?.permissionMode ?? "default";
+  const seededDanger = session?.dangerouslySkip ?? false;
   const [liveModel, setLiveModel] = useState(seededModel);
   const [liveEffort, setLiveEffort] = useState(seededEffort);
   const [livePermissionMode, setLivePermissionMode] = useState(seededPermissionMode);
+  const [liveDanger, setLiveDanger] = useState(seededDanger);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // Real modal semantics: trap Tab within the dialog and restore focus to the trigger on close.
@@ -73,6 +81,21 @@ export function SettingsPanel({
       return;
     }
     setDraft((d) => ({ ...d, dangerouslySkip: checked }));
+  }
+
+  // Live toggle for the RUNNING session. Enabling it makes the server respawn the agent (resume the
+  // same conversation) with --dangerously-skip-permissions, since the permission boundary is fixed at
+  // spawn. Confirm-gated because it's an RCE boundary + a brief restart.
+  function toggleLiveDanger(checked: boolean) {
+    if (
+      checked &&
+      !window.confirm(
+        "Enable --dangerously-skip-permissions for THIS running session? It restarts the agent (your conversation resumes) so it can run tools without asking — remote code execution risk.",
+      )
+    ) {
+      return;
+    }
+    setLiveDanger(checked);
   }
 
   return (
@@ -145,17 +168,33 @@ export function SettingsPanel({
                       ))}
                     </select>
                   </label>
+                  <label className={`rc-settings__danger-check${liveDanger ? " rc-settings__danger-check--on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      aria-label="active session dangerously skip permissions"
+                      checked={liveDanger}
+                      onChange={(e) => toggleLiveDanger(e.target.checked)}
+                    />
+                    <span>Dangerously skip permissions (restarts this session)</span>
+                  </label>
                   <button
                     type="button"
                     className="rc-settings__primary"
                     aria-label="Apply to session"
                     onClick={() => {
-                      // Only send the controls the user CHANGED — an unchanged control is omitted so
-                      // it cannot silently reset the running session's value (see seeding note above).
-                      const update: { model?: string; effort?: string; permissionMode?: string } = {};
+                      // Only send the controls the user CHANGED — an unchanged control is omitted so it
+                      // cannot silently reset the running session's value (see seeding note above). A
+                      // changed dangerouslySkip is applied by the server via a respawn.
+                      const update: {
+                        model?: string;
+                        effort?: string;
+                        permissionMode?: string;
+                        dangerouslySkip?: boolean;
+                      } = {};
                       if (liveModel !== seededModel) update.model = liveModel || undefined;
                       if (liveEffort !== seededEffort) update.effort = liveEffort;
                       if (livePermissionMode !== seededPermissionMode) update.permissionMode = livePermissionMode;
+                      if (liveDanger !== seededDanger) update.dangerouslySkip = liveDanger;
                       onApplyLiveSettings(update);
                     }}
                   >
@@ -305,6 +344,11 @@ const settingsCss = `
    accent is the Save/Apply coral primary. */
 .rc-settings__card {
   width: min(92vw, 480px);
+  /* Cap the card to the viewport and make it a flex column so the BODY scrolls (not the page): the
+     header stays put and every section — incl. "Default effort" + "Save defaults" — is reachable on a
+     short phone screen. */
+  display: flex; flex-direction: column;
+  max-height: min(86vh, calc(100dvh - 2 * var(--sp-5)));
   background: var(--glass-strong);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -314,6 +358,7 @@ const settingsCss = `
   overflow: hidden;
 }
 .rc-settings__head {
+  flex: none;
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--border);
@@ -331,7 +376,12 @@ const settingsCss = `
   transition: color 120ms ease, background 120ms ease;
 }
 .rc-settings__close:hover { color: var(--text); background: var(--surface-2); }
-.rc-settings__body { padding: var(--sp-4); display: grid; gap: var(--sp-4); }
+.rc-settings__body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  display: grid; gap: var(--sp-4);
+}
 .rc-settings__section { display: grid; gap: var(--sp-3); }
 .rc-settings__section--divided { border-top: 1px solid var(--border); padding-top: var(--sp-4); }
 .rc-settings__section-head { display: flex; align-items: center; gap: var(--sp-2); }

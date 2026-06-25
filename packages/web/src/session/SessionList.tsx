@@ -83,7 +83,7 @@ export function SessionList({
     <div className="rc-sl">
       {/* The usage bars sit at the VERY top of the rail — the first thing in the list, above the
           header's "needs you" badge and the session rows. Renders nothing when usage is unavailable. */}
-      <UsageBars usage={usage} />
+      <UsageBars usage={usage} now={now} />
       <div className="rc-sl__head">
         <span className="display rc-sl__title">
           Sessions

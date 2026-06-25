@@ -286,7 +286,15 @@ export type OutboundFrame =
       toolInput?: unknown;
       answers: Record<string, string | string[]>;
     }
-  | { type: "settings"; model?: string; maxThinkingTokens?: number; effort?: string; permissionMode?: string }
+  | {
+      type: "settings";
+      model?: string;
+      maxThinkingTokens?: number;
+      effort?: string;
+      permissionMode?: string;
+      // A changed value RESPAWNS the session server-side (the permission boundary is fixed at spawn).
+      dangerouslySkip?: boolean;
+    }
   // STOP the running turn (interrupt). No payload — the server interrupts the session the WS is for.
   | { type: "interrupt" }
   // REWIND / CHECKPOINT: go back to a turn's checkpoint (its user-message uuid), optionally reverting

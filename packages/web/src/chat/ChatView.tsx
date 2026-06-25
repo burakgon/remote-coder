@@ -291,16 +291,24 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             if (onClose) onClose(id);
             else void api.stopSession(id);
           }}
-          onApplyLiveSettings={({ model, effort, permissionMode }) => {
+          onApplyLiveSettings={({ model, effort, permissionMode, dangerouslySkip }) => {
             const maxThinkingTokens = effort ? EFFORT_THINKING_TOKENS[effort] : undefined;
-            send({ type: "settings", model, effort, maxThinkingTokens, permissionMode });
+            send({ type: "settings", model, effort, maxThinkingTokens, permissionMode, dangerouslySkip });
             // Optimistically reflect into the session list so the header/meta update immediately.
             // effort (set_max_thinking_tokens) has no wire echo, so this is the only source of truth
-            // for the displayed effort; model/permissionMode would also reconcile on the next
-            // system/init, but reflecting now keeps the UI responsive.
+            // for the displayed effort; model/permissionMode/dangerouslySkip would also reconcile on the
+            // next system/init (a dangerouslySkip change respawns the session), but reflecting now keeps
+            // the UI responsive.
             setSessions(
               sessions.map((s) =>
-                s.id === session.id ? { ...s, model: model ?? s.model, effort: effort ?? s.effort } : s,
+                s.id === session.id
+                  ? {
+                      ...s,
+                      model: model ?? s.model,
+                      effort: effort ?? s.effort,
+                      dangerouslySkip: dangerouslySkip ?? s.dangerouslySkip,
+                    }
+                  : s,
               ),
             );
             setSettingsOpen(false);

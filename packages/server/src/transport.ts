@@ -658,11 +658,18 @@ function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unkn
     return;
   }
   if (msg.type === "settings") {
-    const settings: { model?: string; maxThinkingTokens?: number; effort?: string; permissionMode?: string } = {};
+    const settings: {
+      model?: string;
+      maxThinkingTokens?: number;
+      effort?: string;
+      permissionMode?: string;
+      dangerouslySkip?: boolean;
+    } = {};
     if (typeof msg.model === "string") settings.model = msg.model;
     if (typeof msg.maxThinkingTokens === "number") settings.maxThinkingTokens = msg.maxThinkingTokens;
     if (typeof msg.effort === "string") settings.effort = msg.effort;
     if (typeof msg.permissionMode === "string") settings.permissionMode = msg.permissionMode;
+    if (typeof msg.dangerouslySkip === "boolean") settings.dangerouslySkip = msg.dangerouslySkip;
     void hub.applySettings(id, settings).catch(() => {});
     return;
   }
