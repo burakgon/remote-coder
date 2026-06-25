@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
 import { validateImage, fileToBase64 } from "./image-util";
@@ -44,8 +44,33 @@ export interface ComposerProps {
 // doesn't implement it, so fall back to textContent when it's empty/absent.
 function readEditable(el: HTMLDivElement | null): string {
   if (!el) return "";
+  // textContent === "" means visually empty even if a stray <br> lingers (so the placeholder shows).
+  if ((el.textContent ?? "") === "") return "";
   const it = el.innerText;
   return typeof it === "string" && it.length > 0 ? it : (el.textContent ?? "");
+}
+
+/** Insert plain text at the caret (used for paste + Shift+Enter newline), replacing any selection.
+ *  Range-based so it carries no rich markup; best-effort under partial Selection support. */
+function insertPlainText(el: HTMLDivElement, text: string): void {
+  try {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) {
+      el.textContent = (el.textContent ?? "") + text;
+      caretToEnd(el);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.setEndAfter(node);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } catch {
+    el.textContent = (el.textContent ?? "") + text;
+  }
 }
 
 /** Move the caret to the end of an editable (so the user can keep typing after a programmatic fill).
@@ -107,6 +132,8 @@ export function Composer({
   const [text, setText] = useState(initialText ?? "");
   const [images, setImages] = useState<PendingImage[]>(initialImages ?? []);
   const [error, setError] = useState<string | undefined>();
+  // Highlighted slash-menu row for keyboard nav (Arrow keys move it; Enter/Tab pick it).
+  const [activeSlash, setActiveSlash] = useState(0);
   // Local "stopping" latch: tapping Stop reflects immediately (the button disables + relabels) while
   // the interrupt round-trips and the aborted `result` settles the wire back to idle. Reset whenever the
   // session leaves the running state (the turn ended — by the interrupt or on its own).
@@ -115,7 +142,10 @@ export function Composer({
   const fileInput = useRef<HTMLInputElement>(null);
   const edRef = useRef<HTMLDivElement>(null);
 
-  if (!running && stopping) setStopping(false);
+  // Reset the "stopping" latch once the turn ends (an effect, not a render-time setState).
+  useEffect(() => {
+    if (!running) setStopping(false);
+  }, [running]);
 
   // Seed the editable's content ONCE (initialText is harness-only). After that the DOM owns the text
   // (the element has no JSX children), so React never re-renders the content out from under the caret;
@@ -127,11 +157,28 @@ export function Composer({
 
   const slashMatches = matchSlash(text);
   const canSend = (text.trim().length > 0 || images.length > 0) && !disabled;
+  const errorId = "rc-composer-error";
+
+  // Mirror the editable's live DOM into state (the source of truth for slash matching + canSend). A
+  // visually-empty field (only a stray <br>) is normalized to "" so the placeholder reappears.
+  function syncFromDom() {
+    const el = edRef.current;
+    if (!el) return;
+    if ((el.textContent ?? "") === "") {
+      if (el.innerHTML !== "") el.innerHTML = "";
+      setText("");
+      setActiveSlash(0);
+      return;
+    }
+    setText(readEditable(el));
+    setActiveSlash(0);
+  }
 
   // Set the editable's content imperatively + mirror it into state (the DOM owns the content, so a
   // state-only update wouldn't change what's shown). Used to clear after send + fill a slash command.
   function setContent(value: string) {
     setText(value);
+    setActiveSlash(0);
     const el = edRef.current;
     if (!el) return;
     el.textContent = value;
@@ -151,8 +198,9 @@ export function Composer({
   }
 
   function send() {
-    const trimmed = text.trim();
-    if (!trimmed && images.length === 0) return;
+    // Read the LIVE DOM (not just state) so a paste/IME edit that didn't emit `input` can't send stale text.
+    const trimmed = readEditable(edRef.current).trim();
+    if ((!trimmed && images.length === 0) || disabled) return;
     const frame: OutboundFrame =
       images.length > 0
         ? {
@@ -165,6 +213,8 @@ export function Composer({
     setContent("");
     setImages([]);
     setError(undefined);
+    // Keep the keyboard up on mobile so the next message flows without re-tapping the field.
+    if (edRef.current) edRef.current.focus();
   }
 
   function stop() {
@@ -173,11 +223,9 @@ export function Composer({
     onStop?.();
   }
 
-  // Multi-select: validate + read every chosen image, append the valid ones, surface the first error
-  // (if any were rejected) without dropping the good ones.
-  async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  // Validate + read a set of image files (from the picker, paste, or drop), append the valid ones, and
+  // surface the first error without dropping the good ones.
+  async function addImageFiles(files: File[]) {
     if (files.length === 0) return;
     const added: PendingImage[] = [];
     let firstErr: string | undefined;
@@ -199,16 +247,92 @@ export function Composer({
     setError(firstErr);
   }
 
-  // Multi-select: upload each chosen file in turn; stop + surface the error on the first failure.
+  async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    await addImageFiles(files);
+  }
+
+  // Multi-select: upload every chosen file (don't abort on the first failure), then report any that failed.
   async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
-    try {
-      for (const file of files) await onUploadFile(file);
+    const results = await Promise.allSettled(files.map((file) => onUploadFile(file)));
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed === 0) {
       setError(undefined);
-    } catch (uploadErr) {
-      setError(uploadErr instanceof Error ? uploadErr.message : "upload failed");
+    } else {
+      const first = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      const msg = first?.reason instanceof Error ? first.reason.message : "upload failed";
+      setError(failed === files.length ? msg : `${failed} of ${files.length} uploads failed — ${msg}`);
+    }
+  }
+
+  // Paste: keep the editable plain. Images from the clipboard go through validation (never inserted as
+  // a live <img> that would be silently dropped from the frame); everything else inserts as plain text.
+  function onPaste(e: ClipboardEvent<HTMLDivElement>) {
+    const cd = e.clipboardData;
+    const imageFiles = Array.from(cd.items ?? [])
+      .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      void addImageFiles(imageFiles);
+      return;
+    }
+    e.preventDefault();
+    if (edRef.current) {
+      insertPlainText(edRef.current, cd.getData("text/plain"));
+      syncFromDom();
+    }
+  }
+
+  // Drag-and-drop image files route through the same validation as the picker, not the browser default
+  // (which would insert the image into the editable or navigate away).
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    const files = Array.from(e.dataTransfer?.files ?? []).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+    e.preventDefault();
+    void addImageFiles(files);
+  }
+
+  function onKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+    // Never intercept keys mid-IME-composition (confirming a CJK candidate with Enter must not send).
+    if (e.nativeEvent.isComposing) return;
+
+    const menuOpen = slashMatches.length > 0 && !text.includes(" ");
+    if (menuOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      setActiveSlash((i) => {
+        const n = slashMatches.length;
+        return e.key === "ArrowDown" ? (i + 1) % n : (i - 1 + n) % n;
+      });
+      return;
+    }
+    // Enter/Tab on an open menu picks the highlighted command (the keyboard path to /resume etc.).
+    if (menuOpen && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+      const pick = slashMatches[Math.min(activeSlash, slashMatches.length - 1)];
+      if (pick) {
+        e.preventDefault();
+        pickSlash(pick);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      // Don't fire a new turn while one is running — the UI shows Stop, not Send.
+      if (!running) send();
+      return;
+    }
+    // Shift+Enter inserts a deterministic single newline (don't rely on contentEditable's default).
+    if (e.key === "Enter" && e.shiftKey) {
+      e.preventDefault();
+      if (edRef.current) {
+        insertPlainText(edRef.current, "\n");
+        syncFromDom();
+      }
     }
   }
 
@@ -236,19 +360,25 @@ export function Composer({
           outline: none; border-color: var(--accent-line); box-shadow: var(--focus-glow);
         }
         /* The placeholder — a non-editable sibling shown only when the field is empty (a contentEditable
-           has no native placeholder). */
+           has no native placeholder). Matches the field's >=16px on touch so there's no size jump when
+           typing begins. */
         .rc-composer-ph {
           position: absolute; left: var(--sp-3); top: var(--sp-2);
           line-height: 1.45; color: var(--text-faint); pointer-events: none; user-select: none;
         }
+        @media (pointer: coarse) { .rc-composer-ph { font-size: 16px; } }
+        /* The active (keyboard-highlighted) slash row. */
+        .rc-slash-row[aria-selected="true"] { background: var(--surface-2); }
       `}</style>
       {error && (
-        <div role="alert" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>
+        <div id={errorId} role="alert" style={{ color: "var(--err)", fontSize: "var(--fs-sm)" }}>
           {error}
         </div>
       )}
       {slashMatches.length > 0 && (
         <div
+          role="listbox"
+          aria-label="Slash commands"
           style={{
             display: "grid",
             gap: "2px",
@@ -259,11 +389,16 @@ export function Composer({
             boxShadow: "var(--shadow-card)",
           }}
         >
-          {slashMatches.map((c) => (
+          {slashMatches.map((c, i) => (
             <button
               key={c.name}
               type="button"
+              id={`rc-slash-${i}`}
+              role="option"
+              aria-selected={i === activeSlash}
+              className="rc-slash-row"
               onClick={() => pickSlash(c)}
+              onMouseEnter={() => setActiveSlash(i)}
               style={{
                 textAlign: "left",
                 background: "transparent",
@@ -355,27 +490,20 @@ export function Composer({
             role="textbox"
             aria-multiline="true"
             aria-label="Message claude"
+            aria-describedby={error ? errorId : undefined}
+            aria-disabled={disabled || undefined}
             contentEditable={!disabled}
             suppressContentEditableWarning
-            onInput={() => setText(readEditable(edRef.current))}
-            onKeyDown={(e) => {
-              // When the slash menu is open and the user is still typing the command (no trailing
-              // space yet), Enter/Tab selects the highlighted match — the top of the list — instead of
-              // sending. This is the keyboard path to a client action (e.g. `/resume`); for a normal
-              // claude command it fills the composer, exactly like clicking the row.
-              const topMatch = slashMatches[0];
-              const pickingSlash = topMatch !== undefined && !text.includes(" ");
-              if (pickingSlash && (e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
-                e.preventDefault();
-                pickSlash(topMatch);
-                return;
-              }
-              // Enter sends; Shift+Enter falls through to the browser's default (insert a line break).
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            onInput={syncFromDom}
+            onPaste={onPaste}
+            onDrop={onDrop}
+            onDragOver={(e) => {
+              if (Array.from(e.dataTransfer?.items ?? []).some((it) => it.kind === "file")) e.preventDefault();
             }}
+            onKeyDown={onKeyDown}
             style={{
               // The field sits directly on the floating glass bar (spec .composer .ph) — transparent,
               // borderless, the placeholder in --faint. The focus glow lands on the field's own border.
