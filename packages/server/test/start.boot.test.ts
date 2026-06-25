@@ -103,7 +103,10 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
   let id: string;
   {
     const store = openSessionStore({ dbPath });
-    const s1 = createServer(configFor(), managerFor("simple"), { store, history: new HistoryService({ claudeHome: dir }) });
+    const s1 = createServer(configFor(), managerFor("simple"), {
+      store,
+      history: new HistoryService({ claudeHome: dir }),
+    });
     const created = await s1.app.inject({
       method: "POST",
       url: "/sessions",
@@ -124,7 +127,10 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
   // Server 2: same db -> the session rehydrates as DORMANT. A message must spawn `claude --resume`
   // (the mock "resume" mode emits a warm-up then a normal turn) and flip the meta to running.
   const store2 = openSessionStore({ dbPath });
-  direct = createServer(configFor(), managerFor("resume"), { store: store2, history: new HistoryService({ claudeHome: dir }) });
+  direct = createServer(configFor(), managerFor("resume"), {
+    store: store2,
+    history: new HistoryService({ claudeHome: dir }),
+  });
   const url = await direct.app.listen({ port: 0, host: "127.0.0.1" });
 
   const list = await direct.app.inject({

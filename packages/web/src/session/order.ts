@@ -6,10 +6,7 @@ import type { SessionMeta } from "../types/server";
  * is missing, and breaking ties by `createdAt` descending so a deterministic order survives equal
  * stamps. PURE — returns a NEW array, never mutates the input (the store array stays insertion-order).
  */
-export function sortSessionsByActivity(
-  sessions: SessionMeta[],
-  lastActiveAt: Record<string, number>,
-): SessionMeta[] {
+export function sortSessionsByActivity(sessions: SessionMeta[], lastActiveAt: Record<string, number>): SessionMeta[] {
   const activity = (s: SessionMeta): number => lastActiveAt[s.id] ?? s.createdAt;
   return [...sessions].sort((a, b) => activity(b) - activity(a) || b.createdAt - a.createdAt);
 }

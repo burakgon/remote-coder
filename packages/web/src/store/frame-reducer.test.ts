@@ -36,7 +36,9 @@ function toPayload(o: AnyRec): AnyRec | null {
         summary: g(o, "summary"),
         lastToolName: g(o, "last_tool_name"),
         ...(patch ? { patch: { status: patch.status, endTime: patch.end_time } } : {}),
-        ...(usage ? { usage: { totalTokens: usage.total_tokens, toolUses: usage.tool_uses, durationMs: usage.duration_ms } } : {}),
+        ...(usage
+          ? { usage: { totalTokens: usage.total_tokens, toolUses: usage.tool_uses, durationMs: usage.duration_ms } }
+          : {}),
       };
     }
     return base;
@@ -51,7 +53,11 @@ function toPayload(o: AnyRec): AnyRec | null {
     };
   }
   if (t === "stream_event") {
-    return { type: "stream_event", event: g(o, "event"), parentToolUseId: (g(o, "parent_tool_use_id") as string | null) ?? undefined };
+    return {
+      type: "stream_event",
+      event: g(o, "event"),
+      parentToolUseId: (g(o, "parent_tool_use_id") as string | null) ?? undefined,
+    };
   }
   // result/control_request/rate_limit/etc. — the reducer's event branch ignores these (result is a
   // separate frame kind in the live pipeline). Pass the type through so the fold is faithful.

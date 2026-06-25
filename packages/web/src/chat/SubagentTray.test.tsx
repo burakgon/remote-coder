@@ -30,16 +30,18 @@ describe("SubagentTray", () => {
   });
 
   it("singular label for one agent", () => {
-    render(
-      <SubagentTray subagents={{ a: thread("a", { type: "Plan" }) }} subagentOrder={["a"]} onOpen={vi.fn()} />,
-    );
+    render(<SubagentTray subagents={{ a: thread("a", { type: "Plan" }) }} subagentOrder={["a"]} onOpen={vi.fn()} />);
     expect(screen.getByText("1 agent")).toBeInTheDocument();
   });
 
   it("tapping a chip opens that subagent", async () => {
     const onOpen = vi.fn();
     render(
-      <SubagentTray subagents={{ a: thread("a", { type: "general-purpose" }) }} subagentOrder={["a"]} onOpen={onOpen} />,
+      <SubagentTray
+        subagents={{ a: thread("a", { type: "general-purpose" }) }}
+        subagentOrder={["a"]}
+        onOpen={onOpen}
+      />,
     );
     await userEvent.click(screen.getByRole("button", { name: /open general-purpose subagent/i }));
     expect(onOpen).toHaveBeenCalledWith("a");

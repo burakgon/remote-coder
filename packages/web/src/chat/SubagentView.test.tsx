@@ -61,7 +61,12 @@ describe("SubagentView", () => {
   it("the back button and Escape both close the sheet", async () => {
     const onClose = vi.fn();
     render(
-      <SubagentView thread={thread({ type: "Plan", prompt: "x" })} subagents={{ "agent-1": thread({}) }} onOpenSubagent={vi.fn()} onClose={onClose} />,
+      <SubagentView
+        thread={thread({ type: "Plan", prompt: "x" })}
+        subagents={{ "agent-1": thread({}) }}
+        onOpenSubagent={vi.fn()}
+        onClose={onClose}
+      />,
     );
     await userEvent.click(screen.getByRole("button", { name: /back/i }));
     expect(onClose).toHaveBeenCalledTimes(1);

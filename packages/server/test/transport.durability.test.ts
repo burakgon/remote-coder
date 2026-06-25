@@ -97,7 +97,10 @@ test("a session created in one server is DORMANT after a restart (rehydrated fro
   }
   // Server 2: same db -> the session reappears as dormant (no live process).
   const store2 = openSessionStore({ dbPath });
-  current = createServer(configFor(), managerFor(), { store: store2, history: new HistoryService({ claudeHome: dir }) });
+  current = createServer(configFor(), managerFor(), {
+    store: store2,
+    history: new HistoryService({ claudeHome: dir }),
+  });
   const list = await current.app.inject({
     method: "GET",
     url: "/sessions",

@@ -191,9 +191,7 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                   <span style={{ fontWeight: 500, color: "var(--text)" }}>Other…</span>
                   {other && <Tick />}
                 </span>
-                <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)" }}>
-                  Type a custom answer
-                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)" }}>Type a custom answer</span>
               </button>
             </div>
             {other && (
@@ -274,7 +272,16 @@ function Tick() {
         color: "var(--on-accent)",
       }}
     >
-      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        viewBox="0 0 24 24"
+        width="10"
+        height="10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M20 6L9 17l-5-5" />
       </svg>
     </span>

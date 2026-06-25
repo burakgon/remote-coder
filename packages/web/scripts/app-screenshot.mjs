@@ -61,26 +61,39 @@ const SHOTS = [
   // and the iris permission card. The mobile log auto-scrolls to the newest turn (the chart + the
   // permission card); a second mobile shot scrolls the log to the TOP to show the prose, the markdown
   // table, and the fenced code block.
-  { name: "chat-mobile", scene: "chat", vp: MOBILE, wait: 'header strong.display', waitShiki: true },
-  { name: "chat-mobile-top", scene: "chat", vp: MOBILE, wait: 'header strong.display', scrollTop: true, waitShiki: true },
-  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: 'header strong.display', waitShiki: true, scrollTop: true },
+  { name: "chat-mobile", scene: "chat", vp: MOBILE, wait: "header strong.display", waitShiki: true },
+  {
+    name: "chat-mobile-top",
+    scene: "chat",
+    vp: MOBILE,
+    wait: "header strong.display",
+    scrollTop: true,
+    waitShiki: true,
+  },
+  { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: "header strong.display", waitShiki: true, scrollTop: true },
   // The interactive ask_user question with ASCII previews.
-  { name: "question-mobile", scene: "question", vp: MOBILE, wait: 'button[aria-pressed]' },
+  { name: "question-mobile", scene: "question", vp: MOBILE, wait: "button[aria-pressed]" },
   // The New-session directory picker (the headline) — git-aware, mobile-first. Wait for the async
   // listing to render rows.
-  { name: "wizard-mobile", scene: "wizard", vp: MOBILE, wait: '.rc-picker__row' },
+  { name: "wizard-mobile", scene: "wizard", vp: MOBILE, wait: ".rc-picker__row" },
   // Resume past conversations — at desktop width to show the scannable list.
-  { name: "resume-desktop", scene: "resume", vp: DESKTOP, wait: '.rc-resume__row' },
+  { name: "resume-desktop", scene: "resume", vp: DESKTOP, wait: ".rc-resume__row" },
   // The Rewind / checkpoint sheet.
-  { name: "rewind-mobile", scene: "rewind", vp: MOBILE, wait: '#rewind-title' },
+  { name: "rewind-mobile", scene: "rewind", vp: MOBILE, wait: "#rewind-title" },
   // The login / token screen.
-  { name: "login-mobile", scene: "login", vp: MOBILE, wait: '.rc-login__connect' },
+  { name: "login-mobile", scene: "login", vp: MOBILE, wait: ".rc-login__connect" },
   // The settings panel (active-session + defaults + the coral primary).
-  { name: "settings-mobile", scene: "settings", vp: MOBILE, wait: '.rc-settings__primary' },
+  { name: "settings-mobile", scene: "settings", vp: MOBILE, wait: ".rc-settings__primary" },
   // Subagents: the in-chat cards + the tray above the composer (the agents session).
-  { name: "subagents-mobile", scene: "subagents", vp: MOBILE, wait: 'div[role="group"][aria-label^="Subagents"]', waitShiki: true },
+  {
+    name: "subagents-mobile",
+    scene: "subagents",
+    vp: MOBILE,
+    wait: 'div[role="group"][aria-label^="Subagents"]',
+    waitShiki: true,
+  },
   // The subagent drill-in (Task + transcript + Result).
-  { name: "subagent-view-mobile", scene: "subagentview", vp: MOBILE, wait: '.rc-sa-view' },
+  { name: "subagent-view-mobile", scene: "subagentview", vp: MOBILE, wait: ".rc-sa-view" },
   // The mobile sessions bottom-sheet OPEN — the grab-handle + close-X chrome row above the usage bars
   // and the session rows (verifies the close button alignment).
   { name: "sessions-mobile", scene: "sessions", vp: MOBILE, wait: '[data-testid="sessions-rail"][data-open="true"]' },

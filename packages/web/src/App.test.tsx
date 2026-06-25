@@ -223,7 +223,14 @@ describe("App — closing sessions from the rail (✕)", () => {
 
     // The failed close is surfaced (not silently swallowed) and the row reappears.
     expect(await screen.findByRole("alert")).toHaveTextContent(/boom/i);
-    await waitFor(() => expect(useStore.getState().sessions.map((s) => s.id).sort()).toEqual(["a", "b"]));
+    await waitFor(() =>
+      expect(
+        useStore
+          .getState()
+          .sessions.map((s) => s.id)
+          .sort(),
+      ).toEqual(["a", "b"]),
+    );
   });
 
   it("closing the last session clears the selection to the empty/landing state", async () => {
@@ -249,8 +256,22 @@ describe("App — closing sessions from the rail (✕)", () => {
 // and selecting a session never reorders the rail.
 // ---------------------------------------------------------------------------------------------
 describe("App — session list refresh + select-doesn't-reorder", () => {
-  const a: SessionMeta = { id: "a", cwd: "/home/u/alpha", dangerouslySkip: false, status: "running", createdAt: 1, lastActivityAt: 10 };
-  const b: SessionMeta = { id: "b", cwd: "/home/u/beta", dangerouslySkip: false, status: "running", createdAt: 2, lastActivityAt: 20 };
+  const a: SessionMeta = {
+    id: "a",
+    cwd: "/home/u/alpha",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 1,
+    lastActivityAt: 10,
+  };
+  const b: SessionMeta = {
+    id: "b",
+    cwd: "/home/u/beta",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 2,
+    lastActivityAt: 20,
+  };
 
   let realWS: typeof WebSocket;
   beforeEach(() => {
@@ -297,7 +318,10 @@ describe("App — session list refresh + select-doesn't-reorder", () => {
       useStore.getState().applyFrame("a", {
         seq: 1,
         kind: "event",
-        payload: { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "live" } } },
+        payload: {
+          type: "stream_event",
+          event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "live" } },
+        },
       }),
     );
     expect(useStore.getState().viewFor("a").liveText).toBe("live");

@@ -89,8 +89,16 @@ describe("ChatView", () => {
     // them), correctly attributed, in order — and lastSeq must be the server's sinceSeq so the WS
     // resumes from there without re-rendering the shown history.
     const reopenHistory: ServerFrame[] = [
-      { seq: 1, kind: "event", payload: { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "what did I ask?" }] } } },
-      { seq: 2, kind: "event", payload: { type: "assistant", uuid: "a1", message: { content: [{ type: "text", text: "you asked X" }] } } },
+      {
+        seq: 1,
+        kind: "event",
+        payload: { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "what did I ask?" }] } },
+      },
+      {
+        seq: 2,
+        kind: "event",
+        payload: { type: "assistant", uuid: "a1", message: { content: [{ type: "text", text: "you asked X" }] } },
+      },
     ];
     const api = {
       ...apiStub(),
@@ -459,7 +467,11 @@ describe("ChatView — REWIND / CHECKPOINT", () => {
       useStore.getState().applyFrame(session.id, {
         seq,
         kind: "event",
-        payload: { type: "user", uuid: checkpointId, message: { content: [{ type: "text", text: "make the change" }] } },
+        payload: {
+          type: "user",
+          uuid: checkpointId,
+          message: { content: [{ type: "text", text: "make the change" }] },
+        },
       });
     });
   }

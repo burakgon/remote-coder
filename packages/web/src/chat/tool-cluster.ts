@@ -122,7 +122,11 @@ export function parseToolResult(content: unknown): ParsedResult {
   const raw = stringifyRaw(content);
   const text = extractText(content);
   const isError = detectError(content);
-  const firstLine = text.split("\n").find((l) => l.trim().length > 0)?.trim() ?? "";
+  const firstLine =
+    text
+      .split("\n")
+      .find((l) => l.trim().length > 0)
+      ?.trim() ?? "";
   const summary = firstLine.length > 120 ? firstLine.slice(0, 117) + "…" : firstLine;
   return { summary, raw, isError };
 }
@@ -141,7 +145,11 @@ function extractText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((b) => (b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text : ""))
+      .map((b) =>
+        b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string"
+          ? (b as { text: string }).text
+          : "",
+      )
       .filter(Boolean)
       .join("\n");
   }
@@ -155,7 +163,8 @@ function extractText(content: unknown): string {
 
 function detectError(content: unknown): boolean {
   if (content && typeof content === "object" && !Array.isArray(content)) {
-    const v = (content as { is_error?: unknown; isError?: unknown }).is_error ?? (content as { isError?: unknown }).isError;
+    const v =
+      (content as { is_error?: unknown; isError?: unknown }).is_error ?? (content as { isError?: unknown }).isError;
     if (typeof v === "boolean") return v;
   }
   return false;

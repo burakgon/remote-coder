@@ -136,9 +136,7 @@ export const useStore = create<StoreState>((set, get) => ({
       // assistant MESSAGE frame (real turns), but NOT on plumbing frames (stream deltas, permissions,
       // diagnostics, system) — and never on select/open. This keeps the rail honest about which chat
       // last actually moved.
-      const lastActiveAt = isMessageFrame(frame)
-        ? { ...state.lastActiveAt, [id]: Date.now() }
-        : state.lastActiveAt;
+      const lastActiveAt = isMessageFrame(frame) ? { ...state.lastActiveAt, [id]: Date.now() } : state.lastActiveAt;
       return { views: { ...state.views, [id]: reduceFrame(current, frame) }, lastActiveAt };
     }),
   // Fold a batch of frames in a single store update (one re-render) — used to replay REST history.

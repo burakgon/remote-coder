@@ -57,13 +57,7 @@ function useIsDesktop(): boolean {
  * backdrop + the sheet's own close button dismiss it. Layout is CSS-driven so the desktop rail is
  * unaffected by `sessionsOpen`.
  */
-export function AppLayout({
-  children,
-  sessionList,
-  onHideSessions,
-  sessionsOpen,
-  conversationActive,
-}: AppLayoutProps) {
+export function AppLayout({ children, sessionList, onHideSessions, sessionsOpen, conversationActive }: AppLayoutProps) {
   const open = sessionsOpen ? "true" : "false";
   const isDesktop = useIsDesktop();
   // On desktop the rail is permanently visible, so always mount the list. On mobile the rail is a

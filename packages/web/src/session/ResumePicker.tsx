@@ -79,9 +79,7 @@ export function ResumePicker({ getResumable, scopeCwd, now, onResume, topSlot, o
     if (!rows) return [];
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      (r) => r.summary.toLowerCase().includes(q) || (r.cwd ? r.cwd.toLowerCase().includes(q) : false),
-    );
+    return rows.filter((r) => r.summary.toLowerCase().includes(q) || (r.cwd ? r.cwd.toLowerCase().includes(q) : false));
   }, [rows, query]);
 
   async function resume(sessionId: string) {
@@ -97,8 +95,7 @@ export function ResumePicker({ getResumable, scopeCwd, now, onResume, topSlot, o
     }
   }
 
-  const emptyLabel =
-    activeCwd !== undefined ? `No past sessions in ${basename(activeCwd)}.` : "No past sessions yet.";
+  const emptyLabel = activeCwd !== undefined ? `No past sessions in ${basename(activeCwd)}.` : "No past sessions yet.";
 
   return (
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Resume a past session" className="rc-resume">

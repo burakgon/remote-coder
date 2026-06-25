@@ -43,17 +43,50 @@ test("loadFromStore prunes sessions with no transcript and keeps resumable ones 
   await writeTranscript(history, "/work/live", "live-1"); // dormant + transcript → resumable
   await writeTranscript(history, "/work/err", "err-1"); // errored + transcript → still resumable
 
-  store.upsert({ id: "live-1", cwd: "/work/live", dangerouslySkip: false, status: "dormant", createdAt: 1, lastActivityAt: 2 });
-  store.upsert({ id: "err-1", cwd: "/work/err", dangerouslySkip: false, status: "errored", createdAt: 1, lastActivityAt: 2 });
+  store.upsert({
+    id: "live-1",
+    cwd: "/work/live",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
+  store.upsert({
+    id: "err-1",
+    cwd: "/work/err",
+    dangerouslySkip: false,
+    status: "errored",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
   // dead-1 / dead-2: NO transcript on disk → can't resume → dead, whatever the stored status.
-  store.upsert({ id: "dead-1", cwd: "/work/dead1", dangerouslySkip: false, status: "dormant", createdAt: 1, lastActivityAt: 2 });
-  store.upsert({ id: "dead-2", cwd: "/work/dead2", dangerouslySkip: false, status: "errored", createdAt: 1, lastActivityAt: 2 });
+  store.upsert({
+    id: "dead-1",
+    cwd: "/work/dead1",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
+  store.upsert({
+    id: "dead-2",
+    cwd: "/work/dead2",
+    dangerouslySkip: false,
+    status: "errored",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
 
   const hub = new SessionHub(managerFor("simple"), { store, history });
   hub.loadFromStore();
 
   // Both resumable sessions rehydrate (errored → dormant: a transient crash gets another chance).
-  expect(hub.listSessions().map((s) => s.id).sort()).toEqual(["err-1", "live-1"]);
+  expect(
+    hub
+      .listSessions()
+      .map((s) => s.id)
+      .sort(),
+  ).toEqual(["err-1", "live-1"]);
   expect(hub.getSession("err-1")?.status).toBe("dormant");
   // The un-resumable rows are pruned from the durable store (gone for good, not just hidden).
   expect(store.get("live-1")).toBeDefined();
@@ -68,12 +101,31 @@ test("pruneDeadSessions evicts a dormant session whose transcript vanished on th
   const history = new HistoryService({ claudeHome: dir });
   await writeTranscript(history, "/work/live", "live-1");
   await writeTranscript(history, "/work/gone", "gone-1");
-  store.upsert({ id: "live-1", cwd: "/work/live", dangerouslySkip: false, status: "dormant", createdAt: 1, lastActivityAt: 2 });
-  store.upsert({ id: "gone-1", cwd: "/work/gone", dangerouslySkip: false, status: "dormant", createdAt: 1, lastActivityAt: 2 });
+  store.upsert({
+    id: "live-1",
+    cwd: "/work/live",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
+  store.upsert({
+    id: "gone-1",
+    cwd: "/work/gone",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
 
   const hub = new SessionHub(managerFor("simple"), { store, history });
   hub.loadFromStore(); // both have transcripts → both rehydrate
-  expect(hub.listSessions().map((s) => s.id).sort()).toEqual(["gone-1", "live-1"]);
+  expect(
+    hub
+      .listSessions()
+      .map((s) => s.id)
+      .sort(),
+  ).toEqual(["gone-1", "live-1"]);
 
   // The host closes/kills "gone-1" — its transcript disappears. It's now dead: can't `claude --resume`.
   await rm(history.transcriptPath("/work/gone", "gone-1"));
@@ -88,7 +140,14 @@ test("pruneDeadSessions evicts a dormant session whose transcript vanished on th
 
 test("loadFromStore keeps everything when no HistoryService is configured (can't verify → never prune)", () => {
   const store = openSessionStore({ dbPath: ":memory:" });
-  store.upsert({ id: "keep-1", cwd: "/work/x", dangerouslySkip: false, status: "dormant", createdAt: 1, lastActivityAt: 2 });
+  store.upsert({
+    id: "keep-1",
+    cwd: "/work/x",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: 1,
+    lastActivityAt: 2,
+  });
   const hub = new SessionHub(managerFor("simple"), { store }); // no history
   hub.loadFromStore();
   expect(hub.listSessions().map((s) => s.id)).toContain("keep-1");

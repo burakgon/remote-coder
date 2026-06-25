@@ -51,10 +51,27 @@ async function writeTranscript(id: string, cwd: string = REAL_CWD): Promise<void
   const dir = join(projectsDir, "-work-proj");
   await mkdir(dir, { recursive: true });
   const lines = [
-    JSON.stringify({ type: "user", cwd, gitBranch: "main", message: { role: "user", content: [{ type: "text", text: "first question" }] } }),
-    JSON.stringify({ type: "assistant", cwd, message: { role: "assistant", model: "m", content: [{ type: "text", text: "first answer" }] } }),
-    JSON.stringify({ type: "user", cwd, message: { role: "user", content: [{ type: "text", text: "second question" }] } }),
-    JSON.stringify({ type: "assistant", cwd, message: { role: "assistant", model: "m", content: [{ type: "text", text: "second answer" }] } }),
+    JSON.stringify({
+      type: "user",
+      cwd,
+      gitBranch: "main",
+      message: { role: "user", content: [{ type: "text", text: "first question" }] },
+    }),
+    JSON.stringify({
+      type: "assistant",
+      cwd,
+      message: { role: "assistant", model: "m", content: [{ type: "text", text: "first answer" }] },
+    }),
+    JSON.stringify({
+      type: "user",
+      cwd,
+      message: { role: "user", content: [{ type: "text", text: "second question" }] },
+    }),
+    JSON.stringify({
+      type: "assistant",
+      cwd,
+      message: { role: "assistant", model: "m", content: [{ type: "text", text: "second answer" }] },
+    }),
   ].join("\n");
   await writeFile(join(dir, `${id}.jsonl`), lines);
 }
@@ -83,7 +100,14 @@ test("GET /resumable lists past sessions (recent-first shape)", async () => {
   current = makeServer("resume");
   const res = await current.app.inject({ method: "GET", url: "/resumable", headers: auth });
   expect(res.statusCode).toBe(200);
-  const sessions = res.json().sessions as Array<{ sessionId: string; cwd: string; summary: string; messageCount: number; gitBranch?: string; lastActivity: number }>;
+  const sessions = res.json().sessions as Array<{
+    sessionId: string;
+    cwd: string;
+    summary: string;
+    messageCount: number;
+    gitBranch?: string;
+    lastActivity: number;
+  }>;
   expect(sessions).toHaveLength(1);
   expect(sessions[0]).toMatchObject({
     sessionId: "sess-1",
@@ -182,7 +206,12 @@ test("a resumed session's WS replay contains the prior history exactly once", as
     const ws = new WebSocket(`${base}/sessions/hist-id/ws?token=${TOKEN}`);
     ws.on("message", (data: Buffer) => collected.push(JSON.parse(data.toString())));
     // The replay is sent synchronously on connect; give it a tick then read it back.
-    ws.on("open", () => setTimeout(() => { ws.close(); resolve(collected); }, 300));
+    ws.on("open", () =>
+      setTimeout(() => {
+        ws.close();
+        resolve(collected);
+      }, 300),
+    );
     ws.on("error", reject);
   });
 

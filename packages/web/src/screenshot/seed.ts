@@ -125,8 +125,7 @@ export const AGENTS_SESSION: SessionMeta = {
 // The checkpoint id of the user turn — the id the rewind affordance + the Rewind sheet target.
 export const CHECKPOINT_ID = "ck-7f3a-aud-1";
 
-const USER_TEXT =
-  "Audit the streaming reducer for the rate-limiter and send me a coverage chart when you're done.";
+const USER_TEXT = "Audit the streaming reducer for the rate-limiter and send me a coverage chart when you're done.";
 
 const ASSISTANT_TEXT = `Here's what I found auditing \`frame-reducer.ts\`. Two turns were double-counted on reconnect because the replay range was inclusive. The fix gates each frame on \`seq > lastSeq\`:
 
@@ -178,7 +177,12 @@ function activeFrames(): ServerFrame[] {
         type: "assistant",
         message: {
           content: [
-            { type: "tool_use", id: "t1", name: "Read", input: { file_path: "packages/web/src/store/frame-reducer.ts" } },
+            {
+              type: "tool_use",
+              id: "t1",
+              name: "Read",
+              input: { file_path: "packages/web/src/store/frame-reducer.ts" },
+            },
           ],
         },
       },
@@ -186,7 +190,10 @@ function activeFrames(): ServerFrame[] {
     {
       seq: 4,
       kind: "event",
-      payload: { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "263 lines read" }] } },
+      payload: {
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "263 lines read" }] },
+      },
     },
     {
       seq: 5,
@@ -194,14 +201,19 @@ function activeFrames(): ServerFrame[] {
       payload: {
         type: "assistant",
         message: {
-          content: [{ type: "tool_use", id: "t2", name: "Grep", input: { pattern: "lastSeq", path: "packages/web/src" } }],
+          content: [
+            { type: "tool_use", id: "t2", name: "Grep", input: { pattern: "lastSeq", path: "packages/web/src" } },
+          ],
         },
       },
     },
     {
       seq: 6,
       kind: "event",
-      payload: { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t2", content: "11 matches across 3 files" }] } },
+      payload: {
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t2", content: "11 matches across 3 files" }] },
+      },
     },
     {
       seq: 7,
@@ -209,14 +221,32 @@ function activeFrames(): ServerFrame[] {
       payload: {
         type: "assistant",
         message: {
-          content: [{ type: "tool_use", id: "t3", name: "Bash", input: { command: "pnpm -C packages/web test -- frame-reducer" } }],
+          content: [
+            {
+              type: "tool_use",
+              id: "t3",
+              name: "Bash",
+              input: { command: "pnpm -C packages/web test -- frame-reducer" },
+            },
+          ],
         },
       },
     },
     {
       seq: 8,
       kind: "event",
-      payload: { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t3", content: "Test Files  1 passed (1)\\n     Tests  18 passed (18)" }] } },
+      payload: {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "t3",
+              content: "Test Files  1 passed (1)\\n     Tests  18 passed (18)",
+            },
+          ],
+        },
+      },
     },
     {
       seq: 9,
@@ -224,14 +254,24 @@ function activeFrames(): ServerFrame[] {
       payload: {
         type: "assistant",
         message: {
-          content: [{ type: "tool_use", id: "t4", name: "Edit", input: { file_path: "packages/web/src/store/frame-reducer.ts" } }],
+          content: [
+            {
+              type: "tool_use",
+              id: "t4",
+              name: "Edit",
+              input: { file_path: "packages/web/src/store/frame-reducer.ts" },
+            },
+          ],
         },
       },
     },
     {
       seq: 10,
       kind: "event",
-      payload: { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t4", content: "Applied 1 edit" }] } },
+      payload: {
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t4", content: "Applied 1 edit" }] },
+      },
     },
     // Claude proactively SENT the coverage chart to the chat (send_image MCP → attachment frame).
     {
@@ -266,14 +306,20 @@ function streamFrames(): ServerFrame[] {
     {
       seq: 1,
       kind: "event",
-      payload: { type: "user", message: { content: [{ type: "text", text: "Add a token-bucket rate limiter to the gateway." }] } },
+      payload: {
+        type: "user",
+        message: { content: [{ type: "text", text: "Add a token-bucket rate limiter to the gateway." }] },
+      },
     },
     {
       seq: 2,
       kind: "event",
       payload: {
         type: "stream_event",
-        event: { type: "content_block_delta", delta: { type: "text_delta", text: "Sketching the limiter — I'll add a per-key bucket…" } },
+        event: {
+          type: "content_block_delta",
+          delta: { type: "text_delta", text: "Sketching the limiter — I'll add a per-key bucket…" },
+        },
       },
     },
   ];
@@ -288,24 +334,190 @@ function subagentFrames(): ServerFrame[] {
   const AUTH_FINDING =
     "**Auth flow.** `transport.ts` registers a global `preHandler` that pulls the bearer token and calls `authGate.check(token, ip)` — constant-time, with a per-IP lockout in `auth.ts`. Sessions are authorized in `session-hub.ts`.\n\n**Seams to extend:** add new routes *after* the preHandler to inherit token-gating; `isPublicForRequest` is the only login-screen bypass.";
   return [
-    ev(1, { type: "user", uuid: "u-ag-1", message: { content: [{ type: "text", text: "Refactor the auth module and add tests — split the work across agents." }] } }),
-    ev(2, { type: "assistant", message: { content: [{ type: "text", text: "I'll dispatch two agents in parallel — one to map the current auth flow, one to draft the test plan." }] } }),
+    ev(1, {
+      type: "user",
+      uuid: "u-ag-1",
+      message: {
+        content: [{ type: "text", text: "Refactor the auth module and add tests — split the work across agents." }],
+      },
+    }),
+    ev(2, {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: "I'll dispatch two agents in parallel — one to map the current auth flow, one to draft the test plan.",
+          },
+        ],
+      },
+    }),
     // sa-1: Explore agent (will complete) — spawn → its prompt → a Grep step → a prose finding → result.
-    ev(3, { type: "assistant", message: { content: [{ type: "tool_use", id: "sa-1", name: "Agent", input: { description: "Map the auth flow", subagent_type: "Explore", prompt: "Trace the authentication flow across packages/server — the token gate, the per-IP lockout, and where sessions are authorized. Report the files and the seams to extend." } }] } }),
-    ev(4, { type: "system", subtype: "task_started", task: { taskId: "task-a", toolUseId: "sa-1", subagentType: "Explore", description: "Map the auth flow", prompt: "Trace the authentication flow across packages/server…" } }),
-    ev(5, { type: "user", parentToolUseId: "sa-1", message: { content: [{ type: "text", text: "Trace the authentication flow across packages/server — the token gate, the per-IP lockout, and where sessions are authorized. Report the files and the seams to extend." }] } }),
-    ev(6, { type: "system", subtype: "task_progress", task: { taskId: "task-a", toolUseId: "sa-1", subagentType: "Explore", description: "Reading packages/server/src/auth.ts" } }),
-    ev(7, { type: "assistant", parentToolUseId: "sa-1", message: { content: [{ type: "tool_use", id: "g1", name: "Grep", input: { pattern: "authGate", path: "packages/server/src" } }] } }),
-    ev(8, { type: "user", parentToolUseId: "sa-1", message: { content: [{ type: "tool_result", tool_use_id: "g1", content: "7 matches — auth.ts (4), transport.ts (3)" }] } }),
-    ev(9, { type: "assistant", parentToolUseId: "sa-1", message: { content: [{ type: "text", text: "The token gate is a global `preHandler` in `transport.ts`; the per-IP lockout is `AuthGate.check` in `auth.ts`; sessions are authorized in `session-hub.ts`." }] } }),
-    ev(10, { type: "system", subtype: "task_updated", task: { taskId: "task-a", patch: { status: "completed", endTime: Date.now() - 1000 * 30 } } }),
-    ev(11, { type: "system", subtype: "task_notification", task: { taskId: "task-a", toolUseId: "sa-1", status: "completed", summary: "Map the auth flow", usage: { totalTokens: 14200, toolUses: 3, durationMs: 8100 } } }),
-    ev(12, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "sa-1", content: [{ type: "text", text: AUTH_FINDING }, { type: "text", text: "agentId: task-a (use SendMessage with to: 'task-a')\n<usage>subagent_tokens: 14200\ntool_uses: 3\nduration_ms: 8100</usage>" }] }] } }),
+    ev(3, {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "sa-1",
+            name: "Agent",
+            input: {
+              description: "Map the auth flow",
+              subagent_type: "Explore",
+              prompt:
+                "Trace the authentication flow across packages/server — the token gate, the per-IP lockout, and where sessions are authorized. Report the files and the seams to extend.",
+            },
+          },
+        ],
+      },
+    }),
+    ev(4, {
+      type: "system",
+      subtype: "task_started",
+      task: {
+        taskId: "task-a",
+        toolUseId: "sa-1",
+        subagentType: "Explore",
+        description: "Map the auth flow",
+        prompt: "Trace the authentication flow across packages/server…",
+      },
+    }),
+    ev(5, {
+      type: "user",
+      parentToolUseId: "sa-1",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: "Trace the authentication flow across packages/server — the token gate, the per-IP lockout, and where sessions are authorized. Report the files and the seams to extend.",
+          },
+        ],
+      },
+    }),
+    ev(6, {
+      type: "system",
+      subtype: "task_progress",
+      task: {
+        taskId: "task-a",
+        toolUseId: "sa-1",
+        subagentType: "Explore",
+        description: "Reading packages/server/src/auth.ts",
+      },
+    }),
+    ev(7, {
+      type: "assistant",
+      parentToolUseId: "sa-1",
+      message: {
+        content: [
+          { type: "tool_use", id: "g1", name: "Grep", input: { pattern: "authGate", path: "packages/server/src" } },
+        ],
+      },
+    }),
+    ev(8, {
+      type: "user",
+      parentToolUseId: "sa-1",
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "g1", content: "7 matches — auth.ts (4), transport.ts (3)" }],
+      },
+    }),
+    ev(9, {
+      type: "assistant",
+      parentToolUseId: "sa-1",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: "The token gate is a global `preHandler` in `transport.ts`; the per-IP lockout is `AuthGate.check` in `auth.ts`; sessions are authorized in `session-hub.ts`.",
+          },
+        ],
+      },
+    }),
+    ev(10, {
+      type: "system",
+      subtype: "task_updated",
+      task: { taskId: "task-a", patch: { status: "completed", endTime: Date.now() - 1000 * 30 } },
+    }),
+    ev(11, {
+      type: "system",
+      subtype: "task_notification",
+      task: {
+        taskId: "task-a",
+        toolUseId: "sa-1",
+        status: "completed",
+        summary: "Map the auth flow",
+        usage: { totalTokens: 14200, toolUses: 3, durationMs: 8100 },
+      },
+    }),
+    ev(12, {
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "sa-1",
+            content: [
+              { type: "text", text: AUTH_FINDING },
+              {
+                type: "text",
+                text: "agentId: task-a (use SendMessage with to: 'task-a')\n<usage>subagent_tokens: 14200\ntool_uses: 3\nduration_ms: 8100</usage>",
+              },
+            ],
+          },
+        ],
+      },
+    }),
     // sa-2: general-purpose agent (still running) — spawn → its prompt → a live activity label, no result.
-    ev(13, { type: "assistant", message: { content: [{ type: "tool_use", id: "sa-2", name: "Agent", input: { description: "Draft the auth test plan", subagent_type: "general-purpose", prompt: "Draft a test plan for the auth module — the token gate, the per-IP lockout, and the login bypass. List the cases to cover." } }] } }),
-    ev(14, { type: "system", subtype: "task_started", task: { taskId: "task-b", toolUseId: "sa-2", subagentType: "general-purpose", description: "Draft the auth test plan", prompt: "Draft a test plan for the auth module…" } }),
-    ev(15, { type: "user", parentToolUseId: "sa-2", message: { content: [{ type: "text", text: "Draft a test plan for the auth module — the token gate, the per-IP lockout, and the login bypass. List the cases to cover." }] } }),
-    ev(16, { type: "system", subtype: "task_progress", task: { taskId: "task-b", toolUseId: "sa-2", subagentType: "general-purpose", description: "Drafting the per-IP lockout edge cases" } }),
+    ev(13, {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "sa-2",
+            name: "Agent",
+            input: {
+              description: "Draft the auth test plan",
+              subagent_type: "general-purpose",
+              prompt:
+                "Draft a test plan for the auth module — the token gate, the per-IP lockout, and the login bypass. List the cases to cover.",
+            },
+          },
+        ],
+      },
+    }),
+    ev(14, {
+      type: "system",
+      subtype: "task_started",
+      task: {
+        taskId: "task-b",
+        toolUseId: "sa-2",
+        subagentType: "general-purpose",
+        description: "Draft the auth test plan",
+        prompt: "Draft a test plan for the auth module…",
+      },
+    }),
+    ev(15, {
+      type: "user",
+      parentToolUseId: "sa-2",
+      message: {
+        content: [
+          {
+            type: "text",
+            text: "Draft a test plan for the auth module — the token gate, the per-IP lockout, and the login bypass. List the cases to cover.",
+          },
+        ],
+      },
+    }),
+    ev(16, {
+      type: "system",
+      subtype: "task_progress",
+      task: {
+        taskId: "task-b",
+        toolUseId: "sa-2",
+        subagentType: "general-purpose",
+        description: "Drafting the per-IP lockout edge cases",
+      },
+    }),
   ];
 }
 
@@ -347,12 +559,36 @@ export const DIR_LISTING: DirListing = {
   path: "/Users/burakgon/Developer",
   parent: "/Users/burakgon",
   entries: [
-    { name: "realtime-api", path: "/Users/burakgon/Developer/realtime-api", isDirectory: true, isGitRepo: true, gitBranch: "main" },
-    { name: "api-gateway", path: "/Users/burakgon/Developer/api-gateway", isDirectory: true, isGitRepo: true, gitBranch: "main" },
-    { name: "design-system", path: "/Users/burakgon/Developer/design-system", isDirectory: true, isGitRepo: true, gitBranch: "release/4.2" },
+    {
+      name: "realtime-api",
+      path: "/Users/burakgon/Developer/realtime-api",
+      isDirectory: true,
+      isGitRepo: true,
+      gitBranch: "main",
+    },
+    {
+      name: "api-gateway",
+      path: "/Users/burakgon/Developer/api-gateway",
+      isDirectory: true,
+      isGitRepo: true,
+      gitBranch: "main",
+    },
+    {
+      name: "design-system",
+      path: "/Users/burakgon/Developer/design-system",
+      isDirectory: true,
+      isGitRepo: true,
+      gitBranch: "release/4.2",
+    },
     { name: "scratch", path: "/Users/burakgon/Developer/scratch", isDirectory: true, isGitRepo: false },
     { name: "notes", path: "/Users/burakgon/Developer/notes", isDirectory: true, isGitRepo: false },
-    { name: "playground", path: "/Users/burakgon/Developer/playground", isDirectory: true, isGitRepo: true, gitBranch: "main" },
+    {
+      name: "playground",
+      path: "/Users/burakgon/Developer/playground",
+      isDirectory: true,
+      isGitRepo: true,
+      gitBranch: "main",
+    },
   ],
 };
 

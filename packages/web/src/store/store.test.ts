@@ -137,9 +137,20 @@ describe("useStore", () => {
     useStore.setState({ lastActiveAt: { s1: 999, s2: 5 } });
     useStore.getState().applyFrame(
       "s1",
-      ev(1, { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } } }),
+      ev(1, {
+        type: "stream_event",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hi" } },
+      }),
     );
-    const s1: SessionMeta = { id: "s1", cwd: "/a", dangerouslySkip: false, status: "running", createdAt: 1, awaiting: true, lastActivityAt: 50 };
+    const s1: SessionMeta = {
+      id: "s1",
+      cwd: "/a",
+      dangerouslySkip: false,
+      status: "running",
+      createdAt: 1,
+      awaiting: true,
+      lastActivityAt: 50,
+    };
     // A poll returns ONLY s1 (s2 vanished/closed) with fresh awaiting + a server lastActivityAt below
     // the local stamp.
     useStore.getState().mergeSessionMeta([s1]);
@@ -155,7 +166,14 @@ describe("useStore", () => {
   });
 
   it("addSession re-adds a removed session (idempotent) — used to undo a failed close", () => {
-    const s: SessionMeta = { id: "s1", cwd: "/p", dangerouslySkip: false, status: "running", createdAt: 1, lastActivityAt: 42 };
+    const s: SessionMeta = {
+      id: "s1",
+      cwd: "/p",
+      dangerouslySkip: false,
+      status: "running",
+      createdAt: 1,
+      lastActivityAt: 42,
+    };
     useStore.getState().addSession(s);
     expect(useStore.getState().sessions.map((x) => x.id)).toEqual(["s1"]);
     expect(useStore.getState().lastActiveAt["s1"]).toBe(42);
@@ -200,11 +218,15 @@ describe("useStore", () => {
     expect(useStore.getState().viewFor("s1").turns).toHaveLength(1);
 
     // A frame at/under sinceSeq (already represented by the transcript / replayed buffer) is dropped.
-    useStore.getState().applyFrame("s1", ev(5, { type: "assistant", message: { content: [{ type: "text", text: "stale" }] } }));
+    useStore
+      .getState()
+      .applyFrame("s1", ev(5, { type: "assistant", message: { content: [{ type: "text", text: "stale" }] } }));
     expect(useStore.getState().viewFor("s1").turns).toHaveLength(1);
 
     // A genuinely NEW live frame (seq > sinceSeq) appends once, no duplication.
-    useStore.getState().applyFrame("s1", ev(6, { type: "assistant", message: { content: [{ type: "text", text: "live reply" }] } }));
+    useStore
+      .getState()
+      .applyFrame("s1", ev(6, { type: "assistant", message: { content: [{ type: "text", text: "live reply" }] } }));
     const turns = useStore.getState().viewFor("s1").turns;
     expect(turns).toHaveLength(2);
     expect(turns.at(-1)).toEqual({ kind: "assistant-text", text: "live reply" });
@@ -216,7 +238,10 @@ describe("useStore", () => {
     // wipe it — the live frame's seq (3) is past sinceSeq (2), so its liveText/lastSeq are carried over.
     useStore.getState().applyFrame(
       "s1",
-      ev(3, { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "streaming" } } }),
+      ev(3, {
+        type: "stream_event",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "streaming" } },
+      }),
     );
     const history: ServerFrame[] = [
       ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "q" }] } }),

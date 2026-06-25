@@ -131,9 +131,7 @@ const PATHS: Record<IconName, ReactElement> = {
       <path d="M4 18h16" />
     </>
   ),
-  star: (
-    <path d="M12 3.5 14.6 9l5.9.6-4.4 4 1.3 5.8L12 16.6 6.6 19.4 7.9 13.6 3.5 9.6 9.4 9z" />
-  ),
+  star: <path d="M12 3.5 14.6 9l5.9.6-4.4 4 1.3 5.8L12 16.6 6.6 19.4 7.9 13.6 3.5 9.6 9.4 9z" />,
   "arrow-up": (
     <>
       <path d="M12 19V5" />

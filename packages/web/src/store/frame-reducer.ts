@@ -129,7 +129,9 @@ interface AssistantMsg {
 }
 interface UserMsg {
   message?: {
-    content?: string | Array<{ type?: string; tool_use_id?: string; content?: unknown; text?: string; is_error?: boolean }>;
+    content?:
+      | string
+      | Array<{ type?: string; tool_use_id?: string; content?: unknown; text?: string; is_error?: boolean }>;
   };
   parentToolUseId?: string;
   /** Present on transcript-replayed lines (parseLine passes the raw line through); used to dedupe. */
@@ -195,7 +197,11 @@ function collectResultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((b) => (b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text : ""))
+      .map((b) =>
+        b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string"
+          ? (b as { text: string }).text
+          : "",
+      )
       .filter(Boolean)
       .join("\n");
   }
@@ -222,7 +228,10 @@ export function subagentResultText(content: unknown): string {
     return content
       .filter(
         (b): b is { type: "text"; text: string } =>
-          !!b && typeof b === "object" && (b as { type?: string }).type === "text" && typeof (b as { text?: unknown }).text === "string",
+          !!b &&
+          typeof b === "object" &&
+          (b as { type?: string }).type === "text" &&
+          typeof (b as { text?: unknown }).text === "string",
       )
       .map((b) => b.text)
       .filter((text) => !/^agentId:/m.test(text) && !text.includes("<usage>"))
@@ -307,7 +316,13 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       next.pendingQuestion = undefined;
       next.wireState = "idle";
     }
-    turns.push({ kind: "rewound", checkpointId: r.checkpointId, mode: r.mode, ok: r.ok, ...(r.error ? { error: r.error } : {}) });
+    turns.push({
+      kind: "rewound",
+      checkpointId: r.checkpointId,
+      mode: r.mode,
+      ok: r.ok,
+      ...(r.error ? { error: r.error } : {}),
+    });
     next.turns = turns;
     return next;
   }
@@ -380,7 +395,11 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
         }
       } else if (inner.delta.type === "thinking_delta" && inner.delta.thinking) {
         if (parent !== undefined) {
-          updateThread(parent, (t) => ({ ...t, thinkingText: t.thinkingText + inner.delta!.thinking, wireState: "thinking" }));
+          updateThread(parent, (t) => ({
+            ...t,
+            thinkingText: t.thinkingText + inner.delta!.thinking,
+            wireState: "thinking",
+          }));
         } else {
           next.thinkingText = view.thinkingText + inner.delta.thinking;
           next.wireState = "thinking";

@@ -245,7 +245,9 @@ function handle(msg) {
     }
     if (MODE === "echo-env") {
       // Echo the rewind-enable env var so a test can assert the daemon set it on the child.
-      process.stderr.write(`CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=${env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING}\n`);
+      process.stderr.write(
+        `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=${env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING}\n`,
+      );
     }
     return;
   }

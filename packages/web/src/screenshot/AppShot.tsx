@@ -109,11 +109,7 @@ function ChatBody({
         ) : (
           pending && (
             <div style={{ padding: "var(--sp-4)" }}>
-              <PermissionPrompt
-                permission={pending}
-                onAnswer={() => {}}
-                onAlwaysAllow={() => {}}
-              />
+              <PermissionPrompt permission={pending} onAnswer={() => {}} onAlwaysAllow={() => {}} />
             </div>
           )
         )}
@@ -196,7 +192,12 @@ export function AppShot() {
         />
       )}
       {scene === "resume" && (
-        <ResumePicker getResumable={mockApi.getResumable} now={Date.now()} onResume={async () => {}} onCancel={() => {}} />
+        <ResumePicker
+          getResumable={mockApi.getResumable}
+          now={Date.now()}
+          onResume={async () => {}}
+          onCancel={() => {}}
+        />
       )}
       {scene === "rewind" && <RewindSheet checkpointId={CHECKPOINT_ID} onConfirm={() => {}} onCancel={() => {}} />}
       {scene === "settings" && (

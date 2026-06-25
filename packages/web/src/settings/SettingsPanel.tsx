@@ -229,11 +229,18 @@ export function SettingsPanel({
                 className="rc-settings__control rc-settings__control--mono"
               />
             </label>
-            <label className={`rc-settings__danger-check${draft.dangerouslySkip ? " rc-settings__danger-check--on" : ""}`}>
+            <label
+              className={`rc-settings__danger-check${draft.dangerouslySkip ? " rc-settings__danger-check--on" : ""}`}
+            >
               <input type="checkbox" checked={draft.dangerouslySkip} onChange={(e) => toggleDanger(e.target.checked)} />
               <span>Dangerously skip permissions (RCE risk)</span>
             </label>
-            <button type="button" className="rc-settings__primary" onClick={() => onSaveDefaults(draft)} aria-label="Save defaults">
+            <button
+              type="button"
+              className="rc-settings__primary"
+              onClick={() => onSaveDefaults(draft)}
+              aria-label="Save defaults"
+            >
               Save defaults
             </button>
           </section>

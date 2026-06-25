@@ -27,8 +27,7 @@ function parseTaskInfo(obj: Record<string, unknown>): SystemTaskInfo {
         }
       : undefined;
   const patchRaw = rec(obj.patch);
-  const patch =
-    obj.patch !== undefined ? { status: str(patchRaw.status), endTime: num(patchRaw.end_time) } : undefined;
+  const patch = obj.patch !== undefined ? { status: str(patchRaw.status), endTime: num(patchRaw.end_time) } : undefined;
   return {
     taskId: str(obj.task_id),
     toolUseId: str(obj.tool_use_id),

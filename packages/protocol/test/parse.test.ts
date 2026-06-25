@@ -99,7 +99,9 @@ test("golden: permission-turn has a hook_callback control_request and a result",
 // --- subagent linkage + task lifecycle (the Agent tool) -----------------------
 
 test("lifts parent_tool_use_id + uuid onto assistant/user/stream_event", () => {
-  const a = parseLine(JSON.stringify({ type: "assistant", message: { content: [] }, parent_tool_use_id: "X", uuid: "a1" }));
+  const a = parseLine(
+    JSON.stringify({ type: "assistant", message: { content: [] }, parent_tool_use_id: "X", uuid: "a1" }),
+  );
   expect(a).toMatchObject({ type: "assistant", parentToolUseId: "X", uuid: "a1" });
   const u = parseLine(JSON.stringify({ type: "user", message: { content: [] }, parent_tool_use_id: "X", uuid: "u1" }));
   expect(u).toMatchObject({ type: "user", parentToolUseId: "X", uuid: "u1" });
@@ -129,15 +131,30 @@ test("surfaces typed task fields for a task_started (taskId + toolUseId + type/d
   expect(ev).toMatchObject({
     type: "system",
     subtype: "task_started",
-    task: { taskId: "task-1", toolUseId: "toolu_X", subagentType: "general-purpose", description: "Run echo command", prompt: "echo hello" },
+    task: {
+      taskId: "task-1",
+      toolUseId: "toolu_X",
+      subagentType: "general-purpose",
+      description: "Run echo command",
+      prompt: "echo hello",
+    },
   });
 });
 
 test("task_updated carries ONLY task_id + patch.status (no tool_use_id)", () => {
   const ev = parseLine(
-    JSON.stringify({ type: "system", subtype: "task_updated", task_id: "task-1", patch: { status: "completed", end_time: 123 } }),
+    JSON.stringify({
+      type: "system",
+      subtype: "task_updated",
+      task_id: "task-1",
+      patch: { status: "completed", end_time: 123 },
+    }),
   );
-  expect(ev).toMatchObject({ type: "system", subtype: "task_updated", task: { taskId: "task-1", patch: { status: "completed", endTime: 123 } } });
+  expect(ev).toMatchObject({
+    type: "system",
+    subtype: "task_updated",
+    task: { taskId: "task-1", patch: { status: "completed", endTime: 123 } },
+  });
   expect((ev as { task: { toolUseId?: string } }).task.toolUseId).toBeUndefined();
 });
 

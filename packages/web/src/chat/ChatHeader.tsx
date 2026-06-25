@@ -98,13 +98,17 @@ export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions,
           <Mono muted>{session.cwd}</Mono>
           {session.model && (
             <>
-              <span aria-hidden style={midDot}>·</span>
+              <span aria-hidden style={midDot}>
+                ·
+              </span>
               <Mono muted>{session.model}</Mono>
             </>
           )}
           {session.effort && (
             <>
-              <span aria-hidden style={midDot}>·</span>
+              <span aria-hidden style={midDot}>
+                ·
+              </span>
               <Mono muted>{session.effort}</Mono>
             </>
           )}
@@ -115,7 +119,9 @@ export function ChatHeader({ session, wireState, onOpenSettings, onShowSessions,
           ) : (
             session.permissionMode && (
               <>
-                <span aria-hidden style={midDot}>·</span>
+                <span aria-hidden style={midDot}>
+                  ·
+                </span>
                 <Mono muted>{session.permissionMode}</Mono>
               </>
             )

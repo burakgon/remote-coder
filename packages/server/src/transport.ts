@@ -380,24 +380,21 @@ export function createServer(
   // web UI, the prompt is dismissed, or it times out (~10 min). The hub emits a `question` frame (with
   // an askId) so the existing web QuestionPrompt renders it; a matching WS `answer` resolves this promise.
   // Token-gated by the global preHandler.
-  app.post<{ Params: { id: string }; Body: { questions?: unknown } }>(
-    "/sessions/:id/ask",
-    async (request, reply) => {
-      if (!hub.getSession(request.params.id)) {
-        reply.code(404).send({ error: "session not found" });
-        return;
-      }
-      const questions = parseAskQuestions(request.body?.questions);
-      if (!questions) {
-        reply.code(400).send({ error: "questions must be a non-empty array, each with 1+ options" });
-        return;
-      }
-      // Block until the user answers / the ask is cancelled (timeout or session stop). askUser never
-      // rejects, so this always resolves to { answers } or { cancelled: true }.
-      const result = await hub.askUser(request.params.id, questions);
-      reply.code(200).send(result);
-    },
-  );
+  app.post<{ Params: { id: string }; Body: { questions?: unknown } }>("/sessions/:id/ask", async (request, reply) => {
+    if (!hub.getSession(request.params.id)) {
+      reply.code(404).send({ error: "session not found" });
+      return;
+    }
+    const questions = parseAskQuestions(request.body?.questions);
+    if (!questions) {
+      reply.code(400).send({ error: "questions must be a non-empty array, each with 1+ options" });
+      return;
+    }
+    // Block until the user answers / the ask is cancelled (timeout or session stop). askUser never
+    // rejects, so this always resolves to { answers } or { cancelled: true }.
+    const result = await hub.askUser(request.params.id, questions);
+    reply.code(200).send(result);
+  });
 
   // Web Push opt-in routes (spec §1). The whole `/push/*` namespace is token-gated by the global
   // preHandler (it is in API_PATH_DENYLIST), including GET /push/vapid — the PWA already holds the

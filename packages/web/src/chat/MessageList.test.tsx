@@ -226,9 +226,7 @@ describe("MessageList", () => {
 
     it("renders a successful 'Rewound to here' marker for a code rewind", () => {
       render(
-        <MessageList
-          view={viewWith({ turns: [{ kind: "rewound", checkpointId: "cp-9", mode: "code", ok: true }] })}
-        />,
+        <MessageList view={viewWith({ turns: [{ kind: "rewound", checkpointId: "cp-9", mode: "code", ok: true }] })} />,
       );
       expect(screen.getByText(/rewound to here/i)).toBeInTheDocument();
     });
@@ -238,7 +236,13 @@ describe("MessageList", () => {
         <MessageList
           view={viewWith({
             turns: [
-              { kind: "rewound", checkpointId: "cp-9", mode: "both", ok: false, error: "File rewinding is not enabled." },
+              {
+                kind: "rewound",
+                checkpointId: "cp-9",
+                mode: "both",
+                ok: false,
+                error: "File rewinding is not enabled.",
+              },
             ],
           })}
         />,
@@ -318,7 +322,14 @@ describe("MessageList", () => {
         <MessageList
           view={viewWith({
             turns: [
-              { kind: "attachment", id: "a3", path: "/Users/me/x.png", name: "x.png", caption: "your chart", isImage: true },
+              {
+                kind: "attachment",
+                id: "a3",
+                path: "/Users/me/x.png",
+                name: "x.png",
+                caption: "your chart",
+                isImage: true,
+              },
             ],
           })}
           downloadUrl={downloadUrl}
@@ -336,7 +347,11 @@ describe("MessageList", () => {
             turns: [
               { kind: "assistant-text", text: "On it — attaching it here." },
               { kind: "tool-use", id: "t1", name: "send_file", input: { path: "/Users/me/untitled.wav" } },
-              { kind: "tool-result", toolUseId: "t1", content: [{ type: "text", text: "Sent untitled.wav (4.8 MB)." }] },
+              {
+                kind: "tool-result",
+                toolUseId: "t1",
+                content: [{ type: "text", text: "Sent untitled.wav (4.8 MB)." }],
+              },
               { kind: "attachment", id: "a4", path: "/Users/me/untitled.wav", name: "untitled.wav", isImage: false },
             ],
           })}
@@ -357,7 +372,14 @@ describe("MessageList", () => {
         <MessageList
           view={viewWith({
             turns: [
-              { kind: "attachment", id: "a5", path: "/Users/me/y.pdf", name: "y.pdf", caption: "a doc", isImage: false },
+              {
+                kind: "attachment",
+                id: "a5",
+                path: "/Users/me/y.pdf",
+                name: "y.pdf",
+                caption: "a doc",
+                isImage: false,
+              },
             ],
           })}
         />,

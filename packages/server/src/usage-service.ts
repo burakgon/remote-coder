@@ -96,11 +96,7 @@ export function parseUsage(text: string, now: number = Date.now()): UsageInfo | 
  * uses subscription auth. Reads stdout, JSON.parse, returns `.result`. NEVER rejects — resolves "" on
  * spawn error / timeout / non-JSON / a missing `.result`.
  */
-export function createUsageRunner(opts: {
-  claudeBin: string;
-  env?: NodeJS.ProcessEnv;
-  timeoutMs?: number;
-}): RunUsage {
+export function createUsageRunner(opts: { claudeBin: string; env?: NodeJS.ProcessEnv; timeoutMs?: number }): RunUsage {
   return () =>
     new Promise<string>((resolve) => {
       let settled = false;

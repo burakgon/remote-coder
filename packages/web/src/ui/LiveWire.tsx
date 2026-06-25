@@ -48,8 +48,7 @@ export interface LiveWireProps {
 export function LiveWire({ state, ...rest }: LiveWireProps) {
   // The live states pulse the dot subtly (thinking/streaming/running-tool/awaiting). All pulses are
   // neutralized under prefers-reduced-motion (global.css).
-  const animated =
-    state === "thinking" || state === "streaming" || state === "awaiting" || state === "running-tool";
+  const animated = state === "thinking" || state === "streaming" || state === "awaiting" || state === "running-tool";
   // The ONE coral status is "awaiting you" — its dot is coral. Every other state is a NEUTRAL dot +
   // muted label (spec): no coral chip, no coral wash, no glow on Working/Streaming/Idle.
   const awaiting = state === "awaiting";

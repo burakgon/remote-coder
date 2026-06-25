@@ -154,7 +154,7 @@ describe("NewSessionWizard", () => {
     expect(screen.queryByRole("button", { name: /use this directory/i })).not.toBeInTheDocument();
   });
 
-  it("with initialMode=\"resume\" opens straight to the Resume pane (its tab selected)", async () => {
+  it('with initialMode="resume" opens straight to the Resume pane (its tab selected)', async () => {
     const resumable: ResumableSession[] = [
       { sessionId: "r-1", cwd: "/home/u/proj", summary: "Earlier work", lastActivity: 1, messageCount: 5 },
     ];

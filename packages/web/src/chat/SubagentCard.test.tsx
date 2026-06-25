@@ -20,7 +20,11 @@ describe("SubagentCard", () => {
   it("shows the subagent_type eyebrow, the description title, and a running status", () => {
     render(
       <SubagentCard
-        thread={thread({ type: "general-purpose", description: "Run echo command", activity: "Running Echo a test string" })}
+        thread={thread({
+          type: "general-purpose",
+          description: "Run echo command",
+          activity: "Running Echo a test string",
+        })}
         onOpen={vi.fn()}
       />,
     );
@@ -50,7 +54,12 @@ describe("SubagentCard", () => {
   });
 
   it("a failed subagent reads 'Failed' (restrained, text + dot — never just color)", () => {
-    render(<SubagentCard thread={thread({ status: "failed", type: "Explore", description: "Map the repo" })} onOpen={vi.fn()} />);
+    render(
+      <SubagentCard
+        thread={thread({ status: "failed", type: "Explore", description: "Map the repo" })}
+        onOpen={vi.fn()}
+      />,
+    );
     expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 

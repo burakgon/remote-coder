@@ -37,10 +37,13 @@ const browser = await chromium.launch();
 async function frame(html, out) {
   const page = await browser.newPage({ deviceScaleFactor: 2 });
   await page.setContent(html, { waitUntil: "load" });
-  await page.waitForFunction(() => {
-    const i = document.querySelector("img");
-    return i && i.complete && i.naturalWidth > 0;
-  }, { timeout: 8000 });
+  await page.waitForFunction(
+    () => {
+      const i = document.querySelector("img");
+      return i && i.complete && i.naturalWidth > 0;
+    },
+    { timeout: 8000 },
+  );
   await (await page.$(".wrap")).screenshot({ path: out, omitBackground: true });
   await page.close();
   console.log("  framed", out.split("/").pop());

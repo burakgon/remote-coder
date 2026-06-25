@@ -314,11 +314,7 @@ export function App() {
           color: "var(--text-muted)",
         }}
       >
-        <span
-          aria-hidden="true"
-          className="display"
-          style={{ fontSize: "var(--fs-2xl)", color: "var(--text-faint)" }}
-        >
+        <span aria-hidden="true" className="display" style={{ fontSize: "var(--fs-2xl)", color: "var(--text-faint)" }}>
           rc
         </span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--fs-sm)" }}>Connecting…</span>
@@ -479,7 +475,9 @@ export function App() {
                 <div style={{ display: "flex", padding: "var(--sp-3) var(--sp-4)", flex: "none" }}>
                   <MobileMenuButton onShowSessions={() => setSessionsOpen(true)} needsYou={awaitingCount(sessions)} />
                 </div>
-                <div style={{ display: "grid", placeItems: "center", flex: 1, minHeight: 0, color: "var(--text-muted)" }}>
+                <div
+                  style={{ display: "grid", placeItems: "center", flex: 1, minHeight: 0, color: "var(--text-muted)" }}
+                >
                   Session not found.
                 </div>
               </div>
@@ -508,56 +506,56 @@ export function App() {
             >
               {/* The landing mark — a flat elevated tile + a --line-2 edge; the ONE coral here is the
                   GLYPH (spec .mark), NOT a coral fill. No glow. */}
-            <span
-              aria-hidden="true"
-              style={{
-                width: 56,
-                height: 56,
-                display: "grid",
-                placeItems: "center",
-                borderRadius: "var(--radius)",
-                background: "var(--tile-bg)",
-                border: "1px solid var(--tile-edge)",
-                color: "var(--coral)",
-              }}
-            >
-              <Icon name="terminal" size={26} />
-            </span>
-            <span className="display" style={{ fontSize: "var(--fs-lg)", color: "var(--text)" }}>
-              Select or start a session
-            </span>
-            <span style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", maxWidth: "26ch", lineHeight: 1.5 }}>
-              No active session. Tap{" "}
-              <span aria-hidden="true" style={{ color: "var(--text)", fontWeight: 600 }}>
-                +
-              </span>{" "}
-              to start one and drive Claude from your phone.
-            </span>
-            {/* A landing-state CTA so a new session is reachable without first opening the mobile
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 56,
+                  height: 56,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: "var(--radius)",
+                  background: "var(--tile-bg)",
+                  border: "1px solid var(--tile-edge)",
+                  color: "var(--coral)",
+                }}
+              >
+                <Icon name="terminal" size={26} />
+              </span>
+              <span className="display" style={{ fontSize: "var(--fs-lg)", color: "var(--text)" }}>
+                Select or start a session
+              </span>
+              <span style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)", maxWidth: "26ch", lineHeight: 1.5 }}>
+                No active session. Tap{" "}
+                <span aria-hidden="true" style={{ color: "var(--text)", fontWeight: 600 }}>
+                  +
+                </span>{" "}
+                to start one and drive Claude from your phone.
+              </span>
+              {/* A landing-state CTA so a new session is reachable without first opening the mobile
                 sessions sheet (the rail's "New session" is hidden until the sheet is open on mobile).
                 The single coral primary — a FLAT coral fill, dark ink label. No glow. */}
-            <button
-              type="button"
-              onClick={() => openWizard("new")}
-              aria-label="New session"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "var(--sp-2)",
-                minHeight: "var(--tap-min)",
-                padding: "0 var(--sp-5)",
-                background: "var(--accent-grad)",
-                color: "var(--on-accent)",
-                border: "none",
-                borderRadius: "999px",
-                cursor: "pointer",
-                fontFamily: "var(--font-display)",
-                fontWeight: 600,
-              }}
-            >
-              <Icon name="plus" size={16} />
-              New session
-            </button>
+              <button
+                type="button"
+                onClick={() => openWizard("new")}
+                aria-label="New session"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "var(--sp-2)",
+                  minHeight: "var(--tap-min)",
+                  padding: "0 var(--sp-5)",
+                  background: "var(--accent-grad)",
+                  color: "var(--on-accent)",
+                  border: "none",
+                  borderRadius: "999px",
+                  cursor: "pointer",
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 600,
+                }}
+              >
+                <Icon name="plus" size={16} />
+                New session
+              </button>
             </div>
           </div>
         )}

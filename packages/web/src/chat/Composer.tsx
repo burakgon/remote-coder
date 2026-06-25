@@ -353,14 +353,7 @@ export function Composer({
           style={visuallyHidden}
           tabIndex={-1}
         />
-        <input
-          ref={fileInput}
-          type="file"
-          multiple
-          onChange={onPickFile}
-          style={visuallyHidden}
-          tabIndex={-1}
-        />
+        <input ref={fileInput} type="file" multiple onChange={onPickFile} style={visuallyHidden} tabIndex={-1} />
         {/* Icon buttons (Variant A) — quiet ghost affordances. The aria-labels are kept verbatim
             ("Add image" / "Upload file" / "Send") so screen readers AND the existing tests still
             reach each control by name. */}

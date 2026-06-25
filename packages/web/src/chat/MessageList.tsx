@@ -81,10 +81,7 @@ function TurnTag({ children }: { children: string }) {
       }}
     >
       <span>{children}</span>
-      <span
-        aria-hidden
-        style={{ height: 1, flex: 1, background: "var(--hairline-grad)" }}
-      />
+      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--hairline-grad)" }} />
     </div>
   );
 }
@@ -164,7 +161,8 @@ const REWIND_AFFORDANCE: CSSProperties = {
  */
 function RewoundMarker({ item }: { item: Extract<TurnItem, { kind: "rewound" }> }) {
   const color = item.ok ? "var(--text-muted)" : "var(--err)";
-  const modeLabel = item.mode === "code" ? "code" : item.mode === "conversation" ? "conversation" : "code + conversation";
+  const modeLabel =
+    item.mode === "code" ? "code" : item.mode === "conversation" ? "conversation" : "code + conversation";
   return (
     <div
       role="status"
@@ -399,8 +397,7 @@ function ToolCluster({ steps }: { steps: ToolStep[] }) {
 function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> }) {
   // "stopped" wins over isError: an aborted turn carries the protocol error flags but is calm, not red.
   const tone = item.stopped ? "stopped" : item.isError ? "error" : "done";
-  const color =
-    tone === "stopped" ? "var(--text-muted)" : tone === "error" ? "var(--err)" : "var(--ok)";
+  const color = tone === "stopped" ? "var(--text-muted)" : tone === "error" ? "var(--err)" : "var(--ok)";
   const icon: IconName = tone === "stopped" ? "stop" : tone === "error" ? "alert" : "check";
   return (
     <div
@@ -617,7 +614,9 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
     // Without it a grid item's default `min-width: auto` lets a wide child (a table, a long code
     // line) grow the track to its natural width, overflowing the whole view to the right forever.
     // With min-0, wide children stay clipped to the column and scroll inside their own overflow box.
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "var(--sp-5)", padding: "18px 14px 26px" }}>
+    <div
+      style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "var(--sp-5)", padding: "18px 14px 26px" }}
+    >
       {plan.map((node) =>
         node.kind === "cluster" ? (
           <ToolCluster key={node.key} steps={node.steps} />
@@ -626,20 +625,14 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
             const thread = agents[node.id];
             if (!thread) return null;
             return (
-              <SubagentCard
-                key={`subagent-${node.id}`}
-                thread={thread}
-                onOpen={() => onOpenSubagent?.(node.id)}
-              />
+              <SubagentCard key={`subagent-${node.id}`} thread={thread} onOpen={() => onOpenSubagent?.(node.id)} />
             );
           })()
         ) : (
           <Turn key={node.index} item={node.item} downloadUrl={downloadUrl} onRewind={onRewind} />
         ),
       )}
-      {view.thinkingText && (
-        <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{view.thinkingText}</div>
-      )}
+      {view.thinkingText && <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{view.thinkingText}</div>}
       {view.liveText && (
         <div style={{ color: "var(--text)", animation: "rc-fade-in 0.2s ease-out" }}>
           <Markdown>{view.liveText}</Markdown>

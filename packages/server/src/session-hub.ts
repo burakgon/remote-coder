@@ -613,11 +613,7 @@ export class SessionHub {
    * Returns the `rewind_files` result for `code` (the live one we can report on); conversation/both report
    * the respawn outcome. NEVER throws into the WS handler — failures resolve to `{ ok:false, error }`.
    */
-  async rewind(
-    id: string,
-    checkpointId: string,
-    mode: "code" | "conversation" | "both",
-  ): Promise<RewindFilesResult> {
+  async rewind(id: string, checkpointId: string, mode: "code" | "conversation" | "both"): Promise<RewindFilesResult> {
     const record = this.require(id);
     if (mode === "code") {
       // Live rewind needs a running process (the checkpoint backups live in the live CLI). Ensure one.

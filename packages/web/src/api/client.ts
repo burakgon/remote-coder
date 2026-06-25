@@ -122,10 +122,9 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       return body.sessions;
     },
     async getSession(id) {
-      const body = await req<{ session: SessionMeta; history: ServerFrame[]; sinceSeq?: number }>(
-        `/sessions/${id}`,
-        { headers: headers() },
-      );
+      const body = await req<{ session: SessionMeta; history: ServerFrame[]; sinceSeq?: number }>(`/sessions/${id}`, {
+        headers: headers(),
+      });
       // sinceSeq is the WS-resume seq; default to 0 (full replay) if an older server omits it.
       return { session: body.session, history: body.history, sinceSeq: body.sinceSeq ?? 0 };
     },

@@ -26,7 +26,14 @@ export interface NewSessionWizardProps {
   onClose: () => void;
 }
 
-export function NewSessionWizard({ api, recents, now, initialMode = "new", onCreated, onClose }: NewSessionWizardProps) {
+export function NewSessionWizard({
+  api,
+  recents,
+  now,
+  initialMode = "new",
+  onCreated,
+  onClose,
+}: NewSessionWizardProps) {
   const seeded = loadDefaults();
   const [mode, setMode] = useState<WizardMode>(initialMode);
   const [cwd, setCwd] = useState<string | undefined>();

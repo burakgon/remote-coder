@@ -16,7 +16,11 @@ import { AgentGlyph, SubagentDot, formatUsage, statusLabel } from "./subagent-ui
 /** Concatenate the text of a user turn's content blocks (to match the prompt echo). */
 function turnText(blocks: unknown[]): string {
   return blocks
-    .map((b) => (b && typeof b === "object" && (b as { type?: string }).type === "text" ? ((b as { text?: string }).text ?? "") : ""))
+    .map((b) =>
+      b && typeof b === "object" && (b as { type?: string }).type === "text"
+        ? ((b as { text?: string }).text ?? "")
+        : "",
+    )
     .filter(Boolean)
     .join("\n");
 }
@@ -110,7 +114,12 @@ export function SubagentView({
         {hasTranscript ? (
           <section className="rc-sa-view__section">
             <div className="rc-sa-view__label">Transcript</div>
-            <MessageList view={transcriptView} subagents={subagents} onOpenSubagent={onOpenSubagent} downloadUrl={downloadUrl} />
+            <MessageList
+              view={transcriptView}
+              subagents={subagents}
+              onOpenSubagent={onOpenSubagent}
+              downloadUrl={downloadUrl}
+            />
             {running && (
               <div className="rc-sa-view__working" role="status">
                 <SubagentDot status="running" />

@@ -6,7 +6,15 @@ import type { SessionListProps } from "./SessionList";
 import type { SessionMeta } from "../types/server";
 
 const sessions: SessionMeta[] = [
-  { id: "s1", cwd: "/home/u/remote-coder", model: "opus", effort: "high", dangerouslySkip: false, status: "running", createdAt: 1 },
+  {
+    id: "s1",
+    cwd: "/home/u/remote-coder",
+    model: "opus",
+    effort: "high",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 1,
+  },
   { id: "s2", cwd: "/home/u/notes", dangerouslySkip: false, status: "stopped", createdAt: 2 },
 ];
 

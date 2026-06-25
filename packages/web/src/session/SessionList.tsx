@@ -134,7 +134,11 @@ export function SessionList({
                     {s.cwd}
                   </span>
                   <span className="rc-sl__meta">
-                    <time className="rc-sl__time" dateTime={new Date(activeAt).toISOString()} title={absoluteTime(activeAt)}>
+                    <time
+                      className="rc-sl__time"
+                      dateTime={new Date(activeAt).toISOString()}
+                      title={absoluteTime(activeAt)}
+                    >
                       {relativeTime(activeAt, now)}
                     </time>
                     {s.model && (

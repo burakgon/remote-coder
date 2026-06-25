@@ -106,7 +106,9 @@ export function SubagentCard({ thread, onOpen }: { thread: SubagentThread; onOpe
         )}
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flex: "none" }}>
-        <span style={{ fontSize: "var(--fs-xs)", color: thread.status === "failed" ? "var(--err)" : "var(--text-muted)" }}>
+        <span
+          style={{ fontSize: "var(--fs-xs)", color: thread.status === "failed" ? "var(--err)" : "var(--text-muted)" }}
+        >
           {statusLabel(thread.status)}
         </span>
         <SubagentDot status={thread.status} />

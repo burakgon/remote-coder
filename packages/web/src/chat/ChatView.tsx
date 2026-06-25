@@ -100,8 +100,7 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
   // let the user type). `wireStateForSession` collapses dormant→"dormant", stopped→"idle",
   // awaiting→"awaiting" (none of which are "running"), and only defers to the live view's wire state
   // for a genuinely-running session — so a live turn still shows Stop.
-  const running =
-    wireState === "thinking" || wireState === "streaming" || wireState === "running-tool";
+  const running = wireState === "thinking" || wireState === "streaming" || wireState === "running-tool";
 
   // Client-side "Always allow" — a per-session set of tool names the user has chosen to auto-allow.
   // When a future permission for such a tool arrives we answer `allow` for the user (with a visible
@@ -260,7 +259,10 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             const blocks: ContentBlock[] = [];
             if (frame.text) blocks.push({ type: "text", text: frame.text });
             for (const img of frame.images ?? []) {
-              blocks.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.dataBase64 } });
+              blocks.push({
+                type: "image",
+                source: { type: "base64", media_type: img.mediaType, data: img.dataBase64 },
+              });
             }
             if (blocks.length > 0) appendUserMessage(session.id, blocks);
           }

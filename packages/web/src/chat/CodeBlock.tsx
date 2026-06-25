@@ -66,16 +66,41 @@ const THEME: ThemeRegistrationAny = {
       ],
       settings: { foreground: "#f0814f" },
     },
-    { scope: ["string", "string.quoted", "string.template", "punctuation.definition.string"], settings: { foreground: "#a6b88c" } },
-    { scope: ["constant.numeric", "constant.language", "constant.character", "keyword.other.unit"], settings: { foreground: "#e0a96d" } },
-    { scope: ["entity.name.function", "support.function", "meta.function-call", "entity.name.method"], settings: { foreground: "#eac392" } },
     {
-      scope: ["entity.name.type", "entity.name.class", "support.type", "support.class", "entity.other.inherited-class", "entity.name.namespace"],
+      scope: ["string", "string.quoted", "string.template", "punctuation.definition.string"],
+      settings: { foreground: "#a6b88c" },
+    },
+    {
+      scope: ["constant.numeric", "constant.language", "constant.character", "keyword.other.unit"],
+      settings: { foreground: "#e0a96d" },
+    },
+    {
+      scope: ["entity.name.function", "support.function", "meta.function-call", "entity.name.method"],
+      settings: { foreground: "#eac392" },
+    },
+    {
+      scope: [
+        "entity.name.type",
+        "entity.name.class",
+        "support.type",
+        "support.class",
+        "entity.other.inherited-class",
+        "entity.name.namespace",
+      ],
       settings: { foreground: "#d8ac88" },
     },
-    { scope: ["variable", "variable.other.readwrite", "meta.definition.variable"], settings: { foreground: "#cdccd4" } },
-    { scope: ["variable.parameter", "variable.other.parameter"], settings: { foreground: "#bdb4c2", fontStyle: "italic" } },
-    { scope: ["meta.object-literal.key", "support.type.property-name", "variable.other.property"], settings: { foreground: "#cabb9f" } },
+    {
+      scope: ["variable", "variable.other.readwrite", "meta.definition.variable"],
+      settings: { foreground: "#cdccd4" },
+    },
+    {
+      scope: ["variable.parameter", "variable.other.parameter"],
+      settings: { foreground: "#bdb4c2", fontStyle: "italic" },
+    },
+    {
+      scope: ["meta.object-literal.key", "support.type.property-name", "variable.other.property"],
+      settings: { foreground: "#cabb9f" },
+    },
     { scope: ["keyword.operator", "punctuation", "meta.brace", "meta.delimiter"], settings: { foreground: "#928e9b" } },
     { scope: ["entity.name.tag"], settings: { foreground: "#f0814f" } },
     { scope: ["entity.other.attribute-name"], settings: { foreground: "#eac392" } },

@@ -59,8 +59,14 @@ test("parseTranscript never throws on a fully-malformed transcript", () => {
 
 test("parseTranscript drops the synthetic --resume warm-up pair", () => {
   const lines = [
-    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "Continue from where you left off." }] } }),
-    JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "No response requested." }] } }),
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "Continue from where you left off." }] },
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "No response requested." }] },
+    }),
     JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "real question" }] } }),
   ].join("\n");
   const parsed = parseTranscript(lines);

@@ -242,10 +242,7 @@ export async function listResumable(
 }
 
 /** Locate `<sessionId>.jsonl` across the project dirs, returning its absolute path or undefined. */
-export async function findTranscriptFile(
-  projectsDir: string,
-  sessionId: string,
-): Promise<string | undefined> {
+export async function findTranscriptFile(projectsDir: string, sessionId: string): Promise<string | undefined> {
   const target = `${sessionId}.jsonl`;
   let projectDirs: string[];
   try {

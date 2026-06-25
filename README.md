@@ -92,7 +92,7 @@ When a new version lands on GitHub, the app shows an **update notice** with the 
 
 ## Quickstart
 
-You need **Node ≥ 20**, [**pnpm**](https://pnpm.io/), and a machine **already logged into `claude`** (run `claude` once locally to authenticate — there's no remote login).
+You need **Node ≥ 22**, [**pnpm**](https://pnpm.io/), and a machine **already logged into `claude`** (run `claude` once locally to authenticate — there's no remote login).
 
 ```bash
 git clone https://github.com/burakgon/remote-coder && cd remote-coder
