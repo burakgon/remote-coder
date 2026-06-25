@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { SessionManager } from "./session-manager.js";
 import { ReplayBuffer } from "./replay-buffer.js";
 import type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
@@ -725,11 +726,23 @@ export class SessionHub {
     }
   }
 
-  /** Rehydrate DORMANT session metas from the store at boot (no live process is spawned). */
+  /**
+   * Rehydrate session metas from the store at boot (no live process is spawned) — but PRUNE the dead
+   * ones so the rail never shows a session that does nothing when tapped. A stored session is DEAD when
+   * it has NO resumable transcript on disk: it was created but its turn never landed (commonly a restart
+   * — e.g. an OTA update — caught the turn mid-flight), so `claude --resume` can't revive it. Such
+   * sessions are deleted from the durable store and skipped. Status is NOT the signal: an `errored`
+   * session that still has a transcript is resumable, so it's kept and rehydrated as dormant (a
+   * transient crash gets another chance) — only the truly un-resumable are dropped.
+   */
   loadFromStore(): void {
     if (!this.store) return;
     for (const s of this.store.list()) {
       if (this.records.has(s.id)) continue;
+      if (!this.hasResumableTranscript(s.cwd, s.id)) {
+        this.store.delete(s.id); // drop the dead session so it stops cluttering the rail
+        continue;
+      }
       const meta: SessionMeta = {
         id: s.id,
         cwd: s.cwd,
@@ -752,6 +765,22 @@ export class SessionHub {
         pendingAsks: new Map(),
         intentionalStop: false,
       });
+    }
+  }
+
+  /**
+   * True when a session has a non-empty transcript on disk, i.e. `claude --resume` could actually
+   * revive it. Used to prune "dead" sessions (created but never produced a turn) at boot. Mirrors the
+   * exact path HistoryService reads from, so it agrees with what the chat would show. With no
+   * HistoryService configured we can't check — keep the session (never prune what we can't verify).
+   */
+  private hasResumableTranscript(cwd: string, id: string): boolean {
+    if (!this.history) return true;
+    try {
+      const st = statSync(this.history.transcriptPath(cwd, id));
+      return st.isFile() && st.size > 0;
+    } catch {
+      return false; // no transcript file → not resumable → dead
     }
   }
 

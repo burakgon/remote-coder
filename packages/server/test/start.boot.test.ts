@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { WebSocket } from "ws";
 import { startServer, SessionManager, createServer, openSessionStore, HistoryService } from "../src/index.js";
@@ -103,7 +103,7 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
   let id: string;
   {
     const store = openSessionStore({ dbPath });
-    const s1 = createServer(configFor(), managerFor("simple"), { store, history: new HistoryService() });
+    const s1 = createServer(configFor(), managerFor("simple"), { store, history: new HistoryService({ claudeHome: dir }) });
     const created = await s1.app.inject({
       method: "POST",
       url: "/sessions",
@@ -112,6 +112,11 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
     });
     expect(created.statusCode).toBe(201);
     id = created.json().session.id as string;
+    // A resumable session has a transcript on disk; write one so it survives the restart (an unused,
+    // transcript-less session is intentionally pruned as dead on rehydrate — session-hub.prune.test.ts).
+    const tpath = new HistoryService({ claudeHome: dir }).transcriptPath(process.cwd(), id);
+    await mkdir(dirname(tpath), { recursive: true });
+    await writeFile(tpath, '{"type":"user","message":{"content":[{"type":"text","text":"hi"}]}}\n');
     await s1.app.close();
     store.close();
   }
@@ -119,7 +124,7 @@ test("a message to a persisted-but-dead (dormant) session resumes it via claude 
   // Server 2: same db -> the session rehydrates as DORMANT. A message must spawn `claude --resume`
   // (the mock "resume" mode emits a warm-up then a normal turn) and flip the meta to running.
   const store2 = openSessionStore({ dbPath });
-  direct = createServer(configFor(), managerFor("resume"), { store: store2, history: new HistoryService() });
+  direct = createServer(configFor(), managerFor("resume"), { store: store2, history: new HistoryService({ claudeHome: dir }) });
   const url = await direct.app.listen({ port: 0, host: "127.0.0.1" });
 
   const list = await direct.app.inject({

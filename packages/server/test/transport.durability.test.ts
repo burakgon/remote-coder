@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { SessionManager, createServer, openSessionStore, openIdempotencyStore, HistoryService } from "../src/index.js";
 import type { CreateServerResult, ServerRuntimeConfig } from "../src/index.js";
@@ -77,7 +77,7 @@ test("a session created in one server is DORMANT after a restart (rehydrated fro
   // Server 1: create a session, then close.
   {
     const store = openSessionStore({ dbPath });
-    current = createServer(configFor(), managerFor(), { store, history: new HistoryService() });
+    current = createServer(configFor(), managerFor(), { store, history: new HistoryService({ claudeHome: dir }) });
     const created = await current.app.inject({
       method: "POST",
       url: "/sessions",
@@ -85,13 +85,19 @@ test("a session created in one server is DORMANT after a restart (rehydrated fro
       payload: { cwd: process.cwd() },
     });
     expect(created.statusCode).toBe(201);
+    // A USED session has a transcript on disk; write one so it survives the restart. (An unused,
+    // transcript-less session is intentionally pruned as dead on rehydrate — session-hub.prune.test.ts.)
+    const sid = created.json().session.id as string;
+    const tpath = new HistoryService({ claudeHome: dir }).transcriptPath(process.cwd(), sid);
+    await mkdir(dirname(tpath), { recursive: true });
+    await writeFile(tpath, '{"type":"user","message":{"content":[{"type":"text","text":"hi"}]}}\n');
     await current.app.close();
     store.close();
     current = undefined;
   }
   // Server 2: same db -> the session reappears as dormant (no live process).
   const store2 = openSessionStore({ dbPath });
-  current = createServer(configFor(), managerFor(), { store: store2, history: new HistoryService() });
+  current = createServer(configFor(), managerFor(), { store: store2, history: new HistoryService({ claudeHome: dir }) });
   const list = await current.app.inject({
     method: "GET",
     url: "/sessions",
