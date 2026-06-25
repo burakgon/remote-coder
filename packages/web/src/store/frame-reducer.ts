@@ -327,7 +327,13 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     return next;
   }
   if (frame.kind === "exit") {
-    next.wireState = "error";
+    // A clean process end (code 0/none, or a graceful kill signal) is dormant/resumable, NOT an error —
+    // only a non-zero code or a crash signal turns the wire red. (Mirrors the server's isCleanExit.)
+    const info = frame.payload as { code?: number | null; signal?: string | null };
+    const clean = info.signal
+      ? info.signal === "SIGTERM" || info.signal === "SIGINT" || info.signal === "SIGHUP"
+      : info.code === null || info.code === undefined || info.code === 0;
+    next.wireState = clean ? "idle" : "error";
     return next;
   }
 

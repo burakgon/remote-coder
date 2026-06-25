@@ -198,8 +198,11 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         ref={scrollRef}
         onScroll={onScroll}
         aria-live="polite"
-        aria-relevant="additions text"
-        style={{ flex: 1, overflowY: "auto" }}
+        // "additions" only (not "text"): a completed turn announces ONCE as it's added; without this,
+        // every stream delta re-announced the whole growing message token-by-token. The telemetry strip
+        // (role=status) carries the live Thinking/Streaming state.
+        aria-relevant="additions"
+        style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}
       >
         <MessageList
           view={safeView}

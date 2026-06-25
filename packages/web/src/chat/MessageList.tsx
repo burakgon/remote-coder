@@ -459,7 +459,7 @@ function AttachmentCard({
           <img
             src={href}
             alt={item.name}
-            style={{ display: "block", width: "100%", maxHeight: 280, objectFit: "cover" }}
+            style={{ display: "block", width: "100%", maxHeight: 280, objectFit: "contain" }}
           />
         </a>
         <div
@@ -656,7 +656,11 @@ function stringifyInput(input: unknown): string {
 function renderBlocks(blocks: ContentBlock[]) {
   return blocks.map((b, i) =>
     b.type === "text" ? (
-      <div key={i}>{b.text}</div>
+      // pre-wrap preserves the user's own line breaks (a multi-line message kept its newlines); anywhere
+      // breaks a long unbroken token instead of overflowing the bubble.
+      <div key={i} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+        {b.text}
+      </div>
     ) : (
       <img
         key={i}

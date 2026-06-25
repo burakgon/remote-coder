@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -99,16 +100,53 @@ const components: Components = {
       {children}
     </a>
   ),
+  // CodeBlock renders a <div>; without a passthrough `pre`, react-markdown wraps it in a <pre> (invalid
+  // div-in-pre nesting + the default <pre>'s own margins boxing the card).
+  pre: ({ children }) => <>{children}</>,
+  // Markdown images scale to the column instead of overflowing at 390px; a broken src hides quietly.
+  img: ({ src, alt }) => (
+    <img
+      src={typeof src === "string" ? src : undefined}
+      alt={alt ?? ""}
+      style={{ maxWidth: "100%", height: "auto", borderRadius: "var(--radius-sm)", display: "block" }}
+      onError={(e) => {
+        e.currentTarget.style.display = "none";
+      }}
+    />
+  ),
+  // Headings on the compact 15px scale: the display face, tight margins, sizes stepping down — not the
+  // browser defaults (h1=2em) that clash with the body scale, and h4-h6 get the display face too.
+  h1: ({ children }) => <h1 style={headingStyle("1.2rem")}>{children}</h1>,
+  h2: ({ children }) => <h2 style={headingStyle("1.08rem")}>{children}</h2>,
+  h3: ({ children }) => <h3 style={headingStyle("0.98rem")}>{children}</h3>,
+  h4: ({ children }) => <h4 style={headingStyle("0.9rem")}>{children}</h4>,
+  h5: ({ children }) => <h5 style={headingStyle("0.86rem")}>{children}</h5>,
+  h6: ({ children }) => <h6 style={headingStyle("0.86rem")}>{children}</h6>,
 };
+
+function headingStyle(fontSize: string): CSSProperties {
+  return {
+    fontFamily: "var(--font-display)",
+    fontWeight: 600,
+    fontSize,
+    lineHeight: 1.3,
+    margin: "var(--sp-4) 0 var(--sp-2)",
+  };
+}
 
 export interface MarkdownProps {
   children: string;
 }
 
 export function Markdown({ children }: MarkdownProps) {
+  // overflow-wrap is inherited, so anywhere on this wrapper makes p/li/a/inline-code break a long
+  // unbroken token or URL instead of forcing horizontal page scroll at 390px; min-width:0 lets the
+  // block shrink inside a flex/grid message column.
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-      {children}
-    </ReactMarkdown>
+    <div style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {children}
+      </ReactMarkdown>
+    </div>
   );
 }
