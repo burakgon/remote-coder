@@ -75,6 +75,13 @@ Upload images and files, browse and download host files, and just ask Claude to 
 ### Built to live on your phone
 An installable **PWA** (Add to Home Screen, no app store), **Web Push** when a session finishes or needs you, and model + effort switches as first-class controls.
 
+### Updates itself — one tap, no terminal
+When a new version lands on GitHub, the app shows an **update notice** with the **version and a grouped changelog**. Tap **Update now** and the server pulls, rebuilds, and restarts itself, then reconnects to the new version — no SSH, no `git pull`. A failed build leaves the running server untouched.
+
+<div align="center">
+<img src="docs/media/ota-mobile.png" alt="The in-app update banner and changelog panel — version, grouped changes (New / Fixes / Improvements), and a one-tap Update now" width="300">
+</div>
+
 ## Quickstart
 
 You need **Node ≥ 20**, [**pnpm**](https://pnpm.io/), and a machine **already logged into `claude`** (run `claude` once locally to authenticate — there's no remote login).
