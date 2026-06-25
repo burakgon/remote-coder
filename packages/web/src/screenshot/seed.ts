@@ -279,24 +279,19 @@ export const QUESTION: QuestionPayload = {
   toolInput: {},
   questions: [
     {
-      header: "Empty-state layout",
-      question: "Which layout should I use for the “no sessions yet” screen?",
+      header: "Error response",
+      question: "Which shape should the rate-limit error return?",
       multiSelect: false,
       options: [
         {
-          label: "Centered hero",
-          description: "A single mark + CTA, vertically centered.",
-          preview: "┌────────────────────┐\n│                    │\n│        ▢ rc        │\n│   Start a session  │\n│      [  +  New ]   │\n│                    │\n└────────────────────┘",
+          label: "Problem+JSON",
+          description: "RFC 7807 — machine-readable.",
+          preview: '{ "type": "/errors/rate-limit",\n  "status": 429, "retryAfter": 30 }',
         },
         {
-          label: "Split with recents",
-          description: "CTA on the left, recent directories on the right.",
-          preview: "┌──────────┬─────────┐\n│  ▢ rc    │ recents │\n│  Start   │ ~/dev   │\n│ [+ New]  │ ~/work  │\n│          │ ~/notes │\n└──────────┴─────────┘",
-        },
-        {
-          label: "Guided checklist",
-          description: "Three setup steps with progress ticks.",
-          preview: "□ Pick a directory\n□ Choose effort/model\n□ Start the session",
+          label: "Simple",
+          description: "A flat code + message.",
+          preview: '{ "error": "rate_limited",\n  "retryAfter": 30 }',
         },
       ],
     },
