@@ -369,6 +369,15 @@ export class ClaudeProcess extends EventEmitter {
       this.stdoutBuffer = this.stdoutBuffer.slice(nl + 1);
       this.handleLine(line);
     }
+    // Guard a pathological no-newline stream (a malformed/runaway frame) from growing the buffer without
+    // bound: well past the largest legitimate single-line frame, drop it + surface a diagnostic.
+    if (this.stdoutBuffer.length > 64 * 1024 * 1024) {
+      this.stdoutBuffer = "";
+      this.emit("diagnostic", {
+        source: "parser",
+        message: "dropped an over-long stdout line (exceeded 64MB with no newline)",
+      });
+    }
   }
 
   private onStderrChunk(chunk: string): void {

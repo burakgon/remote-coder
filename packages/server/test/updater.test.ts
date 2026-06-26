@@ -366,7 +366,7 @@ describe("Updater.startUpdate (spawns the detached script; NO real git/build)", 
 
   test("writes starting status, writes the .sh, and spawns it detached + unref", async () => {
     const unref = vi.fn();
-    const spawnImpl = vi.fn(() => ({ unref }));
+    const spawnImpl = vi.fn(() => ({ unref, on: vi.fn() }));
     const fs = memFs();
     const u = buildOkUpdater(spawnImpl, fs);
     const res = await u.startUpdate();
@@ -386,7 +386,7 @@ describe("Updater.startUpdate (spawns the detached script; NO real git/build)", 
   });
 
   test("refuses when the remote is not the official repo (no spawn)", async () => {
-    const spawnImpl = vi.fn(() => ({ unref: vi.fn() }));
+    const spawnImpl = vi.fn(() => ({ unref: vi.fn(), on: vi.fn() }));
     const { runGit } = fixtureRunGit([
       { match: has("rev-parse --show-toplevel"), result: { stdout: "/repo\n" } },
       { match: has("config --get remote.origin.url"), result: { stdout: "https://github.com/x/fork.git\n" } },

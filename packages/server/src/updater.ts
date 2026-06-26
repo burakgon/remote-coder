@@ -287,6 +287,9 @@ export class Updater {
   };
   private repoRoot: string;
   private cache?: { at: number; info: VersionInfo; failed?: boolean };
+  /** Guards against a second POST /update spawning a concurrent pull/build/restart on the same repo.
+   *  Stays true once an update launches (the process restarts soon); reset only if the launch fails. */
+  private updateInFlight = false;
   /** Memoized "is this a git checkout with the right remote" — repoRoot resolution is one-time. */
   private rootResolved = false;
 
@@ -436,32 +439,48 @@ export class Updater {
     const root = await this.resolveRoot();
     if (!root) return { started: false, reason: "not a git checkout" };
     if (!(await this.hasExpectedRemote(root))) return { started: false, reason: "origin is not the official remote" };
+    if (this.updateInFlight) return { started: false, reason: "an update is already in progress" };
 
+    this.updateInFlight = true;
     this.writeStatus({ state: "starting", phase: "starting" });
 
-    const scriptPath = join(this.deps.dataDir, SCRIPT_FILE);
-    const statusPath = join(this.deps.dataDir, STATUS_FILE);
-    const logPath = join(this.deps.dataDir, LOG_FILE);
-    const restart = this.resolveServiceRestart();
-    const script = renderUpdaterScript({
-      repoRoot: root,
-      statusPath,
-      logPath,
-      expectedRemote: EXPECTED_REMOTE_SUBSTRING,
-      restartCommand: restart.command,
-      parentPid: process.pid,
-    });
-    this.deps.fs.mkdirSync(this.deps.dataDir);
-    this.deps.fs.writeFileSync(scriptPath, script, 0o700);
-    this.deps.fs.chmodSync(scriptPath, 0o700);
+    try {
+      const scriptPath = join(this.deps.dataDir, SCRIPT_FILE);
+      const statusPath = join(this.deps.dataDir, STATUS_FILE);
+      const logPath = join(this.deps.dataDir, LOG_FILE);
+      const restart = this.resolveServiceRestart();
+      const script = renderUpdaterScript({
+        repoRoot: root,
+        statusPath,
+        logPath,
+        expectedRemote: EXPECTED_REMOTE_SUBSTRING,
+        restartCommand: restart.command,
+        parentPid: process.pid,
+      });
+      this.deps.fs.mkdirSync(this.deps.dataDir);
+      this.deps.fs.writeFileSync(scriptPath, script, 0o700);
+      this.deps.fs.chmodSync(scriptPath, 0o700);
 
-    const child = this.deps.spawn("/bin/sh", [scriptPath], {
-      detached: true,
-      stdio: "ignore",
-      cwd: root,
-    });
-    child.unref();
-    return { started: true };
+      const child = this.deps.spawn("/bin/sh", [scriptPath], {
+        detached: true,
+        stdio: "ignore",
+        cwd: root,
+      });
+      // A detached child's async spawn failure (e.g. ENOENT) emits a listener-less 'error' that would
+      // otherwise crash the server — handle it: mark failed + clear the in-flight guard so a retry works.
+      child.on("error", (err: Error) => {
+        this.updateInFlight = false;
+        this.writeStatus({ state: "failed", phase: "starting", error: `failed to launch updater: ${err.message}` });
+      });
+      child.unref();
+      return { started: true };
+    } catch (err) {
+      // A synchronous spawn/write failure must not leave the status stuck on "starting" forever.
+      this.updateInFlight = false;
+      const message = (err as Error).message;
+      this.writeStatus({ state: "failed", phase: "starting", error: message });
+      return { started: false, reason: message };
+    }
   }
 
   /**

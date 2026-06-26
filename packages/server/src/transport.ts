@@ -161,14 +161,20 @@ export function createServer(
         // closing) would unwind the hub's listener loop straight into the ClaudeProcess emit.
         // Guard the send and, on ANY failure, unsubscribe + close so the throw never escapes
         // the hub callback.
-        const subscription = hub.subscribe(
+        // hub.subscribe replays buffered frames SYNCHRONOUSLY, so the listener can fire before this
+        // assignment completes; a send-throw during that replay must not touch `subscription` in its TDZ.
+        // Use a `let` + a deferred-unsubscribe flag for the synchronous case.
+        let subscription: { unsubscribe(): void } | undefined = undefined;
+        let unsubscribeWhenReady = false;
+        subscription = hub.subscribe(
           id,
           (frame) => {
             if (socket.readyState !== socket.OPEN) return;
             try {
               socket.send(JSON.stringify(frame));
             } catch {
-              subscription.unsubscribe();
+              if (subscription) subscription.unsubscribe();
+              else unsubscribeWhenReady = true; // fired during the synchronous replay — clean up right after
               try {
                 socket.close();
               } catch {
@@ -178,6 +184,7 @@ export function createServer(
           },
           sinceSeq,
         );
+        if (unsubscribeWhenReady) subscription.unsubscribe();
 
         socket.on("message", (raw: Buffer) => {
           let msg: Record<string, unknown>;
