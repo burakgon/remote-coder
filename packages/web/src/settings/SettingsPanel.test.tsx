@@ -56,6 +56,16 @@ describe("SettingsPanel", () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ effort: "high" }));
   });
 
+  it("shows an inline 'Saved' confirmation after saving (the panel stays open)", async () => {
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+    render(<SettingsPanel session={undefined} defaults={defaults} onSaveDefaults={onSave} onClose={onClose} />);
+    await userEvent.click(screen.getByRole("button", { name: /save defaults/i }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("confirms before enabling dangerously-skip in defaults", async () => {
     const onSave = vi.fn();
     vi.spyOn(window, "confirm").mockReturnValue(true);

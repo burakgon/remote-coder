@@ -38,6 +38,10 @@ export function SettingsPanel({
   onClose,
 }: SettingsPanelProps) {
   const [draft, setDraft] = useState<SessionDefaults>(defaults);
+  // "Saved ✓" confirmation for the Defaults save: it persists silently to localStorage (the panel does
+  // NOT close), so without this the tap gave no feedback. Auto-reverts, and reverts on the next edit.
+  const [savedDefaults, setSavedDefaults] = useState(false);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Live-edit drafts for the active session. Effort has NO wire echo (set_max_thinking_tokens is
   // silent), so it is reflected optimistically; model/permission-mode are observable on the next
   // system/init but we also reflect them optimistically into the session list (see ChatView).
@@ -70,6 +74,20 @@ export function SettingsPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Clear the pending "Saved ✓" timer on unmount.
+  useEffect(() => () => clearTimeout(savedTimer.current), []);
+  // Editing any default after a save means there are unsaved changes again — drop the confirmation.
+  useEffect(() => {
+    setSavedDefaults(false);
+  }, [draft]);
+
+  function saveDefaultsNow() {
+    onSaveDefaults(draft);
+    setSavedDefaults(true);
+    clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSavedDefaults(false), 1800);
+  }
 
   function toggleDanger(checked: boolean) {
     if (
@@ -280,13 +298,17 @@ export function SettingsPanel({
               <input type="checkbox" checked={draft.dangerouslySkip} onChange={(e) => toggleDanger(e.target.checked)} />
               <span>Dangerously skip permissions (RCE risk)</span>
             </label>
-            <button
-              type="button"
-              className="rc-settings__primary"
-              onClick={() => onSaveDefaults(draft)}
-              aria-label="Save defaults"
-            >
-              Save defaults
+            <button type="button" className="rc-settings__primary" onClick={saveDefaultsNow} aria-label="Save defaults">
+              {savedDefaults ? (
+                <span
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "var(--sp-2)" }}
+                >
+                  <Icon name="check" size={15} />
+                  Saved
+                </span>
+              ) : (
+                "Save defaults"
+              )}
             </button>
           </section>
 
