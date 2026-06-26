@@ -174,6 +174,22 @@ describe("reduceFrame", () => {
     expect(v.turns).toEqual([{ kind: "user", blocks: [{ type: "text", text: "do the thing" }], checkpointId: "u2" }]);
   });
 
+  it("does NOT render an injected isMeta user message (skill content / system-reminder) as a YOU turn", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        message: {
+          content: [{ type: "text", text: "Base directory for this skill: /x\n# Systematic Debugging" }],
+        },
+        uuid: "m1",
+        raw: { isMeta: true },
+      }),
+    );
+    expect(v.turns.filter((t) => t.kind === "user")).toHaveLength(0);
+  });
+
   it("dedupes a user text event by uuid — a duplicate delivery does NOT draw a second bubble", () => {
     let v = emptyView();
     // First delivery (e.g. transcript replay) → one user turn.

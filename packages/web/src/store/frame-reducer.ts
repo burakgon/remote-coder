@@ -136,7 +136,10 @@ interface UserMsg {
   parentToolUseId?: string;
   /** Present on transcript-replayed lines (parseLine passes the raw line through); used to dedupe. */
   uuid?: string;
-  raw?: { uuid?: string };
+  /** The full raw claude line. `isMeta` flags an INJECTED user-role message (skill content loaded by the
+   * Skill tool, a `<system-reminder>`, command output) rather than something the human typed — these
+   * must NOT render as a "YOU" turn. */
+  raw?: { uuid?: string; isMeta?: boolean };
 }
 /** The typed subagent lifecycle fields surfaced by parseLine on a `system` `task_*` event. */
 interface TaskInfo {
@@ -456,6 +459,10 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     const userEv = ev as UserMsg;
     const parent = ev.parentToolUseId;
     const content = userEv.message?.content;
+    // An INJECTED user-role message (skill content the Skill tool loaded, a <system-reminder>, command
+    // output) — context for the model, NOT something the human typed. It must never render as a "YOU"
+    // bubble (claude itself hides these). Its tool_result blocks, if any, are still processed below.
+    const isMeta = userEv.raw?.isMeta === true;
 
     // A subagent's OWN inline message (its prompt turn, its tool_use's result) → route into its thread.
     // A tool_result whose tool_use_id is a known subagent id is THAT subagent's final result (captured
@@ -473,7 +480,7 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
           }
         }
       }
-      if (textBlocks.length > 0) add.push({ kind: "user", blocks: textBlocks });
+      if (!isMeta && textBlocks.length > 0) add.push({ kind: "user", blocks: textBlocks });
       if (Array.isArray(content)) {
         for (const block of content) {
           if (block.type !== "tool_result") continue;
@@ -513,7 +520,7 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     }
     const uuid = userEv.uuid ?? userEv.raw?.uuid;
     const alreadySeen = uuid !== undefined && view.seenUserUuids.has(uuid);
-    if (textBlocks.length > 0 && !alreadySeen) {
+    if (!isMeta && textBlocks.length > 0 && !alreadySeen) {
       const echoedText = textOf(textBlocks);
       // Reconcile against the most recent UNRECONCILED optimistic user bubble (no checkpointId) whose
       // text matches this echo — search from the end so the newest optimistic send is the one stamped.
