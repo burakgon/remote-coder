@@ -8,6 +8,15 @@
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
+/* Reliable single-tap on every control: kills iOS's 300ms tap delay AND the double-tap-to-zoom that
+   could swallow / mis-target a tap on a button (pan + pinch-zoom stay available). */
+button,
+[role="button"],
+a,
+label,
+summary {
+  touch-action: manipulation;
+}
 html,
 body,
 #root {

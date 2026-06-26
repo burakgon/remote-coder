@@ -73,4 +73,18 @@ describe("SubagentView", () => {
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it("the back button closes the sheet even while the subagent is still RUNNING", async () => {
+    const onClose = vi.fn();
+    render(
+      <SubagentView
+        thread={thread({ type: "Explore", status: "running", description: "Find permission/role system", prompt: "x" })}
+        subagents={{ "agent-1": thread({ status: "running" }) }}
+        onOpenSubagent={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /back/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

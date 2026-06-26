@@ -162,6 +162,7 @@ const viewCss = `
 }
 @keyframes rc-sa-view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .rc-sa-view__head {
+  flex: none; /* never shrink — keep the Back button at a fixed, tappable spot below the status bar */
   display: flex; align-items: center; gap: var(--sp-3);
   padding: calc(var(--sp-3) + env(safe-area-inset-top, 0px)) var(--sp-4) var(--sp-3);
   border-bottom: 1px solid var(--border);
@@ -188,7 +189,7 @@ const viewCss = `
   font-family: var(--font-mono); font-size: var(--fs-xs);
 }
 .rc-sa-view__body {
-  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
   padding: var(--sp-4); padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
   /* minmax(0,1fr): pin the single column to the body width so a wide child (a code block / long
      unbroken path) can't stretch the grid and let the WHOLE view scroll sideways forever — wide
