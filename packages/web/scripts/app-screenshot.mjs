@@ -72,7 +72,7 @@ const SHOTS = [
   },
   { name: "chat-desktop", scene: "chat", vp: DESKTOP, wait: "header strong.display", waitShiki: true, scrollTop: true },
   // The interactive ask_user question with ASCII previews.
-  { name: "question-mobile", scene: "question", vp: MOBILE, wait: "button[aria-pressed]" },
+  { name: "question-mobile", scene: "question", vp: MOBILE, wait: '[role="radio"], button[aria-pressed]' },
   // The New-session directory picker (the headline) — git-aware, mobile-first. Wait for the async
   // listing to render rows.
   { name: "wizard-mobile", scene: "wizard", vp: MOBILE, wait: ".rc-picker__row" },

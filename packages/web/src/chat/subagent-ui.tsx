@@ -42,8 +42,9 @@ export function formatUsage(usage: SubagentUsage | undefined): string {
   return parts.join(" · ");
 }
 
+// The rc-sa-pulse keyframe lives ONCE in global.css (neutralized by the prefers-reduced-motion block) —
+// not re-injected as an identical <style> per dot (N subagents => N duplicate <style> nodes).
 const PULSE = "rc-sa-pulse";
-const PULSE_KEYFRAMES = `@keyframes ${PULSE} { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }`;
 
 /**
  * The subagent status dot. RUNNING is the one coral signal (a soft coral halo + pulse); DONE is a
@@ -67,9 +68,7 @@ export function SubagentDot({ status, size = 7 }: { status: SubagentStatus; size
         boxShadow: running ? "0 0 0 3px rgba(247,124,68,.14)" : "none",
         animation: running ? `${PULSE} 1.2s ease-in-out infinite` : "none",
       }}
-    >
-      <style>{PULSE_KEYFRAMES}</style>
-    </span>
+    />
   );
 }
 
@@ -98,7 +97,7 @@ export function AgentGlyph({ status, size = 34 }: { status: SubagentStatus; size
 export function StatusGlyph({ status, size = 13 }: { status: SubagentStatus; size?: number }) {
   if (status === "completed") return <Icon name="check" size={size} label="Done" style={{ color: "var(--ok)" }} />;
   if (status === "failed") return <Icon name="alert" size={size} label="Failed" style={{ color: "var(--err)" }} />;
-  return <SubagentDot status="running" />;
+  return <SubagentDot status="running" size={size} />;
 }
 
 /** The mono micro-caps eyebrow (subagent_type), reused across the card + view header. */

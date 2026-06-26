@@ -78,7 +78,9 @@ export function SubagentTray({
               key={id}
               type="button"
               onClick={() => onOpen(id)}
-              aria-label={`Open ${type} subagent`}
+              // Include the description + status so several same-type chips aren't all "Open subagent
+              // subagent" to a screen reader (they were indistinguishable + gave no status).
+              aria-label={`Open ${type}${t.description ? `: ${t.description}` : ""} — ${t.status}`}
               style={{
                 display: "inline-flex",
                 alignItems: "center",

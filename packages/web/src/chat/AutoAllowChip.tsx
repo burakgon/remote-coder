@@ -31,7 +31,7 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
           display: "inline-flex",
           alignItems: "center",
           gap: "var(--sp-2)",
-          minHeight: 32,
+          minHeight: "var(--tap-min)",
           background: "var(--surface-2)",
           border: "1px solid var(--border)",
           color: "var(--text-muted)",
@@ -85,20 +85,32 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
                 onClick={() => onClear(tool)}
                 aria-label={`Clear auto-allow for ${tool}`}
                 style={{
-                  width: 22,
-                  height: 22,
+                  // 44px tap target (transparent) wrapping a compact 22px visible circle.
+                  width: "var(--tap-min)",
+                  height: "var(--tap-min)",
                   flex: "none",
-                  borderRadius: "50%",
                   display: "grid",
                   placeItems: "center",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-faint)",
+                  background: "transparent",
+                  border: "none",
                   cursor: "pointer",
                   padding: 0,
                 }}
               >
-                <Icon name="x" size={11} />
+                <span
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: "50%",
+                    display: "grid",
+                    placeItems: "center",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-faint)",
+                  }}
+                >
+                  <Icon name="x" size={11} />
+                </span>
               </button>
             </span>
           ))}

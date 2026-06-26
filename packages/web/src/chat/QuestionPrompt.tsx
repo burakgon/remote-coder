@@ -104,6 +104,11 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
       {question.questions.map((q, qi) => {
         const other = otherChosen[qi] ?? false;
         const otherInputId = `rc-other-${question.requestId}-${qi}`;
+        const questionId = `rc-q-${question.requestId}-${qi}`;
+        // Single-select gets RADIO semantics (mutually exclusive, "1 of N"); multi-select keeps
+        // aria-pressed toggle semantics. AT users otherwise heard N independent "pressed" buttons with no
+        // signal that single-select is exclusive.
+        const optRole = q.multiSelect ? undefined : "radio";
         return (
           <div key={qi} style={{ display: "grid", gap: "var(--sp-2)" }}>
             {q.header && (
@@ -119,8 +124,14 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                 {q.header}
               </div>
             )}
-            <div style={{ fontSize: "var(--fs-base)" }}>{q.question}</div>
-            <div role="group" style={{ display: "grid", gap: "var(--sp-2)" }}>
+            <div id={questionId} style={{ fontSize: "var(--fs-base)" }}>
+              {q.question}
+            </div>
+            <div
+              role={q.multiSelect ? "group" : "radiogroup"}
+              aria-labelledby={questionId}
+              style={{ display: "grid", gap: "var(--sp-2)" }}
+            >
               {q.options.map((opt, oi) => {
                 const selected = selections[qi]?.has(opt.label) ?? false;
                 // NOTE: the shared `Button` (packages/web/src/ui/Button.tsx) has CLOSED props (no
@@ -132,7 +143,9 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
                   <button
                     key={`${qi}-${oi}`}
                     type="button"
-                    aria-pressed={selected}
+                    role={optRole}
+                    aria-pressed={q.multiSelect ? selected : undefined}
+                    aria-checked={q.multiSelect ? undefined : selected}
                     onClick={() => togglePreset(qi, opt.label, q.multiSelect)}
                     style={optionStyle(selected)}
                   >
@@ -181,7 +194,9 @@ export function QuestionPrompt({ question, onAnswer, onCancel }: QuestionPromptP
               {/* "Other…" — a final selectable row that reveals a labelled custom-text input. */}
               <button
                 type="button"
-                aria-pressed={other}
+                role={optRole}
+                aria-pressed={q.multiSelect ? other : undefined}
+                aria-checked={q.multiSelect ? undefined : other}
                 aria-expanded={other}
                 aria-controls={otherInputId}
                 onClick={() => toggleOther(qi, q.multiSelect)}

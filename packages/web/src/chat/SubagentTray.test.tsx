@@ -43,7 +43,7 @@ describe("SubagentTray", () => {
         onOpen={onOpen}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /open general-purpose subagent/i }));
+    await userEvent.click(screen.getByRole("button", { name: /open general-purpose/i }));
     expect(onOpen).toHaveBeenCalledWith("a");
   });
 });

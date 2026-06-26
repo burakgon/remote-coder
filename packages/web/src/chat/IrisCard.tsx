@@ -26,7 +26,6 @@ export function IrisCard({ title, ariaLabel, regionRef, children }: IrisCardProp
       ref={regionRef}
       role="region"
       aria-label={ariaLabel}
-      aria-live="assertive"
       tabIndex={-1}
       style={{
         borderRadius: "var(--radius)",
@@ -41,8 +40,14 @@ export function IrisCard({ title, ariaLabel, regionRef, children }: IrisCardProp
       <div aria-hidden style={{ height: 2, background: "var(--coral)" }} />
       <div style={{ padding: "13px 14px", display: "grid", gap: "11px" }}>
         {/* Uppercase coral label (spec .await .t) — the attention signal, paired with the pulsing dot
-            so it's never color-only (a11y). */}
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+            so it's never color-only (a11y). The POLITE live region is scoped to this STATIC title (not
+            the interactive form), so the prompt is announced when it appears WITHOUT re-announcing on
+            every option toggle / "Other" reveal (the old card-wide assertive live region did that). */}
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}
+        >
           <span aria-hidden style={IRIS_DOT} />
           <span
             style={{

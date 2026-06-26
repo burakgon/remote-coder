@@ -3,18 +3,20 @@ import { describe, expect, it } from "vitest";
 import { IrisCard } from "./IrisCard";
 
 describe("IrisCard", () => {
-  it("announces an iris 'awaiting you' region with the title and an assertive live region", () => {
+  it("announces an iris 'awaiting you' region whose POLITE live region is scoped to the static title", () => {
     render(
       <IrisCard title="Awaiting you — permission" ariaLabel="Permission request">
         <div>body</div>
       </IrisCard>,
     );
     const region = screen.getByRole("region", { name: /permission request/i });
-    // It is the ONE place the UI grabs attention — announced assertively so a screen-reader user
-    // hears it immediately (Claude is waiting remotely).
-    expect(region).toHaveAttribute("aria-live", "assertive");
-    // The iris color is paired with the title TEXT (color is never the sole signal, a11y).
-    expect(screen.getByText(/awaiting you/i)).toBeInTheDocument();
+    // The region itself is NOT a live region (it's the focus target) — wrapping the whole interactive
+    // form in aria-live re-announced on every option toggle. The announcement is scoped to the title.
+    expect(region).not.toHaveAttribute("aria-live");
+    const title = screen.getByText(/awaiting you/i);
+    const liveRegion = title.closest("[aria-live]");
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion).toHaveAttribute("aria-live", "polite");
   });
 
   it("uses named keyframes for its motion so the global prefers-reduced-motion block can neutralize it", () => {

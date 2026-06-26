@@ -226,6 +226,17 @@ button {
   }
 }
 
+/* The subagent status-dot pulse — defined once here instead of an identical inline <style> per dot. */
+@keyframes rc-sa-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

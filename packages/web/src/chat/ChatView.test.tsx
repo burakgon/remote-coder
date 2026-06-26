@@ -394,7 +394,7 @@ describe("ChatView — pending ask_user question (answer carries askId)", () => 
     pushQuestion("ask-1", 99);
     await screen.findByRole("region", { name: /question/i });
 
-    await userEvent.click(screen.getByRole("button", { name: /esbuild/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /esbuild/ }));
     await userEvent.click(screen.getByRole("button", { name: /^Submit/ }));
 
     expect(sentFrames).toContainEqual({
@@ -431,7 +431,7 @@ describe("ChatView — pending ask_user question (answer carries askId)", () => 
     });
     await screen.findByRole("region", { name: /question/i });
 
-    await userEvent.click(screen.getByRole("button", { name: /^Yes$/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /^Yes$/ }));
     await userEvent.click(screen.getByRole("button", { name: /^Submit/ }));
 
     expect(sentFrames).toContainEqual({
