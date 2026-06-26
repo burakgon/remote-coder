@@ -176,11 +176,15 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
             marginLeft: "auto",
             background: "transparent",
             border: 0,
-            padding: "2px 4px",
+            // ≥44px tap target (the glyph/label stays compact, centered).
+            minHeight: "var(--tap-min)",
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "0 var(--sp-2)",
             cursor: "pointer",
             fontFamily: "var(--font-mono)",
             fontSize: "11px",
-            color: copied ? "var(--accent)" : "var(--text-faint)",
+            color: copied ? "var(--ok)" : "var(--text-faint)",
           }}
         >
           {copied ? "copied" : "copy"}

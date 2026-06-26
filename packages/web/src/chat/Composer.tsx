@@ -458,20 +458,33 @@ export function Composer({
                 aria-label={`Remove ${img.name}`}
                 onClick={() => setImages((p) => p.filter((x) => x.id !== img.id))}
                 style={{
-                  width: 24,
-                  height: 24,
+                  // 44px tap target (transparent) wrapping a compact 24px visible circle, so the remove
+                  // affordance is easy to hit on a phone without a chunky chip.
+                  width: "var(--tap-min)",
+                  height: "var(--tap-min)",
                   flex: "none",
                   display: "grid",
                   placeItems: "center",
-                  borderRadius: "50%",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-faint)",
+                  background: "transparent",
+                  border: "none",
                   cursor: "pointer",
                   padding: 0,
                 }}
               >
-                <Icon name="x" size={14} />
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: "50%",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-faint)",
+                  }}
+                >
+                  <Icon name="x" size={14} />
+                </span>
               </button>
             </span>
           ))}

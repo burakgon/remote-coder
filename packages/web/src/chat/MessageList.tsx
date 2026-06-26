@@ -477,7 +477,15 @@ function AttachmentCard({
             href={href}
             download
             aria-label={`Download ${item.name}`}
-            style={{ marginLeft: "auto", display: "inline-flex", color: "var(--text-muted)" }}
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minWidth: "var(--tap-min)",
+              minHeight: "var(--tap-min)",
+              color: "var(--text-muted)",
+            }}
           >
             <Icon name="download" size={16} />
           </a>
@@ -531,8 +539,8 @@ function AttachmentCard({
           title={item.path}
           aria-label={`Download ${item.name}`}
           style={{
-            width: 40,
-            height: 40,
+            width: "var(--tap-min)",
+            height: "var(--tap-min)",
             flex: "none",
             borderRadius: "var(--radius-sm)",
             display: "grid",

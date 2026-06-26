@@ -382,9 +382,11 @@ const sessionListCss = `
 .rc-sl__await-dot {
   width: 8px; height: 8px; border-radius: 50%; background: var(--awaiting); flex: none;
   box-shadow: 0 0 7px var(--awaiting);
-  animation: rc-pulse 1.2s ease-in-out infinite;
+  animation: rc-sl-pulse 1.2s ease-in-out infinite;
 }
-@keyframes rc-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* Own keyframe name — a global "rc-pulse" also lives in LiveWire with a different 50% opacity, and the
+   duplicate name meant whichever <style> mounted last won for both. */
+@keyframes rc-sl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 .rc-sl__main {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; gap: 3px;

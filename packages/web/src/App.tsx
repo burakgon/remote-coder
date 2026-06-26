@@ -419,7 +419,7 @@ export function App() {
             }
             .rc-updated-toast button {
               flex: none; display: grid; place-items: center;
-              width: 28px; height: 28px; border-radius: var(--radius-sm);
+              width: var(--tap-min); height: var(--tap-min); border-radius: var(--radius-sm);
               background: transparent; border: none; color: var(--text-muted); cursor: pointer;
             }
             .rc-updated-toast button:hover { color: var(--text); background: var(--surface); }
@@ -445,7 +445,7 @@ export function App() {
             }
             .rc-close-err button {
               flex: none; display: grid; place-items: center;
-              width: 28px; height: 28px; border-radius: var(--radius-sm);
+              width: var(--tap-min); height: var(--tap-min); border-radius: var(--radius-sm);
               background: transparent; border: none; color: var(--text-muted); cursor: pointer;
             }
             .rc-close-err button:hover { color: var(--text); background: var(--surface); }
