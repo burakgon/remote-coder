@@ -85,7 +85,7 @@ export function SubagentTray({
                 gap: "6px",
                 flex: "none",
                 maxWidth: "62vw",
-                minHeight: 30,
+                minHeight: "var(--tap-min)",
                 padding: "4px var(--sp-2)",
                 borderRadius: "var(--radius-pill)",
                 background: "var(--surface-2)",
