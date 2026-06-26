@@ -629,8 +629,17 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       }
       return next;
     }
-    // init/status — no turn content; keep the view as-is (live link is alive).
-    if (next.wireState === "idle") next.wireState = "thinking";
+    // A process (re)start (`system init`) carries NO active turn — the agent is idle, waiting for input.
+    // The old code flipped idle→"thinking" here, which left a freshly-resumed / just-reconnected session
+    // showing "working" forever with nothing running (and a stuck Stop button). And resuming a session
+    // whose transcript ended MID-turn (a tool_use with no final result) would otherwise stay "running-
+    // tool". So on init, reset the transient turn state to idle and drop any stale partial text from the
+    // dead process; real turn frames (assistant/stream/tool/result) set the working state from here.
+    if (ev.subtype === "init") {
+      next.wireState = "idle";
+      next.liveText = "";
+      next.thinkingText = "";
+    }
     return next;
   }
   return next;

@@ -401,6 +401,20 @@ describe("reduceFrame", () => {
     expect(v.pendingPermission).toBeUndefined();
   });
 
+  it("a system `init` (process start/resume) resets a stale 'working' wire to idle (no phantom 'running')", () => {
+    // A transcript that ended MID-turn leaves the wire at "running-tool" (a tool_use with no result).
+    let v = reduceFrame(
+      emptyView(),
+      ev(1, { type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] } }),
+    );
+    expect(v.wireState).toBe("running-tool");
+    v.liveText = "partial…";
+    // The resumed/reconnected process emits `system init` → no active turn → idle (NOT stuck "working").
+    v = reduceFrame(v, ev(2, { type: "system", subtype: "init" }));
+    expect(v.wireState).toBe("idle");
+    expect(v.liveText).toBe("");
+  });
+
   it("turns an attachment frame into an attachment turn (Claude sent a file)", () => {
     const frame: ServerFrame = {
       seq: 1,
