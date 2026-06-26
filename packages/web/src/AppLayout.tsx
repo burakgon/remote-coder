@@ -6,15 +6,11 @@ import { useFocusTrap } from "./ui/useFocusTrap";
 export interface AppLayoutProps {
   children: ReactNode;
   sessionList: ReactNode;
-  /** Open the mobile sessions sheet. Kept on the layout's plumbing for the caller (App), but the
-   * trigger itself now lives in the header / landing state (a top-left, in-flow menu button) rather
-   * than a floating FAB — so it never overlaps the conversation or composer. */
-  onShowSessions?: () => void;
+  /** Hide the mobile sessions sheet (the scrim / sheet close-button / Escape). The OPEN trigger now lives
+   * in the header / landing state (a top-left in-flow menu button), so this layout no longer needs an
+   * onShowSessions or a needsYou pip — those were dead props. */
   onHideSessions?: () => void;
   sessionsOpen?: boolean;
-  /** Count of sessions awaiting a permission/question. Drives the "needs you" pip on the (now header-
-   * /landing-owned) mobile menu button, so attention is visible from any chat with the rail closed. */
-  needsYou?: number;
   /**
    * When a conversation occupies the main panel, the mobile sheet is collapsed; mounting the hidden
    * session list behind it would leave a duplicate of the active session (cwd/name) in the DOM and

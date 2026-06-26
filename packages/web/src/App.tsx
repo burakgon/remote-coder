@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LoginScreen } from "./auth/LoginScreen";
 import { loadToken, saveToken, clearToken, consumeTokenFromUrl } from "./auth/token-store";
 import { createApiClient, ApiError } from "./api/client";
 import { API_BASE_URL } from "./config";
 import { useStore } from "./store/store";
+import { useShallow } from "zustand/react/shallow";
 import { AppLayout } from "./AppLayout";
 import { SessionList, awaitingCount } from "./session/SessionList";
-import { wireStateForSession } from "./session/status";
 import { sortSessionsByActivity } from "./session/order";
 import { sessionIdFromLocation } from "./session/deep-link";
 import { NewSessionWizard } from "./session/NewSessionWizard";
@@ -33,8 +33,13 @@ type Phase = "login" | "validating" | "ready";
  * main.tsx reloads the page on `controllerchange`. A delayed reload is a safety net if that never fires.
  * Gated on `navigator.serviceWorker` (absent in jsdom/dev), so it's inert in tests.
  */
+let reloadScheduled = false;
 function requestReloadForNewVersion(): void {
   if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
+  // Guard: both the version poll AND the update-status poll can detect the new version, and each could
+  // fire this — schedule the (uncancellable) fallback reload only ONCE.
+  if (reloadScheduled) return;
+  reloadScheduled = true;
   void navigator.serviceWorker.getRegistration().then((reg) => reg?.update());
   setTimeout(() => window.location.reload(), 10_000);
 }
@@ -46,6 +51,10 @@ export function App() {
   const [token, setTokenState] = useState<string | undefined>(() => consumeTokenFromUrl() ?? loadToken());
   const [phase, setPhase] = useState<Phase>(token === undefined ? "login" : "validating");
   const [loginError, setLoginError] = useState<string | undefined>();
+  // SCOPED selector (useShallow) over only the fields the shell needs — deliberately NOT `views`, which
+  // changes on every streaming frame. With views excluded, an inbound delta re-renders only SessionList
+  // (which subscribes to views itself), not this whole shell. Actions are stable; state fields are shallow-
+  // compared, so the shell re-renders only when one it actually uses changes.
   const {
     sessions,
     setSessions,
@@ -55,7 +64,6 @@ export function App() {
     activeSessionId,
     setActive,
     removeSession,
-    views,
     lastActiveAt,
     updateInfo,
     setUpdateInfo,
@@ -63,7 +71,25 @@ export function App() {
     setUpdateState,
     usage,
     setUsage,
-  } = useStore();
+  } = useStore(
+    useShallow((s) => ({
+      sessions: s.sessions,
+      setSessions: s.setSessions,
+      mergeSessionMeta: s.mergeSessionMeta,
+      addSession: s.addSession,
+      setToken: s.setToken,
+      activeSessionId: s.activeSessionId,
+      setActive: s.setActive,
+      removeSession: s.removeSession,
+      lastActiveAt: s.lastActiveAt,
+      updateInfo: s.updateInfo,
+      setUpdateInfo: s.setUpdateInfo,
+      updateState: s.updateState,
+      setUpdateState: s.setUpdateState,
+      usage: s.usage,
+      setUsage: s.setUsage,
+    })),
+  );
   const [wizardOpen, setWizardOpen] = useState(false);
   // A small, dismissible error surfaced when a close actually FAILS (so we don't silently pretend a
   // session is gone). Cleared on the next close attempt or when the user dismisses it.
@@ -72,11 +98,17 @@ export function App() {
   // network): without this the app silently dropped you into an empty list. Cleared on any successful
   // (re)load — the background poll keeps retrying.
   const [loadError, setLoadError] = useState<string | undefined>();
+  // Consecutive background-poll failures — surfaces loadError only after the server is genuinely
+  // unreachable (not a single blip), reset on the next success.
+  const pollFailures = useRef(0);
   // GLOBAL settings (defaults for new sessions + notifications), reachable WITHOUT opening a chat — from
   // the rail header and the landing top bar. Rendered with no `session`, so it shows only the global
   // sections. Push state is read once (the opt-in itself is a deliberate tap).
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
-  const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported">("unsubscribed");
+  // Read the saved defaults once PER OPEN (not on every render while the panel is up) — the panel only
+  // seeds its draft from the first value anyway.
+  const globalDefaults = useMemo(() => loadDefaults(), [globalSettingsOpen]);
+  const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported" | "denied">("unsubscribed");
   // Read the live push subscription state only when the global settings actually open (not on every app
   // mount): it's the only place that needs it, and deferring avoids an on-load async state update.
   useEffect(() => {
@@ -188,11 +220,16 @@ export function App() {
         .listSessions()
         .then((s) => {
           if (cancelled) return;
+          pollFailures.current = 0;
           mergeSessionMeta(s);
           setLoadError(undefined); // a successful poll clears any earlier "couldn't reach the server"
         })
         .catch(() => {
-          // transient — keep the current list; the next tick retries.
+          // Keep the current list (a single blip is transient), but after a couple of CONSECUTIVE poll
+          // failures the server is genuinely unreachable — surface it so the user knows the list is stale
+          // (the cold-start banner only covered the first load). Cleared on the next success.
+          if (cancelled) return;
+          if (++pollFailures.current >= 2) setLoadError("Couldn't reach the server — the list may be stale.");
         });
     };
     const interval = setInterval(refresh, 15_000);
@@ -379,12 +416,14 @@ export function App() {
     const closing = sessions.find((s) => s.id === id);
     const wasActive = id === activeSessionId;
     // Optimistic removal + reselection.
+    let autoSelected: string | undefined;
     if (wasActive) {
       const remaining = sortSessionsByActivity(
         sessions.filter((s) => s.id !== id),
         lastActiveAt,
       );
-      setActive(remaining[0]?.id);
+      autoSelected = remaining[0]?.id;
+      setActive(autoSelected);
     }
     removeSession(id);
     setCloseError(undefined);
@@ -393,7 +432,9 @@ export function App() {
       // user. (An already-gone session is a 204 server-side, so it never lands here.)
       if (closing) {
         addSession(closing);
-        if (wasActive) setActive(id);
+        // Restore selection to the closed row ONLY if the user hasn't navigated since (the active is
+        // still the one we auto-selected) — don't yank them back from a row they deliberately opened.
+        if (wasActive && useStore.getState().activeSessionId === autoSelected) setActive(id);
       }
       const message = err instanceof ApiError ? err.message : "Couldn't close the session.";
       setCloseError(message);
@@ -426,12 +467,8 @@ export function App() {
       }}
       onNew={() => openWizard("new")}
       onClose={closeSession}
-      viewWireState={(id) => {
-        // The list only renders ids that are in `sessions`, so a miss is unreachable; fall back to
-        // "idle" rather than fabricating a fake SessionMeta to satisfy wireStateForSession.
-        const meta = sessions.find((s) => s.id === id);
-        return meta ? wireStateForSession(meta, views[id]) : "idle";
-      }}
+      // viewWireState is intentionally NOT passed: SessionList subscribes to `views` itself and derives
+      // each row's wire state, so a streaming frame re-renders only the rail — not this whole App shell.
     />
   );
 
@@ -543,8 +580,6 @@ export function App() {
         sessionList={list}
         sessionsOpen={sessionsOpen}
         conversationActive={activeSessionId !== undefined}
-        needsYou={awaitingCount(sessions)}
-        onShowSessions={() => setSessionsOpen(true)}
         onHideSessions={() => setSessionsOpen(false)}
       >
         {activeSessionId ? (
@@ -678,9 +713,9 @@ export function App() {
           initialMode={wizardMode}
           onClose={() => setWizardOpen(false)}
           onCreated={(session) => {
-            // Resume is idempotent server-side: a session that's already live is returned as-is, so
-            // dedupe by id rather than appending a duplicate rail row.
-            setSessions(sessions.some((s) => s.id === session.id) ? sessions : [...sessions, session]);
+            // addSession is idempotent (no-op if the id already exists) and an immutable store update, so
+            // it can't clobber a concurrent mergeSessionMeta poll the way a render-closure setSessions could.
+            addSession(session);
             setActive(session.id);
             setWizardOpen(false);
             setSessionsOpen(false);
@@ -689,15 +724,15 @@ export function App() {
       )}
       {globalSettingsOpen && (
         <SettingsPanel
-          defaults={loadDefaults()}
+          defaults={globalDefaults}
           onSaveDefaults={saveDefaults}
           pushState={pushState}
           onEnablePush={async () => {
             try {
               const result = await enablePush(api);
-              setPushState(
-                result === "subscribed" ? "subscribed" : result === "unsupported" ? "unsupported" : "unsubscribed",
-              );
+              // enablePush returns subscribed | denied | unsupported — surface "denied" so the panel can
+              // explain it (re-tapping Enable silently no-ops once the browser has denied permission).
+              setPushState(result);
             } catch {
               setPushState("unsubscribed");
             }

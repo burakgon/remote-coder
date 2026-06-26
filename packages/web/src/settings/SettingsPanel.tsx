@@ -20,7 +20,7 @@ export interface SettingsPanelProps {
     dangerouslySkip?: boolean;
   }) => void;
   /** Push opt-in handlers. When omitted, the Notifications section is hidden (e.g. in tests/screenshots). */
-  pushState?: "subscribed" | "unsubscribed" | "unsupported";
+  pushState?: "subscribed" | "unsubscribed" | "unsupported" | "denied";
   onEnablePush?: () => void;
   onDisablePush?: () => void;
   onClose: () => void;
@@ -51,14 +51,19 @@ export function SettingsPanel({
   // "Apply" no longer risks silently downgrading an acceptEdits/plan session to default when the
   // user only edited the model. Omitting an unchanged control leaves the running session's setting
   // untouched (the server only applies fields present in the `settings` frame).
-  const seededModel = session?.model ?? "";
-  const seededEffort = session?.effort ?? "medium";
-  const seededPermissionMode = session?.permissionMode ?? "default";
-  const seededDanger = session?.dangerouslySkip ?? false;
-  const [liveModel, setLiveModel] = useState(seededModel);
-  const [liveEffort, setLiveEffort] = useState(seededEffort);
-  const [livePermissionMode, setLivePermissionMode] = useState(seededPermissionMode);
-  const [liveDanger, setLiveDanger] = useState(seededDanger);
+  // FREEZE the baseline at OPEN (useRef, captured once) — recomputing it from `session` every render
+  // meant a 15s mergeSessionMeta poll (a fresh session object) could shift the baseline under the
+  // unchanged drafts, so "Apply" would send a value the user never touched (or omit one they did).
+  const seeded = useRef({
+    model: session?.model ?? "",
+    effort: session?.effort ?? "medium",
+    permissionMode: session?.permissionMode ?? "default",
+    danger: session?.dangerouslySkip ?? false,
+  }).current;
+  const [liveModel, setLiveModel] = useState(seeded.model);
+  const [liveEffort, setLiveEffort] = useState(seeded.effort);
+  const [livePermissionMode, setLivePermissionMode] = useState(seeded.permissionMode);
+  const [liveDanger, setLiveDanger] = useState(seeded.danger);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // Real modal semantics: trap Tab within the dialog and restore focus to the trigger on close.
@@ -198,6 +203,14 @@ export function SettingsPanel({
                     type="button"
                     className="rc-settings__primary"
                     aria-label="Apply to session"
+                    // Disabled when nothing changed — an empty {} update would be a pointless settings
+                    // frame (and could trigger a no-op respawn for a dangerouslySkip "change" to itself).
+                    disabled={
+                      liveModel === seeded.model &&
+                      liveEffort === seeded.effort &&
+                      livePermissionMode === seeded.permissionMode &&
+                      liveDanger === seeded.danger
+                    }
                     onClick={() => {
                       // Only send the controls the user CHANGED — an unchanged control is omitted so it
                       // cannot silently reset the running session's value (see seeding note above). A
@@ -208,10 +221,10 @@ export function SettingsPanel({
                         permissionMode?: string;
                         dangerouslySkip?: boolean;
                       } = {};
-                      if (liveModel !== seededModel) update.model = liveModel || undefined;
-                      if (liveEffort !== seededEffort) update.effort = liveEffort;
-                      if (livePermissionMode !== seededPermissionMode) update.permissionMode = livePermissionMode;
-                      if (liveDanger !== seededDanger) update.dangerouslySkip = liveDanger;
+                      if (liveModel !== seeded.model) update.model = liveModel || undefined;
+                      if (liveEffort !== seeded.effort) update.effort = liveEffort;
+                      if (livePermissionMode !== seeded.permissionMode) update.permissionMode = livePermissionMode;
+                      if (liveDanger !== seeded.danger) update.dangerouslySkip = liveDanger;
                       onApplyLiveSettings(update);
                     }}
                   >
@@ -275,7 +288,7 @@ export function SettingsPanel({
               >
                 {EFFORTS.map((e) => (
                   <option key={e} value={e}>
-                    {e.charAt(0).toUpperCase() + e.slice(1)}
+                    {e}
                   </option>
                 ))}
               </select>
@@ -324,6 +337,11 @@ export function SettingsPanel({
                 <p className="rc-settings__hint">
                   Web Push needs HTTPS (or localhost) and a supporting browser. Open this app over your secure tunnel to
                   enable notifications.
+                </p>
+              ) : pushState === "denied" ? (
+                <p className="rc-settings__hint">
+                  Notifications are blocked for this site. Re-enable them in your browser&apos;s site settings, then
+                  reopen this panel.
                 </p>
               ) : pushState === "subscribed" ? (
                 <button

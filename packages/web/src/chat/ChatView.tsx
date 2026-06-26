@@ -57,7 +57,7 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
   const openSubagentId = subagentStack.length > 0 ? subagentStack[subagentStack.length - 1]! : null;
   // Reflect the device's current push-subscription state in Settings. No permission is requested
   // here — `currentPushState` only reads the existing subscription (the opt-in is a deliberate tap).
-  const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported">("unsubscribed");
+  const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported" | "denied">("unsubscribed");
   useEffect(() => {
     void currentPushState().then(setPushState);
   }, []);
@@ -365,9 +365,8 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             // become an unhandled rejection and the toggle reflects the real (unsubscribed) state.
             try {
               const result = await enablePush(api);
-              setPushState(
-                result === "subscribed" ? "subscribed" : result === "unsupported" ? "unsupported" : "unsubscribed",
-              );
+              // Surface "denied" (not just "unsubscribed") so the panel explains the blocked state.
+              setPushState(result);
             } catch {
               setPushState("unsubscribed");
             }

@@ -174,12 +174,7 @@ export function AppShot() {
 
   return (
     <>
-      <AppLayout
-        sessionList={list}
-        needsYou={awaitingCount(sessions)}
-        sessionsOpen={scene === "sessions"}
-        onHideSessions={() => {}}
-      >
+      <AppLayout sessionList={list} sessionsOpen={scene === "sessions"} onHideSessions={() => {}}>
         <ChatBody
           scene={scene}
           sessionId={scene === "subagents" || scene === "subagentview" ? AGENTS_ID : ACTIVE_ID}

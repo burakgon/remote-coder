@@ -3,6 +3,8 @@ import { Icon } from "../ui/Icon";
 import { LiveWire } from "../ui/LiveWire";
 import type { LiveWireState } from "../ui/LiveWire";
 import type { SessionMeta, UsageInfo } from "../types/server";
+import { useStore } from "../store/store";
+import { wireStateForSession } from "./status";
 import { sortSessionsByActivity } from "./order";
 import { relativeTime } from "./relative-time";
 import { UsageBars } from "./UsageBars";
@@ -20,7 +22,10 @@ export interface SessionListProps {
   onNew: () => void;
   /** Close (stop + remove) a session in one tap — the row's ✕ button. */
   onClose: (id: string) => void;
-  viewWireState: (id: string) => LiveWireState;
+  /** Override the per-row live wire state. Optional: when omitted, SessionList subscribes to the store's
+   *  `views` ITSELF and derives it — so the live rail dots update on streaming WITHOUT the whole App
+   *  shell re-rendering on every frame (App no longer needs to select `views`). Tests inject this. */
+  viewWireState?: (id: string) => LiveWireState;
   /** Claude usage limits (GET /usage). When present, two slim bars render at the very top of the rail;
    * null/undefined hides them (the feature is unavailable). */
   usage?: UsageInfo | null;
@@ -139,6 +144,11 @@ export function SessionList({
   onCheckUpdate,
   onOpenSettings,
 }: SessionListProps) {
+  // Subscribe to `views` HERE (not in App) so a streaming frame re-renders only this rail — for the live
+  // dots — instead of the whole App shell. When a `viewWireState` override is passed (tests), use it.
+  const storeViews = useStore((s) => s.views);
+  const wireFor = (s: SessionMeta): LiveWireState =>
+    viewWireState ? viewWireState(s.id) : wireStateForSession(s, storeViews[s.id]);
   const ordered = sortSessionsByActivity(sessions, lastActiveAt);
   const needs = awaitingCount(sessions);
 
@@ -193,7 +203,7 @@ export function SessionList({
                         needs you
                       </span>
                     ) : (
-                      <LiveWire state={viewWireState(s.id)} />
+                      <LiveWire state={wireFor(s)} />
                     )}
                   </span>
                   {/* Keep the full path as one text node (muted, ellipsised) so it stays scannable

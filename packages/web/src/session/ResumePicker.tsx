@@ -194,7 +194,11 @@ export function ResumePicker({ getResumable, scopeCwd, now, onResume, topSlot, o
                     )}
                     <span className="rc-resume__chip">
                       <Icon name="history" size={13} />
-                      <time dateTime={new Date(r.lastActivity).toISOString()}>{relativeTime(r.lastActivity, now)}</time>
+                      <time
+                        dateTime={Number.isFinite(r.lastActivity) ? new Date(r.lastActivity).toISOString() : undefined}
+                      >
+                        {Number.isFinite(r.lastActivity) ? relativeTime(r.lastActivity, now) : ""}
+                      </time>
                     </span>
                     <span className="rc-resume__chip" title={`${r.messageCount} messages`}>
                       {r.messageCount} msg

@@ -40,6 +40,10 @@ export function NewSessionWizard({
   const [effort, setEffort] = useState<string>(seeded.effort);
   const [model, setModel] = useState(seeded.model ?? "");
   const [dangerouslySkip, setDangerouslySkip] = useState(seeded.dangerouslySkip);
+  // RESUME has its OWN skip toggle, default OFF — NOT seeded from the global new-session default. Inheriting
+  // the default meant a safe past session could come back with --dangerously-skip-permissions just because
+  // the user's default is "skip"; resume is an explicit per-session opt-in instead.
+  const [resumeDangerSkip, setResumeDangerSkip] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -91,8 +95,8 @@ export function NewSessionWizard({
         topSlot={
           <>
             {toggle}
-            {/* Resume can be dangerous-skip too — seeded from the saved default; self-styled because the
-                resume branch renders the picker alone (the wizard's CSS isn't mounted here). */}
+            {/* Resume can be dangerous-skip too — but an EXPLICIT opt-in (default OFF), not seeded from the
+                new-session default. Self-styled (the resume branch renders the picker without the wizard CSS). */}
             <label
               style={{
                 display: "flex",
@@ -100,14 +104,14 @@ export function NewSessionWizard({
                 gap: "var(--sp-2)",
                 minHeight: "var(--tap-min)",
                 fontSize: "var(--fs-sm)",
-                color: dangerouslySkip ? "var(--err)" : "var(--text)",
+                color: resumeDangerSkip ? "var(--err)" : "var(--text)",
               }}
             >
               <input
                 type="checkbox"
                 aria-label="dangerously skip permissions"
-                checked={dangerouslySkip}
-                onChange={(e) => setDangerouslySkip(e.target.checked)}
+                checked={resumeDangerSkip}
+                onChange={(e) => setResumeDangerSkip(e.target.checked)}
                 style={{ width: 20, height: 20, accentColor: "var(--err)" }}
               />
               <span>Dangerously skip permissions (RCE risk)</span>
@@ -116,11 +120,11 @@ export function NewSessionWizard({
         }
         onCancel={onClose}
         onResume={async (resumeSessionId) => {
-          // Pass dangerouslySkip (the resume view's toggle) so a resumed session can skip permissions.
-          // Deliberately DON'T send effort/model here — the resume pane has no control for them, so
-          // sending the defaults would silently downgrade a high-effort conversation; the resumed session
-          // keeps its own settings (changeable live afterwards).
-          const session = await api.createSession({ resumeSessionId, dangerouslySkip });
+          // Pass the RESUME-specific skip toggle (explicit opt-in, default off) so a resumed session can
+          // skip permissions WITHOUT inheriting the global new-session default. Deliberately DON'T send
+          // effort/model here — the resume pane has no control for them, so sending the defaults would
+          // silently downgrade a high-effort conversation; the resumed session keeps its own settings.
+          const session = await api.createSession({ resumeSessionId, dangerouslySkip: resumeDangerSkip });
           onCreated(session);
         }}
       />

@@ -28,7 +28,9 @@ describe("SettingsPanel", () => {
       />,
     );
     expect(screen.getByText("opus")).toBeInTheDocument();
-    expect(screen.getByText("high")).toBeInTheDocument();
+    // Read-only branch (no onApplyLiveSettings) shows the effort as text; "high" also appears as a
+    // default-effort option now that both selects are lowercase, so assert at least one occurrence.
+    expect(screen.getAllByText("high").length).toBeGreaterThan(0);
   });
 
   it("stops the session after a confirm", async () => {
@@ -155,7 +157,7 @@ describe("SettingsPanel", () => {
     expect(sent).not.toHaveProperty("model");
   });
 
-  it("applying with NO changes sends an empty update (every control omitted)", async () => {
+  it("disables Apply when nothing changed (no pointless empty-update frame)", () => {
     const onApply = vi.fn();
     render(
       <SettingsPanel
@@ -166,8 +168,10 @@ describe("SettingsPanel", () => {
         onClose={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /apply to session/i }));
-    expect(onApply).toHaveBeenCalledWith({});
+    // With no edits, every control still matches the frozen baseline → Apply is disabled, so an empty
+    // {} update (and any no-op respawn it could cause) can never be sent.
+    expect(screen.getByRole("button", { name: /apply to session/i })).toBeDisabled();
+    expect(onApply).not.toHaveBeenCalled();
   });
 
   it("reflects the active session's model/effort into the editable controls", () => {
@@ -187,9 +191,10 @@ describe("SettingsPanel", () => {
   it("without onApplyLiveSettings the active session block stays read-only (no apply button)", () => {
     render(<SettingsPanel session={session} defaults={defaults} onSaveDefaults={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /apply to session/i })).toBeNull();
-    // Read-only branch still shows the fixed model/effort.
+    // Read-only branch still shows the fixed model/effort. ("high" also appears as a default-effort
+    // option now that both selects are lowercase, so assert at least one occurrence.)
     expect(screen.getByText("opus")).toBeInTheDocument();
-    expect(screen.getByText("high")).toBeInTheDocument();
+    expect(screen.getAllByText("high").length).toBeGreaterThan(0);
   });
 
   it("shows an opt-in button when push is unsubscribed and fires onEnablePush", async () => {
