@@ -26,4 +26,12 @@ describe("extractFilePaths", () => {
     // A real file path mentioned alongside a URL is still picked up.
     expect(extractFilePaths("edited /src/app.ts — see https://code.claude.com")).toEqual(["/src/app.ts"]);
   });
+  it("does NOT turn an IP fragment / numeric-only extension into a download chip", () => {
+    // The reported bug: "Cloudflare ( 188.114.96.7/.97.7 )" produced a bogus `.97.7` chip — the `/.97.7`
+    // matched as a path with a numeric ".7" extension. A real extension always has a letter.
+    expect(extractFilePaths("Cloudflare ( 188.114.96.7/.97.7 ) bridges to 127.0.0.1:20241")).toEqual([]);
+    expect(extractFilePaths("ratio 3/4.5 and version /1.2.3")).toEqual([]);
+    // Real files (letter-bearing extensions) still chip, including a multi-dot name.
+    expect(extractFilePaths("see /tmp/out.7z and /a/b/archive.tar.gz")).toEqual(["/tmp/out.7z", "/a/b/archive.tar.gz"]);
+  });
 });
