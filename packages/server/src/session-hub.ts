@@ -352,19 +352,26 @@ export class SessionHub {
    * and the MCP tool can always complete. `requestId` mirrors `askId` so the unchanged web reducer (which
    * keys pendingQuestion on `requestId`) renders it; the explicit `askId` routes the answer back here.
    */
-  askUser(id: string, questions: QuestionSpec[]): Promise<AskResult> {
+  askUser(id: string, questions: QuestionSpec[], signal?: AbortSignal): Promise<AskResult> {
     const record = this.require(id);
     const askId = `ask-${randomUUID()}`;
     return new Promise<AskResult>((resolve) => {
+      const settle = (result: AskResult): void => {
+        if (record.pendingAsks.delete(askId)) this.setAwaiting(record, askId, false);
+        clearTimeout(timer);
+        resolve(result);
+      };
       const timer = setTimeout(() => {
         // Timed out: the user never answered. Drop the pending entry and report cancellation so the
         // held POST /ask responds and the MCP tool returns rather than hanging forever.
-        if (record.pendingAsks.delete(askId)) this.setAwaiting(record, askId, false);
-        resolve({ cancelled: true });
+        settle({ cancelled: true });
       }, ASK_TIMEOUT_MS);
       // Don't let a pending ask-timer keep the process alive on shutdown (the timer is cleared on
       // answer/cancel anyway). `unref` is unavailable on some timer mocks — guard it.
       timer.unref?.();
+      // The long-poll client (mcp-send) disconnected before the user answered — cancel the ask so its
+      // timer + pending entry + the user's now-moot prompt don't linger until the timeout.
+      if (signal) signal.addEventListener("abort", () => settle({ cancelled: true }), { once: true });
       record.pendingAsks.set(askId, { resolve, timer });
       this.setAwaiting(record, askId, true);
       this.emitFrame(record, "question", { requestId: askId, askId, toolInput: { questions }, questions });

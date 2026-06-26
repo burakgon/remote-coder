@@ -124,6 +124,23 @@ test("result usage: contextWindow is the max across modelUsage entries (main mod
   expect(parseLine(line)).toMatchObject({ type: "result", usage: { contextWindow: 1000000 } });
 });
 
+test("result usage: contextWindow prefers the result's OWN model over a larger subagent model", () => {
+  // The MAIN conversation is 200k; a subagent ran a 1M model. The meter must use the MAIN model's window
+  // (200k), not the max — else a 1M subagent would deflate the main conversation's fill %.
+  const line = JSON.stringify({
+    type: "result",
+    subtype: "success",
+    session_id: "s1",
+    model: "claude-opus-4-8",
+    usage: { input_tokens: 1000, output_tokens: 10 },
+    modelUsage: {
+      "claude-opus-4-8": { contextWindow: 200000 },
+      "some-1m-subagent": { contextWindow: 1000000 },
+    },
+  });
+  expect(parseLine(line)).toMatchObject({ type: "result", usage: { contextWindow: 200000 } });
+});
+
 test("result usage: contextWindow omitted when modelUsage is absent (heuristic fallback in UI)", () => {
   const line = JSON.stringify({
     type: "result",

@@ -15,9 +15,15 @@ const num = (v: unknown): number | undefined => (typeof v === "number" && Number
 const rec = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
 
-/** Largest `contextWindow` across a result's `modelUsage` map (the main model's window), or undefined
- *  when none of the entries report one. Keyed by model id, each value `{ contextWindow?, ... }`. */
-const maxContextWindow = (modelUsage: Record<string, unknown>): number | undefined => {
+/** The MAIN model's `contextWindow` for the UI meter denominator. `modelUsage` is keyed by model id and
+ *  may include SUBAGENT models too, so prefer the entry for the result's own `model` id when present; only
+ *  if that's missing fall back to the max across entries (a smaller subagent never shrinks the window, and
+ *  a larger subagent can't inflate it past the main model). Undefined when no entry reports a window. */
+const contextWindowFromUsage = (modelUsage: Record<string, unknown>, mainModel?: string): number | undefined => {
+  if (mainModel !== undefined) {
+    const own = num(rec(modelUsage[mainModel]).contextWindow);
+    if (own !== undefined) return own;
+  }
   let max: number | undefined;
   for (const entry of Object.values(modelUsage)) {
     const w = num(rec(entry).contextWindow);
@@ -120,7 +126,7 @@ export function parseLine(line: string): InboundEvent | null {
       // stored model string carries no `[1m]` marker (left "default"), which made the meter divide by
       // 200k and pin to a false "full". Take the MAX across entries so a smaller subagent model never
       // shrinks the main conversation's window. Absent → omit; the UI falls back to a name heuristic.
-      const contextWindow = maxContextWindow(rec(obj.modelUsage));
+      const contextWindow = contextWindowFromUsage(rec(obj.modelUsage), str(obj.model));
       return {
         type: "result",
         subtype: str(obj.subtype),

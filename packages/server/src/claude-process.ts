@@ -99,6 +99,9 @@ export class ClaudeProcess extends EventEmitter {
   private suppressWarmup: boolean;
   /** Path of the per-session 0600 MCP config file written for this spawn, removed on exit/stop. */
   private mcpConfigPath?: string;
+  /** Per-requestId kind + toolInput for an OUTSTANDING permission, so a MANUAL answer uses the right wire
+   *  shape — a `can_use_tool` request must get a CanUseToolResult, not a PreToolUse-hook response. */
+  private readonly pendingPermissions = new Map<string, { kind: PermissionEvent["kind"]; toolInput: unknown }>();
 
   constructor(opts: ClaudeProcessOptions) {
     super();
@@ -214,6 +217,19 @@ export class ClaudeProcess extends EventEmitter {
   }
 
   answerPermission(requestId: string, decision: HookPermissionDecision, reason?: string): void {
+    const pending = this.pendingPermissions.get(requestId);
+    this.pendingPermissions.delete(requestId);
+    // A `can_use_tool` request (e.g. an MCP tool gate) MUST be answered with a CanUseToolResult — the
+    // PreToolUse-hook shape would be malformed for it and could stall the turn. Mirror the auto-allow.
+    if (pending?.kind === "can_use_tool") {
+      this.answerCanUseTool(
+        requestId,
+        decision === "allow"
+          ? { behavior: "allow", updatedInput: pending.toolInput }
+          : { behavior: "deny", message: reason ?? "Denied by the user." },
+      );
+      return;
+    }
     this.write(serializeHookPermissionResponse(requestId, decision, reason));
   }
 
@@ -449,6 +465,8 @@ export class ClaudeProcess extends EventEmitter {
           toolInput: info.toolInput,
           toolUseId: info.toolUseId,
         };
+        // Remember the kind + toolInput so a later MANUAL answerPermission picks the correct wire shape.
+        this.pendingPermissions.set(requestId, { kind: info.kind, toolInput: info.toolInput });
         this.emit("permission", perm);
       }
       return;

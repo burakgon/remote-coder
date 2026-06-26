@@ -397,9 +397,12 @@ export function createServer(
       reply.code(400).send({ error: "questions must be a non-empty array, each with 1+ options" });
       return;
     }
-    // Block until the user answers / the ask is cancelled (timeout or session stop). askUser never
-    // rejects, so this always resolves to { answers } or { cancelled: true }.
-    const result = await hub.askUser(request.params.id, questions);
+    // Block until the user answers / the ask is cancelled (timeout, session stop, or the long-poll
+    // client disconnecting — wired via request.raw "close" so a dropped fetch doesn't leak the pending
+    // ask + its prompt). askUser never rejects, so this always resolves to { answers } or { cancelled }.
+    const ac = new AbortController();
+    request.raw.on("close", () => ac.abort());
+    const result = await hub.askUser(request.params.id, questions, ac.signal);
     reply.code(200).send(result);
   });
 
@@ -431,6 +434,19 @@ export function createServer(
         typeof b.keys?.auth !== "string"
       ) {
         reply.code(400).send({ error: "endpoint + keys.p256dh + keys.auth are required" });
+        return;
+      }
+      // SSRF guard: the server later POSTs to this endpoint (web-push). Require a well-formed HTTPS URL
+      // so a client can't register an arbitrary/loopback target to make the server issue requests to it.
+      let endpointUrl: URL;
+      try {
+        endpointUrl = new URL(b.endpoint);
+      } catch {
+        reply.code(400).send({ error: "endpoint must be a valid URL" });
+        return;
+      }
+      if (endpointUrl.protocol !== "https:") {
+        reply.code(400).send({ error: "endpoint must be an https: URL" });
         return;
       }
       deps.pushStore.upsert({
@@ -675,7 +691,16 @@ function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unkn
       dangerouslySkip?: boolean;
     } = {};
     if (typeof msg.model === "string") settings.model = msg.model;
-    if (typeof msg.maxThinkingTokens === "number") settings.maxThinkingTokens = msg.maxThinkingTokens;
+    // Validate the thinking budget before forwarding to the CLI's stdin: a non-integer / negative /
+    // absurd value is dropped (the UI only ever sends a sane budget from EFFORT_THINKING_TOKENS).
+    if (
+      typeof msg.maxThinkingTokens === "number" &&
+      Number.isInteger(msg.maxThinkingTokens) &&
+      msg.maxThinkingTokens >= 0 &&
+      msg.maxThinkingTokens <= 200000
+    ) {
+      settings.maxThinkingTokens = msg.maxThinkingTokens;
+    }
     if (typeof msg.effort === "string") settings.effort = msg.effort;
     if (typeof msg.permissionMode === "string") settings.permissionMode = msg.permissionMode;
     if (typeof msg.dangerouslySkip === "boolean") settings.dangerouslySkip = msg.dangerouslySkip;
