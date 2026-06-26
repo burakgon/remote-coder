@@ -67,6 +67,23 @@ describe("UpdatePanel", () => {
     expect(screen.queryByRole("button", { name: /later/i })).not.toBeInTheDocument();
   });
 
+  it("keeps the changelog visible WHILE updating (pressing Update doesn't hide what's being installed)", () => {
+    render(
+      <UpdatePanel
+        info={info(sampleChangelog)}
+        state="updating"
+        status={{ state: "building", phase: "building" }}
+        onUpdate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    // The progress is shown AND the changelog stays below it (grouped entries + a contextual heading).
+    expect(screen.getByRole("status")).toHaveTextContent(/building/i);
+    expect(screen.getByText("update banner")).toBeInTheDocument();
+    expect(screen.getByText("fix offline fetch")).toBeInTheDocument();
+    expect(screen.getByText(/what's new in/i)).toBeInTheDocument();
+  });
+
   it("the failed state shows the error + a Retry button", async () => {
     const onUpdate = vi.fn();
     render(

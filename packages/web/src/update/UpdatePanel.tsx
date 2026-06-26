@@ -58,6 +58,50 @@ export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePa
   const updating = state === "updating";
   const failed = state === "failed";
 
+  // The changelog stays visible in EVERY state — pressing Update no longer hides it; you keep seeing what
+  // is being installed while it pulls/builds/restarts (and what you were updating to if it fails). When a
+  // progress/error body is above it, cap it shorter so that body stays in view.
+  const changelog =
+    grouped.length > 0 ? (
+      <div
+        style={{
+          display: "grid",
+          gap: "var(--sp-4)",
+          maxHeight: updating || failed ? "32vh" : "46vh",
+          overflowY: "auto",
+        }}
+      >
+        {grouped.map((section) => (
+          <div key={section.group} style={{ display: "grid", gap: "var(--sp-2)" }}>
+            <div style={SECTION_LABEL}>{section.label}</div>
+            <ul style={LIST}>
+              {section.items.map((c) => (
+                <li key={c.sha} style={LIST_ITEM}>
+                  <span style={{ color: "var(--text)", lineHeight: 1.45 }}>{c.subject}</span>
+                  {c.when && (
+                    <span
+                      style={{
+                        flex: "none",
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "var(--fs-xs)",
+                        color: "var(--text-faint)",
+                      }}
+                    >
+                      {c.when}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>
+        {info.behind} {info.behind === 1 ? "change" : "changes"} are available.
+      </p>
+    );
+
   return (
     <div
       role="presentation"
@@ -106,50 +150,19 @@ export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePa
           </span>
         </div>
 
-        {updating ? (
-          <UpdatingBody status={status} />
-        ) : failed ? (
-          <FailedBody status={status} />
-        ) : (
-          <>
-            {grouped.length > 0 ? (
-              <div style={{ display: "grid", gap: "var(--sp-4)", maxHeight: "46vh", overflowY: "auto" }}>
-                {grouped.map((section) => (
-                  <div key={section.group} style={{ display: "grid", gap: "var(--sp-2)" }}>
-                    <div style={SECTION_LABEL}>{section.label}</div>
-                    <ul style={LIST}>
-                      {section.items.map((c) => (
-                        <li key={c.sha} style={LIST_ITEM}>
-                          <span style={{ color: "var(--text)", lineHeight: 1.45 }}>{c.subject}</span>
-                          {c.when && (
-                            <span
-                              style={{
-                                flex: "none",
-                                fontFamily: "var(--font-mono)",
-                                fontSize: "var(--fs-xs)",
-                                color: "var(--text-faint)",
-                              }}
-                            >
-                              {c.when}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>
-                {info.behind} {info.behind === 1 ? "change" : "changes"} are available.
-              </p>
-            )}
+        {/* Progress (updating) or error (failed) sits ABOVE the changelog, which always stays visible. */}
+        {updating && <UpdatingBody status={status} />}
+        {failed && <FailedBody status={status} />}
 
-            <p style={CONFIRM_BLURB}>
-              This pulls the latest code, rebuilds, and restarts the server. Running turns are interrupted and resume
-              after the restart.
-            </p>
-          </>
+        {(updating || failed) && <div style={SECTION_LABEL}>What&apos;s new in {info.latest}</div>}
+        {changelog}
+
+        {/* The confirm blurb is only relevant before you act (idle). */}
+        {!updating && !failed && (
+          <p style={CONFIRM_BLURB}>
+            This pulls the latest code, rebuilds, and restarts the server. Running turns are interrupted and resume
+            after the restart.
+          </p>
         )}
 
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
