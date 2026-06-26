@@ -55,7 +55,7 @@ export function SubagentDot({ status, size = 7 }: { status: SubagentStatus; size
   const color = status === "failed" ? "var(--err)" : running ? "var(--coral)" : "var(--text-muted)";
   return (
     <span
-      role="status"
+      role="img"
       aria-label={statusLabel(status)}
       style={{
         position: "relative",

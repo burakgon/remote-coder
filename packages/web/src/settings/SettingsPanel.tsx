@@ -131,6 +131,9 @@ export function SettingsPanel({
                       value={liveModel}
                       onChange={(e) => setLiveModel(e.target.value)}
                       placeholder="default"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck={false}
                       className="rc-settings__control rc-settings__control--mono"
                     />
                   </label>
@@ -265,6 +268,9 @@ export function SettingsPanel({
                 value={draft.model ?? ""}
                 onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
                 placeholder="default"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 className="rc-settings__control rc-settings__control--mono"
               />
             </label>
