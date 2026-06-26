@@ -6,7 +6,11 @@ export type ServerFrameKind =
   | "diagnostic"
   | "exit"
   | "attachment"
-  | "rewound";
+  | "rewound"
+  // A prompt (question/permission) was answered/cancelled. Fanned out LIVE so connected clients clear
+  // their pending prompt immediately; NOT retained (the matching question/permission frame is pruned
+  // from the buffer instead — see resolvePrompt — so a reconnecting client never replays it as pending).
+  | "resolve";
 
 export interface ServerFrame {
   seq: number;
@@ -56,7 +60,23 @@ export class ReplayBuffer {
 
   /** A frame whose content is a transient partial delta — emitted live but never retained for replay. */
   private isTransient(kind: ServerFrameKind, payload: unknown): boolean {
+    // `resolve` is a live-only signal (clear a pending prompt now); it is never retained — resolvePrompt
+    // removes the prompt frame it refers to, so there is nothing to replay.
+    if (kind === "resolve") return true;
     return kind === "event" && (payload as { type?: string } | null)?.type === "stream_event";
+  }
+
+  /**
+   * A prompt (question/permission) was answered/cancelled: drop its retained frame so a client that
+   * reconnects and replays the buffer does NOT re-show the already-resolved prompt as still pending.
+   * Matches by the frame payload's `requestId` (questions carry both `requestId` and `askId` — the
+   * `askId` mirrors `requestId`, so matching `requestId` covers both the built-in and MCP ask paths).
+   */
+  resolvePrompt(requestId: string): void {
+    this.frames = this.frames.filter((f) => {
+      if (f.kind !== "question" && f.kind !== "permission") return true;
+      return (f.payload as { requestId?: string } | null)?.requestId !== requestId;
+    });
   }
 
   /** The highest seq assigned so far (0 before any push). Lets a reopen resume the WS from here. */

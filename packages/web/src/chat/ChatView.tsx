@@ -170,6 +170,25 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
     if (pending && isAutoAllowed) answer(pending.requestId, "allow");
   }, [pending, isAutoAllowed, answer]);
 
+  // Safety net for a DROPPED answer: when we optimistically mark a question answered, the server normally
+  // clears it fast (a `resolve` frame). If it doesn't within the grace window — a lost WS send, a server
+  // restart mid-answer — the prompt is STILL pending server-side, so un-mark it and re-show the prompt
+  // rather than leaving the user stuck on a silently-swallowed submit. A re-answer is harmless (the server
+  // treats a duplicate as a no-op). The normal path clears pendingQuestion first, so this never fires.
+  useEffect(() => {
+    if (!pendingQuestion || !answered.has(pendingQuestion.requestId)) return;
+    const reqId = pendingQuestion.requestId;
+    const t = setTimeout(() => {
+      answeredRef.current.delete(reqId);
+      setAnswered((prev) => {
+        const next = new Set(prev);
+        next.delete(reqId);
+        return next;
+      });
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [pendingQuestion, answered]);
+
   // Auto-scroll the log to the newest content as turns/streaming text grow — unless the user has
   // scrolled up to read history (then we leave their position alone). A small slack avoids
   // sub-pixel jitter at the bottom counting as "scrolled up".

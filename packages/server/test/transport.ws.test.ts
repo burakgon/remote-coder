@@ -292,7 +292,10 @@ test("WS: permission round-trip and reconnect replay", async () => {
     const ws = openWs(base, id, TOKEN, (frame, sock) => {
       replayed.push(frame.kind);
       if (frame.kind === "result") {
-        expect(replayed).toContain("permission");
+        // The permission was ANSWERED before the reconnect, so it's pruned from the replay buffer (a
+        // reconnecting client must NOT re-show an already-answered prompt). The result still replays.
+        expect(replayed).not.toContain("permission");
+        expect(replayed).toContain("result");
         sock.close();
         resolve();
       }

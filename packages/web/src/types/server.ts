@@ -10,7 +10,10 @@ export type ServerFrameKind =
   | "diagnostic"
   | "exit"
   | "attachment"
-  | "rewound";
+  | "rewound"
+  // A pending prompt (question/permission) was answered/cancelled server-side — clear it now (so an
+  // already-answered question doesn't linger or re-appear after a reconnect/OTA reload).
+  | "resolve";
 
 export interface ServerFrame {
   seq: number;

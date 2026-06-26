@@ -18,6 +18,7 @@ test("isCriticalKind marks permission, result, question and attachment critical 
   expect(isCriticalKind("event")).toBe(false);
   expect(isCriticalKind("diagnostic")).toBe(false);
   expect(isCriticalKind("exit")).toBe(false);
+  expect(isCriticalKind("resolve")).toBe(false); // live-only; the prompt frame it clears is pruned instead
 });
 
 test("an attachment frame is NEVER evicted even under heavy non-critical churn (file survives reconnect)", () => {
@@ -95,4 +96,27 @@ test("a flood of stream_event frames never evicts real content from the buffer",
 
 test("maxSeq() is 0 before any push", () => {
   expect(new ReplayBuffer().maxSeq()).toBe(0);
+});
+
+test("resolvePrompt prunes the matching question/permission so a reconnect won't re-show an answered prompt", () => {
+  const buf = new ReplayBuffer(100);
+  buf.push("question", { requestId: "ask-1", askId: "ask-1", questions: [] });
+  buf.push("permission", { requestId: "perm-1", toolName: "Bash" });
+  buf.push("event", { n: 1 });
+  buf.resolvePrompt("ask-1");
+  let kinds = buf.snapshot().map((f) => f.kind);
+  expect(kinds).not.toContain("question"); // the ANSWERED question is gone from the replay
+  expect(kinds).toContain("permission"); // a still-pending permission stays
+  buf.resolvePrompt("perm-1");
+  kinds = buf.snapshot().map((f) => f.kind);
+  expect(kinds).not.toContain("permission");
+  expect(kinds).toContain("event"); // unrelated frames untouched
+});
+
+test("a `resolve` frame gets a real seq (fanned live) but is NOT retained for replay", () => {
+  const buf = new ReplayBuffer(100);
+  buf.push("question", { requestId: "ask-1", questions: [] });
+  const r = buf.push("resolve", { requestId: "ask-1" });
+  expect(r.seq).toBeGreaterThan(0);
+  expect(buf.snapshot().some((f) => f.kind === "resolve")).toBe(false);
 });

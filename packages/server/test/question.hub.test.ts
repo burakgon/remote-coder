@@ -36,3 +36,35 @@ test("hub surfaces a question frame and answerQuestion drives the result", async
     setTimeout(() => reject(new Error("question hub: no result")), 10000);
   });
 }, 20000);
+
+test("answering a question fans a `resolve` frame (clients clear the prompt now; reconnect won't re-show it)", async () => {
+  manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000 },
+  );
+  hub = new SessionHub(manager);
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  await new Promise<void>((resolve, reject) => {
+    let questionReqId: string | undefined;
+    let sawResolve = false;
+    hub!.subscribe(meta.id, (frame: ServerFrame) => {
+      if (frame.kind === "question") {
+        const p = frame.payload as { requestId: string; toolInput: unknown };
+        questionReqId = p.requestId;
+        hub!.answerQuestion(meta.id, p.requestId, p.toolInput, { "Which language?": "TypeScript" });
+      }
+      if (frame.kind === "resolve") {
+        // The resolution fans out live AND its requestId matches the answered question.
+        expect((frame.payload as { requestId?: string }).requestId).toBe(questionReqId);
+        sawResolve = true;
+      }
+      if (frame.kind === "result") {
+        expect(sawResolve).toBe(true);
+        resolve();
+      }
+    });
+    hub!.sendMessage(meta.id, "ask me");
+    setTimeout(() => reject(new Error("question hub: no resolve frame before result")), 10000);
+  });
+}, 20000);

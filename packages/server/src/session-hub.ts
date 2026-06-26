@@ -456,8 +456,16 @@ export class SessionHub {
 
   /** Mark a request pending/answered and recompute `meta.awaiting` (true iff anything is pending). */
   private setAwaiting(record: SessionRecord, requestId: string, awaiting: boolean): void {
-    if (awaiting) record.pending.add(requestId);
-    else record.pending.delete(requestId);
+    if (awaiting) {
+      record.pending.add(requestId);
+    } else if (record.pending.delete(requestId)) {
+      // This prompt (question/permission) was just ANSWERED/cancelled. Prune its retained frame so a
+      // reconnecting client doesn't replay it as still-pending, and fan out a live `resolve` so
+      // connected clients clear the prompt NOW (otherwise it lingered until the turn's `result`, and an
+      // OTA reload / reconnect mid-turn re-showed an already-answered question as if it were unanswered).
+      record.buffer.resolvePrompt(requestId);
+      this.emitFrame(record, "resolve", { requestId });
+    }
     record.meta.awaiting = record.pending.size > 0;
   }
 

@@ -367,6 +367,40 @@ describe("reduceFrame", () => {
     expect(v.pendingQuestion).toBeUndefined();
   });
 
+  it("a `resolve` frame clears a matching pending question (answered — never re-shown on reconnect)", () => {
+    let v = reduceFrame(emptyView(), {
+      seq: 1,
+      kind: "question",
+      payload: { requestId: "ask-9", askId: "ask-9", toolInput: {}, questions: [] },
+    });
+    expect(v.pendingQuestion?.requestId).toBe("ask-9");
+    v = reduceFrame(v, { seq: 2, kind: "resolve", payload: { requestId: "ask-9" } });
+    expect(v.pendingQuestion).toBeUndefined();
+    // Was "awaiting"; once the only prompt is resolved the agent resumes → off the loud awaiting state.
+    expect(v.wireState).toBe("thinking");
+  });
+
+  it("a `resolve` for a DIFFERENT requestId leaves the pending question intact", () => {
+    let v = reduceFrame(emptyView(), {
+      seq: 1,
+      kind: "question",
+      payload: { requestId: "ask-9", toolInput: {}, questions: [] },
+    });
+    v = reduceFrame(v, { seq: 2, kind: "resolve", payload: { requestId: "someone-else" } });
+    expect(v.pendingQuestion?.requestId).toBe("ask-9");
+  });
+
+  it("a `resolve` frame clears a matching pending permission", () => {
+    let v = reduceFrame(emptyView(), {
+      seq: 1,
+      kind: "permission",
+      payload: { requestId: "perm-1", toolName: "Bash" },
+    });
+    expect(v.pendingPermission?.requestId).toBe("perm-1");
+    v = reduceFrame(v, { seq: 2, kind: "resolve", payload: { requestId: "perm-1" } });
+    expect(v.pendingPermission).toBeUndefined();
+  });
+
   it("turns an attachment frame into an attachment turn (Claude sent a file)", () => {
     const frame: ServerFrame = {
       seq: 1,

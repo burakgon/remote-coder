@@ -82,7 +82,10 @@ test("full flow: create -> WS subscribe -> message -> events+result -> permissio
       const frame: ServerFrame = JSON.parse(raw.toString());
       replayed.push(frame.kind);
       if (frame.kind === "result") {
-        expect(replayed).toContain("permission");
+        // The permission was ANSWERED on the first connection, so it's pruned from the replay buffer —
+        // a reconnecting client must NOT re-show an already-answered prompt. The result still replays.
+        expect(replayed).not.toContain("permission");
+        expect(replayed).toContain("result");
         ws.close();
         resolve();
       }

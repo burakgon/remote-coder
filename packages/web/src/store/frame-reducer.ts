@@ -270,6 +270,23 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     next.wireState = "awaiting";
     return next;
   }
+  if (frame.kind === "resolve") {
+    // A prompt (question/permission) was answered/cancelled server-side. Clear the matching pending
+    // prompt NOW so it doesn't linger until the turn's `result` — and, crucially, so a reconnect / OTA
+    // reload that re-folds the buffer doesn't re-show an already-answered question as if it were never
+    // answered (the server also prunes the prompt's retained frame; this handles live + same-buffer folds).
+    const requestId = (frame.payload as { requestId?: string } | null)?.requestId;
+    if (requestId !== undefined) {
+      if (next.pendingQuestion?.requestId === requestId) next.pendingQuestion = undefined;
+      if (next.pendingPermission?.requestId === requestId) next.pendingPermission = undefined;
+      // The agent resumes on the answer; drop the loud "awaiting you" unless another prompt is still
+      // pending (the next assistant/stream/tool frame sets the real working state).
+      if (next.wireState === "awaiting" && !next.pendingQuestion && !next.pendingPermission) {
+        next.wireState = "thinking";
+      }
+    }
+    return next;
+  }
   if (frame.kind === "diagnostic") {
     next.diagnostics = [...view.diagnostics, frame.payload as DiagnosticPayload];
     return next;
