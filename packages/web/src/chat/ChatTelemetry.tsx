@@ -13,8 +13,11 @@ import type { LiveWireState } from "../ui/LiveWire";
  * Both stay readable at 390px and reduce to a static dot/label under prefers-reduced-motion.
  */
 
-/** Current Claude models (Opus/Sonnet/Haiku 4.x) all expose a 200k-token context window. */
-const CONTEXT_WINDOW = 200_000;
+/** The model's context window in tokens. Current Claude models (Opus/Sonnet/Haiku 4.x) are all 200k;
+ *  kept as a function (keyed by model) so a future per-model window has a single home. */
+function contextWindowFor(_model?: string): number {
+  return 200_000;
+}
 
 /** Working states animate (ping + ellipsis); the rest are a calm static dot + label. */
 const WORKING: ReadonlySet<LiveWireState> = new Set(["thinking", "streaming", "running-tool"]);
@@ -60,20 +63,21 @@ export interface ChatTelemetryProps {
   model?: string;
 }
 
-export function ChatTelemetry({ wireState, contextTokens }: ChatTelemetryProps) {
+export function ChatTelemetry({ wireState, contextTokens, model }: ChatTelemetryProps) {
   const working = WORKING.has(wireState);
   // The dot radar-pings whenever the session is "live": the agent working OR waiting on you. Only the
   // agent-working states get the typing ellipsis (it would misread on an awaiting-you state).
   const pinging = working || wireState === "awaiting";
   const color = statusColor(wireState);
 
+  const windowTokens = contextWindowFor(model);
   const hasContext = typeof contextTokens === "number" && contextTokens > 0;
-  const percent = hasContext ? Math.min(100, Math.round((contextTokens! / CONTEXT_WINDOW) * 100)) : 0;
+  const percent = hasContext ? Math.min(100, Math.round((contextTokens! / windowTokens) * 100)) : 0;
   const fill = contextFillColor(percent);
   const tight = percent > 80;
 
   return (
-    <div className="rc-tele" data-state={wireState}>
+    <div className="rc-tele">
       <span
         className="rc-tele__status"
         role="status"
@@ -98,7 +102,7 @@ export function ChatTelemetry({ wireState, contextTokens }: ChatTelemetryProps) 
       {hasContext && (
         <span
           className="rc-tele__ctx"
-          aria-label={`Context ${percent}% full — ${contextTokens!.toLocaleString()} of ${CONTEXT_WINDOW.toLocaleString()} tokens`}
+          aria-label={`Context ${percent}% full — ${contextTokens!.toLocaleString()} of ${windowTokens.toLocaleString()} tokens`}
           title={tight ? "Context is filling up — consider /compact" : undefined}
         >
           <span className="rc-tele__ctx-key">ctx</span>
