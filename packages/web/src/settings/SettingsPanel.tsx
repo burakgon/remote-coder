@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
 import { useFocusTrap } from "../ui/useFocusTrap";
+import { ModelSelect } from "./ModelSelect";
 import { EFFORTS, PERMISSION_MODES } from "./defaults";
 import type { SessionDefaults } from "./defaults";
-import type { SessionMeta } from "../types/server";
+import type { ModelInfo, SessionMeta } from "../types/server";
 
 export interface SettingsPanelProps {
   session?: SessionMeta;
@@ -19,6 +20,8 @@ export interface SettingsPanelProps {
     permissionMode?: string;
     dangerouslySkip?: boolean;
   }) => void;
+  /** Account models from GET /models. Empty → free-text fallback (today's behavior). */
+  models?: ModelInfo[];
   /** Push opt-in handlers. When omitted, the Notifications section is hidden (e.g. in tests/screenshots). */
   pushState?: "subscribed" | "unsubscribed" | "unsupported" | "denied";
   onEnablePush?: () => void;
@@ -32,6 +35,7 @@ export function SettingsPanel({
   onSaveDefaults,
   onStopSession,
   onApplyLiveSettings,
+  models = [],
   pushState,
   onEnablePush,
   onDisablePush,
@@ -149,14 +153,11 @@ export function SettingsPanel({
                 <div className="rc-settings__fields">
                   <label className="rc-settings__field">
                     <span className="rc-settings__field-label">Active session model</span>
-                    <input
-                      aria-label="active session model"
+                    <ModelSelect
                       value={liveModel}
-                      onChange={(e) => setLiveModel(e.target.value)}
-                      placeholder="default"
-                      autoCapitalize="off"
-                      autoCorrect="off"
-                      spellCheck={false}
+                      onChange={setLiveModel}
+                      models={models}
+                      ariaLabel="active session model"
                       className="rc-settings__control rc-settings__control--mono"
                     />
                   </label>
@@ -295,13 +296,11 @@ export function SettingsPanel({
             </label>
             <label className="rc-settings__field">
               <span className="rc-settings__field-label">Default model (optional)</span>
-              <input
+              <ModelSelect
                 value={draft.model ?? ""}
-                onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value || undefined }))}
-                placeholder="default"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
+                onChange={(v) => setDraft((d) => ({ ...d, model: v || undefined }))}
+                models={models}
+                ariaLabel="default model"
                 className="rc-settings__control rc-settings__control--mono"
               />
             </label>

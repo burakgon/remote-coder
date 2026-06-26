@@ -8,8 +8,9 @@ import { DirectoryPicker } from "../picker/DirectoryPicker";
 import { ResumePicker } from "./ResumePicker";
 import { pushRecentDir } from "../picker/recents";
 import { loadDefaults, EFFORTS } from "../settings/defaults";
+import { ModelSelect } from "../settings/ModelSelect";
 import type { ApiClient } from "../api/client";
-import type { SessionMeta } from "../types/server";
+import type { ModelInfo, SessionMeta } from "../types/server";
 
 type WizardMode = "new" | "resume";
 
@@ -22,6 +23,8 @@ export interface NewSessionWizardProps {
   /** Which segment the new/resume toggle starts on. Defaults to "new" (the directory picker); the
    * in-chat `/resume` slash command opens straight to "resume". */
   initialMode?: WizardMode;
+  /** Account models from GET /models. Empty → free-text fallback (today's behavior). */
+  models?: ModelInfo[];
   onCreated: (session: SessionMeta) => void;
   onClose: () => void;
 }
@@ -31,6 +34,7 @@ export function NewSessionWizard({
   recents,
   now,
   initialMode = "new",
+  models = [],
   onCreated,
   onClose,
 }: NewSessionWizardProps) {
@@ -208,14 +212,12 @@ export function NewSessionWizard({
 
           <label className="rc-wizard__field">
             <span className="rc-wizard__field-label">Model (optional)</span>
-            <input
+            <ModelSelect
               value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="default"
+              onChange={setModel}
+              models={models}
+              ariaLabel="model"
               className="rc-wizard__control rc-wizard__control--mono"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
             />
           </label>
 
