@@ -100,8 +100,11 @@ interface PendingAsk {
   timer: ReturnType<typeof setTimeout>;
 }
 
-/** Default time (ms) the server holds an `ask_user` request open before giving up and cancelling it. */
-export const ASK_TIMEOUT_MS = 10 * 60 * 1000;
+/** Default time (ms) the server holds an `ask_user` request open before giving up and cancelling it.
+ *  Kept UNDER the MCP client's (undici) ~300s headersTimeout: a longer hold meant the mcp-send fetch
+ *  aborted at ~5min while the server still waited, so an answer given between ~5–10min resolved to a
+ *  dead socket and never reached Claude. 4min keeps a comfortable margin with no silent dead zone. */
+export const ASK_TIMEOUT_MS = 4 * 60 * 1000;
 
 interface SessionRecord {
   meta: SessionMeta;
@@ -243,12 +246,20 @@ export class SessionHub {
       dangerouslySkip: opts.dangerouslySkip,
       resumeId: opts.sessionId,
     });
+    // If the record was deleted (deleteSession/stopAll) WHILE we were spawning, don't attach to a dead
+    // record — stop the just-spawned child so it isn't orphaned (mirror ensureLive's guard). Stop the
+    // EXACT session we spawned only if it's still the one registered under this id.
+    if (existing && this.records.get(opts.sessionId) !== existing) {
+      if (this.manager.getSession(opts.sessionId) === session) this.manager.stopSession(opts.sessionId);
+      return existing.meta;
+    }
     const now = this.now();
     const permissionMode = opts.dangerouslySkip ? "bypassPermissions" : "default";
 
     // Seed a buffer with the prior conversation (each push assigns a contiguous seq), so any client that
-    // connects replays the full history BEFORE live continuation frames.
-    const buffer = new ReplayBuffer(this.replayCapacity);
+    // connects replays the full history BEFORE live continuation frames. On REUSE, continue the existing
+    // buffer's seq space (start past its maxSeq) so a still-connected client never sees seqs go backwards.
+    const buffer = new ReplayBuffer(this.replayCapacity, existing ? existing.buffer.maxSeq() + 1 : 1);
     for (const frame of opts.frames) buffer.push(frame.kind, frame.payload);
 
     if (existing) {
@@ -668,7 +679,9 @@ export class SessionHub {
       // can't be a control_request — RESPAWN: stop the live process and resume the SAME conversation
       // with the new flag (mirrors the rewind conversation/both respawn). The resume carries the
       // latest model/effort, so no separate control_request is needed for those.
-      try {
+      // Registered in resumeInFlight so a concurrent ensureLive (e.g. a message sent during the restart
+      // window, when no process is live) AWAITS this respawn instead of spawning a second --resume.
+      const respawn = (async () => {
         if (this.manager.getSession(id)) {
           // Invalidate the old process's attach listeners (generation bump) so its imminent exit can't
           // emit a spurious `exit` frame or flip the freshly-resumed session to dormant.
@@ -688,9 +701,15 @@ export class SessionHub {
         record.intentionalStop = false;
         this.clearAllAwaiting(record);
         this.attach(session.process, record);
+      })();
+      this.resumeInFlight.set(id, respawn);
+      try {
+        await respawn;
       } catch {
         record.meta.status = "errored";
         record.intentionalStop = false;
+      } finally {
+        this.resumeInFlight.delete(id);
       }
     } else {
       // No permission-boundary change → apply live via control_requests (no restart).
@@ -751,7 +770,8 @@ export class SessionHub {
 
     // conversation / both: STOP the live turn/process, then RESUME truncated at the checkpoint. The CLI
     // rejects --resume together with a live process for the same id, so we kill the current one first.
-    try {
+    // The respawn is registered in resumeInFlight so a concurrent ensureLive awaits it (no double-spawn).
+    const respawn = (async () => {
       if (this.manager.getSession(id)) {
         // Invalidate the old process's attach listeners (generation bump) so its imminent exit can't
         // emit a spurious `exit` frame or flip the resumed session to dormant.
@@ -771,6 +791,10 @@ export class SessionHub {
       record.intentionalStop = false;
       this.clearAllAwaiting(record);
       this.attach(session.process, record);
+    })();
+    this.resumeInFlight.set(id, respawn);
+    try {
+      await respawn;
       this.persist(record.meta);
       this.emitFrame(record, "rewound", { checkpointId, mode, ok: true });
       return { ok: true };
@@ -780,6 +804,8 @@ export class SessionHub {
       this.persist(record.meta);
       this.emitFrame(record, "rewound", { checkpointId, mode, ok: false, error });
       return { ok: false, error };
+    } finally {
+      this.resumeInFlight.delete(id);
     }
   }
 
@@ -943,7 +969,11 @@ export class SessionHub {
       // If the session was closed (deleteSession/stopAll) WHILE we were spawning, the record is no longer
       // tracked — don't attach to a dead record; stop the just-spawned child so it isn't orphaned.
       if (this.records.get(id) !== record) {
-        this.manager.stopSession(id);
+        // The orphan never went through attach(), so it has no "error" listener — add a no-op one so a
+        // stray write-after-teardown error can't throw, then stop the EXACT child we spawned (only if
+        // it's still the one registered, so we never kill a newer legitimate process under the same id).
+        session.process.on("error", () => {});
+        if (this.manager.getSession(id) === session) this.manager.stopSession(id);
         return;
       }
       record.meta.status = "running";

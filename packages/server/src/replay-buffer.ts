@@ -43,8 +43,12 @@ export class ReplayBuffer {
   private frames: ServerFrame[] = [];
   private nextSeq = 1;
 
-  constructor(capacity = 200) {
+  /** `startSeq` lets a re-seeded buffer (a resumed-in-place session) CONTINUE the prior seq space instead
+   *  of restarting at 1 — a still-connected client would otherwise see seqs go backwards and drop the
+   *  live continuation frames it de-dupes by max-seq. */
+  constructor(capacity = 200, startSeq = 1) {
     this.capacity = capacity;
+    this.nextSeq = startSeq;
   }
 
   /**
