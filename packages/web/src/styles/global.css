@@ -196,6 +196,19 @@ button {
   }
 }
 
+/* The reveal-on-mount slide used by tool steps / clusters / the auto-allow chip — defined ONCE here
+   instead of re-injecting an identical <style> per rendered element. */
+@keyframes rc-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

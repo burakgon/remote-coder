@@ -63,8 +63,7 @@ export function AutoAllowChip({ tools, onClear }: AutoAllowChipProps) {
             animation: "rc-reveal 0.16s ease-out",
           }}
         >
-          {/* Quick, calm popover reveal — neutralized by the global prefers-reduced-motion block. */}
-          <style>{`@keyframes rc-reveal { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }`}</style>
+          {/* rc-reveal keyframe lives in global.css (neutralized by the global prefers-reduced-motion block). */}
           {tools.map((tool) => (
             <span
               key={tool}
