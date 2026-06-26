@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0b" />
+    <!-- Installable PWA / iOS standalone. apple-mobile-web-app-capable keeps the browser chrome out when
+         added to the Home Screen; the translucent status bar pairs with viewport-fit=cover + our
+         safe-area insets (content goes under the bar, the UI pads clear of it). iOS uses apple-touch-icon
+         (a PNG, not the manifest's SVG) for the Home Screen icon. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Remote Coder" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <title>Remote Coder</title>
   </head>
   <body>
