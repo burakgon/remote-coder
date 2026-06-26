@@ -124,6 +124,28 @@ describe("MessageList", () => {
       expect(screen.queryByText(/"command":/)).not.toBeInTheDocument();
     });
 
+    it("syntax-highlights a Read result as code in the file's language (not a plain panel)", async () => {
+      const { container } = render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "tool-use",
+                id: "r1",
+                name: "Read",
+                input: { file_path: "/x/app/page.tsx", offset: 658, limit: 2 },
+              },
+              { kind: "tool-result", toolUseId: "r1", content: "     658\tflushRealtime();\n     659\treturn;" },
+            ],
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
+      await userEvent.click(screen.getByRole("button", { name: /expand read step/i }));
+      // The result renders through CodeBlock for the file's language (a tsx code card), not a plain pre.
+      expect(container.querySelector('[data-language="tsx"]')).not.toBeNull();
+    });
+
     it("renders a ToolSearch step de-emphasized (meta) but still present + expandable", async () => {
       render(
         <MessageList

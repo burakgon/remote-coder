@@ -233,6 +233,7 @@ function ToolStepRow({ step }: { step: ToolStep }) {
   const { use, result, isMeta } = step;
   const arg = summarizeToolInput(use.input);
   const parsed = result ? parseToolResult(result.content) : undefined;
+  const resultLang = resultCodeLang(use.name, use.input);
   const icon: IconName = isMeta ? "search" : "terminal";
   const headColor = isMeta ? "var(--text-faint)" : "var(--text-muted)";
   // Meta line shows a faint "loaded X"; normal step shows `Tool · arg`.
@@ -306,9 +307,12 @@ function ToolStepRow({ step }: { step: ToolStep }) {
           {parsed ? (
             <>
               <div style={detailLabelStyle}>Result</div>
-              {/* Prefer the extracted TEXT (real newlines) over the escaped-JSON dump; fall back to the
-                  pretty raw JSON only for a purely-structured result with no human text. */}
-              {parsed.text ? (
+              {/* A file-READ result is source code → syntax-highlight it in the file's language. Other
+                  results (bash output, search hits, status messages) stay plain; a purely-structured
+                  result with no human text falls back to the pretty raw JSON. */}
+              {resultLang && parsed.text && !parsed.isError ? (
+                <CodeBlock code={parsed.text} language={resultLang} />
+              ) : parsed.text ? (
                 <pre style={rawPanelStyle}>{parsed.text}</pre>
               ) : (
                 <pre style={rawPanelStyle}>{parsed.raw}</pre>
@@ -676,6 +680,15 @@ function toJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** The code language to highlight a tool RESULT in, or undefined to leave it plain. Only file-READ tools
+ *  return source code (cat -n format); bash output / search hits / status messages stay plain. */
+function resultCodeLang(name: string, input: unknown): string | undefined {
+  if (name !== "Read" && name !== "NotebookRead") return undefined;
+  if (!input || typeof input !== "object") return undefined;
+  const obj = input as Record<string, unknown>;
+  return langFromPath(obj.file_path ?? obj.path);
 }
 
 /** Best-effort code language from a file path's extension (CodeBlock normalizes the rest). */
