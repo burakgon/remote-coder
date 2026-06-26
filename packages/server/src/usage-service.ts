@@ -115,7 +115,9 @@ export function createUsageRunner(opts: { claudeBin: string; env?: NodeJS.Proces
         child = nodeSpawn(
           opts.claudeBin,
           ["-p", "/usage", "--output-format", "json", "--dangerously-skip-permissions"],
-          { env },
+          // Discard stderr (and stdin): a never-consumed stderr pipe that claude fills would block it
+          // until our SIGKILL timeout, wasting a full timeout on every usage refresh.
+          { env, stdio: ["ignore", "pipe", "ignore"] },
         );
       } catch {
         finish("");
