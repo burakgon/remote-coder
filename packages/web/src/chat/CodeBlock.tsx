@@ -11,7 +11,7 @@
  * and to the fallback as a text child of <code>. Untrusted model output can never inject HTML — the
  * only thing set via dangerouslySetInnerHTML is shiki's own sanitized, self-produced output.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ThemeRegistrationAny } from "shiki";
 
 export interface CodeBlockProps {
@@ -118,25 +118,35 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
       return;
     }
     let cancelled = false;
-    void (async () => {
-      try {
-        const { codeToHtml } = await import("shiki");
-        const out = await codeToHtml(code, { lang, theme: THEME });
-        if (!cancelled) setHtml(out);
-      } catch {
-        if (!cancelled) setHtml(null); // unsupported language / load failure → plain fallback
-      }
-    })();
+    // Debounce: a code block inside a STREAMING reply grows every token, and highlighting on each delta
+    // is an O(n) full re-highlight of ever-larger source (real jank on long blocks). Wait for the source
+    // to settle (~100ms idle) before highlighting; the plain-mono fallback shows the code meanwhile.
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const { codeToHtml } = await import("shiki");
+          const out = await codeToHtml(code, { lang, theme: THEME });
+          if (!cancelled) setHtml(out);
+        } catch {
+          if (!cancelled) setHtml(null); // unsupported language / load failure → plain fallback
+        }
+      })();
+    }, 100);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [code, language]);
 
+  // Clear the "copied" reset timer on unmount (don't setState on an unmounted component).
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
   async function copy() {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1400);
     } catch {
       // clipboard unavailable (insecure context / denied) — silently no-op
     }

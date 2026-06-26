@@ -200,7 +200,8 @@ export function Composer({
   function send() {
     // Read the LIVE DOM (not just state) so a paste/IME edit that didn't emit `input` can't send stale text.
     const trimmed = readEditable(edRef.current).trim();
-    if ((!trimmed && images.length === 0) || disabled) return;
+    // `stopping`: don't let Enter race an in-flight interrupt (the button is already disabled for this).
+    if ((!trimmed && images.length === 0) || disabled || stopping) return;
     const frame: OutboundFrame =
       images.length > 0
         ? {
@@ -608,7 +609,9 @@ export function Composer({
           <button
             type="button"
             onClick={send}
-            disabled={!canSend}
+            // Disabled while an interrupt is in flight (`stopping`): a send racing the abort has an
+            // ambiguous outcome (it might land on the turn being torn down).
+            disabled={!canSend || stopping}
             aria-label="Send"
             style={{
               width: "var(--tap-min)",
@@ -620,8 +623,8 @@ export function Composer({
               border: 0,
               background: "var(--accent-grad)",
               color: "var(--on-accent)",
-              cursor: canSend ? "pointer" : "default",
-              opacity: canSend ? 1 : 0.4,
+              cursor: canSend && !stopping ? "pointer" : "default",
+              opacity: canSend && !stopping ? 1 : 0.4,
             }}
           >
             <Icon name="arrow-up" size={18} />

@@ -16,10 +16,13 @@ import { CodeBlock } from "./CodeBlock";
  */
 const components: Components = {
   code({ className, children, ...props }) {
-    const text = String(children).replace(/\n$/, "");
+    const raw = String(children);
+    const text = raw.replace(/\n$/, "");
     const match = /language-(\w+)/.exec(className ?? "");
-    // Fenced block (has a language class or contains a newline) → CodeBlock; else inline mono.
-    if (match || text.includes("\n")) {
+    // Fenced block → CodeBlock; else inline mono. Detect a fence by a language class OR a TRAILING
+    // newline in the raw content (remark always appends one to a fenced block; inline code never has it)
+    // — this also catches a single-line fence with no language, which a `.includes("\n")` test missed.
+    if (match || /\n$/.test(raw)) {
       return <CodeBlock code={text} language={match?.[1]} />;
     }
     return (
@@ -95,6 +98,10 @@ const components: Components = {
   a: ({ children, href }) => (
     <a
       href={href}
+      // Open in a NEW tab so a tap on a link in (untrusted) model output can't navigate the whole PWA
+      // away and destroy the live chat/session; rel guards against reverse-tabnabbing.
+      target="_blank"
+      rel="noopener noreferrer"
       style={{ color: "var(--text)", textDecoration: "none", borderBottom: "1px solid var(--border-strong)" }}
     >
       {children}
