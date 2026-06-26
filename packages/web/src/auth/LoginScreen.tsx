@@ -29,7 +29,11 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onAuthenticated(token);
+            // Trim — a pasted token with trailing whitespace/newline would otherwise 401. Empty falls
+            // through to the explicit "Connect without a token" path (don't silently collapse the two).
+            const t = token.trim();
+            if (!t) return;
+            onAuthenticated(t);
           }}
           className="rc-login__form"
         >
@@ -58,7 +62,7 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
             </span>
           </label>
 
-          <button type="submit" className="rc-login__connect">
+          <button type="submit" className="rc-login__connect" disabled={token.trim() === ""}>
             Connect
           </button>
         </form>
@@ -142,7 +146,8 @@ const loginCss = `
   font-family: var(--font-display); font-weight: 600; font-size: var(--fs-base);
   transition: filter 120ms ease;
 }
-.rc-login__connect:hover { filter: brightness(1.08); }
+.rc-login__connect:hover:not(:disabled) { filter: brightness(1.08); }
+.rc-login__connect:disabled { opacity: 0.45; cursor: default; }
 .rc-login__divider { height: 1px; background: var(--border); }
 .rc-login__dev {
   min-height: var(--tap-min);

@@ -290,6 +290,10 @@ const sessionListCss = `
   position: sticky; top: 0; z-index: 1;
 }
 .rc-sl__title {
+  /* margin-right:auto pins the "+" to the right edge ALWAYS — previously only the needs-you badge
+     carried it, so with zero awaiting sessions (the common case) the badge was null and "+" packed
+     against the title. */
+  margin-right: auto;
   display: inline-flex; align-items: baseline; gap: var(--sp-2);
   font-size: var(--fs-lg); letter-spacing: 0.01em; color: var(--text);
 }
@@ -307,7 +311,7 @@ const sessionListCss = `
 }
 .rc-needs__n { font-weight: 700; font-variant-numeric: tabular-nums; }
 .rc-needs__label { color: var(--awaiting); }
-.rc-sl__needs { margin-left: var(--sp-2); margin-right: auto; }
+.rc-sl__needs { margin-left: var(--sp-2); }
 /* The "+" new-session button — the coral PRIMARY (spec): a compact 34px FLAT coral tile with a dark
    ink glyph. The one coral CTA in the rail. */
 .rc-sl__new {

@@ -40,24 +40,24 @@ export function shortenReset(resets: string, now: number = Date.now()): string {
 }
 
 function UsageBarRow({ label, bar, now }: { label: string; bar: UsageBar; now?: number }) {
-  // Clamp the rendered width to 0–100 even if the server ever reports out-of-range; the displayed
-  // percent text stays the raw value so it's honest.
-  const width = Math.max(0, Math.min(100, bar.percent));
+  // Round + clamp to 0–100: the server normally sends an integer, but a stray float ("66.667%") or an
+  // out-of-range value must not print verbatim or set an invalid aria-valuenow on the progressbar.
+  const pct = Math.max(0, Math.min(100, Math.round(bar.percent)));
   return (
     <div className="rc-usage__row">
       <div className="rc-usage__line">
         <span className="rc-usage__label">{label}</span>
-        <span className="rc-usage__pct">{bar.percent}%</span>
+        <span className="rc-usage__pct">{pct}%</span>
       </div>
       <div
         className="rc-usage__track"
         role="progressbar"
-        aria-valuenow={bar.percent}
+        aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`${label} limit ${bar.percent}% used`}
+        aria-label={`${label} limit ${pct}% used`}
       >
-        <span className="rc-usage__fill" style={{ width: `${width}%`, background: usageFillColor(bar.percent) }} />
+        <span className="rc-usage__fill" style={{ width: `${pct}%`, background: usageFillColor(pct) }} />
       </div>
       <span className="rc-usage__reset">resets {shortenReset(bar.resets, now)}</span>
     </div>

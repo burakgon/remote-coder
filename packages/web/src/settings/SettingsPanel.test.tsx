@@ -43,7 +43,7 @@ describe("SettingsPanel", () => {
         onClose={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /stop session/i }));
+    await userEvent.click(screen.getByRole("button", { name: /close session/i }));
     expect(onStop).toHaveBeenCalledWith("s1");
     vi.restoreAllMocks();
   });

@@ -83,18 +83,14 @@ export function SettingsPanel({
     setDraft((d) => ({ ...d, dangerouslySkip: checked }));
   }
 
-  // Live toggle for the RUNNING session. Enabling it makes the server respawn the agent (resume the
-  // same conversation) with --dangerously-skip-permissions, since the permission boundary is fixed at
-  // spawn. Confirm-gated because it's an RCE boundary + a brief restart.
+  // Live toggle for the RUNNING session. EITHER direction makes the server respawn the agent (resume
+  // the same conversation), since the permission boundary is fixed at spawn — so confirm-gate BOTH:
+  // enabling is an RCE boundary, and disabling also restarts the session (interrupting in-flight work).
   function toggleLiveDanger(checked: boolean) {
-    if (
-      checked &&
-      !window.confirm(
-        "Enable --dangerously-skip-permissions for THIS running session? It restarts the agent (your conversation resumes) so it can run tools without asking — remote code execution risk.",
-      )
-    ) {
-      return;
-    }
+    const message = checked
+      ? "Enable --dangerously-skip-permissions for THIS running session? It restarts the agent (your conversation resumes) so it can run tools without asking — remote code execution risk."
+      : "Disable --dangerously-skip-permissions for THIS running session? It restarts the agent (your conversation resumes), interrupting any in-flight work.";
+    if (!window.confirm(message)) return;
     setLiveDanger(checked);
   }
 
@@ -225,14 +221,18 @@ export function SettingsPanel({
                   type="button"
                   className="rc-settings__danger"
                   onClick={() => {
-                    if (window.confirm("Stop this session? The running claude process will be terminated.")) {
+                    if (
+                      window.confirm(
+                        "Close this session? It's removed from the list and its claude process is terminated. The transcript stays on disk — you can resume it later.",
+                      )
+                    ) {
                       onStopSession(session.id);
                     }
                   }}
-                  aria-label="Stop session"
+                  aria-label="Close session"
                 >
                   <Icon name="power" size={16} />
-                  Stop session
+                  Close session
                 </button>
               )}
             </section>

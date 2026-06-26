@@ -325,14 +325,23 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
           }}
           pushState={pushState}
           onEnablePush={async () => {
-            const result = await enablePush(api);
-            setPushState(
-              result === "subscribed" ? "subscribed" : result === "unsupported" ? "unsupported" : "unsubscribed",
-            );
+            // enablePush can reject (denied permission, VAPID fetch, subscribe) — catch so it doesn't
+            // become an unhandled rejection and the toggle reflects the real (unsubscribed) state.
+            try {
+              const result = await enablePush(api);
+              setPushState(
+                result === "subscribed" ? "subscribed" : result === "unsupported" ? "unsupported" : "unsubscribed",
+              );
+            } catch {
+              setPushState("unsubscribed");
+            }
           }}
           onDisablePush={async () => {
-            await disablePush(api);
-            setPushState("unsubscribed");
+            try {
+              await disablePush(api);
+            } finally {
+              setPushState("unsubscribed");
+            }
           }}
           onClose={() => setSettingsOpen(false)}
         />
