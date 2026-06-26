@@ -6,7 +6,6 @@ import type { IconName } from "../ui/Icon";
 import { Markdown } from "./Markdown";
 import { CodeBlock } from "./CodeBlock";
 import { imageBlockSrc, extractFilePaths, isImagePath } from "./content-images";
-import { FileChip } from "./FileChip";
 import { planRender, parseToolResult, summarizeToolInput, type ToolStep } from "./tool-cluster";
 import { SubagentCard } from "./SubagentCard";
 import type { SessionView, SubagentThread, TurnItem } from "../store/frame-reducer";
@@ -18,16 +17,14 @@ function fileBasename(p: string): string {
 }
 
 /**
- * Turn file paths MENTIONED in a message (claude's own text, or a tool result) into downloadable
- * attachments: images preview inline, other files become download chips. This is how claude "sends"
- * a file or image to the user — when it names a path it produced/read, the user can see or download
- * it. The download goes through the fsRoot-confined `/fs/download` endpoint (the `downloadUrl`).
+ * Turn IMAGE paths MENTIONED in a message (claude's own text, or a tool result) into inline previews —
+ * how claude "sends" an image to the user: when it names an image path it produced/read, the user sees
+ * it inline, loaded through the fsRoot-confined `/fs/download` endpoint (the `downloadUrl`). Non-image
+ * file paths mentioned in prose are intentionally NOT turned into download chips (too noisy).
  */
 function FileAttachments({ text, downloadUrl }: { text: string; downloadUrl: (p: string) => string }) {
-  const paths = extractFilePaths(text);
-  if (paths.length === 0) return null;
-  const images = paths.filter(isImagePath);
-  const files = paths.filter((p) => !isImagePath(p));
+  const images = extractFilePaths(text).filter(isImagePath);
+  if (images.length === 0) return null;
   return (
     <div style={{ display: "grid", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
       {images.map((p) => (
@@ -50,13 +47,6 @@ function FileAttachments({ text, downloadUrl }: { text: string; downloadUrl: (p:
           />
         </a>
       ))}
-      {files.length > 0 && (
-        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
-          {files.map((p) => (
-            <FileChip key={p} path={p} href={downloadUrl(p)} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

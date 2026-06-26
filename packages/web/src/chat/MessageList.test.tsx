@@ -326,10 +326,10 @@ describe("MessageList", () => {
     });
   });
 
-  describe("file paths in assistant text become downloadable", () => {
+  describe("file paths in assistant text: images preview inline, other files are not turned into chips", () => {
     const downloadUrl = (p: string) => `https://host/fs/download?path=${encodeURIComponent(p)}&token=tok`;
 
-    it("makes a file path in assistant text downloadable (the 'send me file X' flow)", () => {
+    it("does NOT turn a non-image file path in assistant prose into a download chip (too noisy — fb90ae9)", () => {
       render(
         <MessageList
           view={viewWith({
@@ -338,9 +338,7 @@ describe("MessageList", () => {
           downloadUrl={downloadUrl}
         />,
       );
-      const link = screen.getByRole("link", { name: /report\.pdf/i });
-      expect(link).toHaveAttribute("href", "https://host/fs/download?path=%2FUsers%2Fme%2Freport.pdf&token=tok");
-      expect(link).toHaveAttribute("download");
+      expect(screen.queryByRole("link", { name: /report\.pdf/i })).not.toBeInTheDocument();
     });
 
     it("previews an image path from assistant text inline (img src = the download URL)", () => {
