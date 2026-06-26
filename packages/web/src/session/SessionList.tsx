@@ -34,6 +34,8 @@ export interface SessionListProps {
   /** Force a fresh update check (the footer's "Check for updates"). Resolves true if an update is now
    * available. When provided + no update is pending, the footer shows the check button. */
   onCheckUpdate?: () => Promise<boolean>;
+  /** Open the GLOBAL settings (defaults + notifications) — reachable from the rail without a chat. */
+  onOpenSettings?: () => void;
 }
 
 function basename(p: string): string {
@@ -135,6 +137,7 @@ export function SessionList({
   updateAvailable,
   onShowUpdate,
   onCheckUpdate,
+  onOpenSettings,
 }: SessionListProps) {
   const ordered = sortSessionsByActivity(sessions, lastActiveAt);
   const needs = awaitingCount(sessions);
@@ -154,6 +157,11 @@ export function SessionList({
         </span>
         {/* The global "needs you" badge sits in the header so it's visible whenever the rail is open. */}
         <NeedsYouBadge count={needs} className="rc-sl__needs" />
+        {onOpenSettings && (
+          <button type="button" className="rc-sl__settings" onClick={onOpenSettings} aria-label="Settings">
+            <Icon name="settings" size={18} />
+          </button>
+        )}
         <button type="button" className="rc-sl__new" onClick={onNew} aria-label="New session">
           <Icon name="plus" size={18} />
         </button>
@@ -326,6 +334,17 @@ const sessionListCss = `
 .rc-needs__n { font-weight: 700; font-variant-numeric: tabular-nums; }
 .rc-needs__label { color: var(--awaiting); }
 .rc-sl__needs { margin-left: var(--sp-2); }
+/* The settings gear — a NEUTRAL icon button (coral is reserved for the "+" CTA), opening the global
+   defaults + notifications without entering a chat. */
+.rc-sl__settings {
+  width: var(--tap-min); height: var(--tap-min); flex: none;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-muted); cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.rc-sl__settings:hover, .rc-sl__settings:focus-visible { color: var(--text); border-color: var(--border-strong); }
 /* The "+" new-session button — the coral PRIMARY (spec): a compact 34px FLAT coral tile with a dark
    ink glyph. The one coral CTA in the rail. */
 .rc-sl__new {

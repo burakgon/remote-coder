@@ -35,6 +35,18 @@ function renderList(overrides: Partial<SessionListProps> = {}) {
 }
 
 describe("SessionList", () => {
+  it("shows a settings gear in the header that opens global settings (reachable without a chat)", async () => {
+    const onOpenSettings = vi.fn();
+    renderList({ onOpenSettings });
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the settings gear when no handler is wired", () => {
+    renderList();
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
   it("renders a row per session with its cwd basename and mono path", () => {
     renderList();
     expect(screen.getByText("remote-coder")).toBeInTheDocument();

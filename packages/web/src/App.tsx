@@ -12,6 +12,9 @@ import { sessionIdFromLocation } from "./session/deep-link";
 import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
+import { SettingsPanel } from "./settings/SettingsPanel";
+import { loadDefaults, saveDefaults } from "./settings/defaults";
+import { enablePush, disablePush, currentPushState } from "./pwa/push";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
 import { UpdateBanner } from "./pwa/UpdateBanner";
 import { UpdatePanel } from "./update/UpdatePanel";
@@ -55,6 +58,23 @@ export function App() {
   // network): without this the app silently dropped you into an empty list. Cleared on any successful
   // (re)load — the background poll keeps retrying.
   const [loadError, setLoadError] = useState<string | undefined>();
+  // GLOBAL settings (defaults for new sessions + notifications), reachable WITHOUT opening a chat — from
+  // the rail header and the landing top bar. Rendered with no `session`, so it shows only the global
+  // sections. Push state is read once (the opt-in itself is a deliberate tap).
+  const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
+  const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported">("unsubscribed");
+  // Read the live push subscription state only when the global settings actually open (not on every app
+  // mount): it's the only place that needs it, and deferring avoids an on-load async state update.
+  useEffect(() => {
+    if (!globalSettingsOpen) return;
+    let mounted = true;
+    currentPushState()
+      .then((s) => mounted && setPushState(s))
+      .catch(() => mounted && setPushState("unsupported"));
+    return () => {
+      mounted = false;
+    };
+  }, [globalSettingsOpen]);
   // Which segment the wizard's New/Resume toggle opens on. The normal +/New affordances open "new"
   // (the directory picker); the in-chat `/resume` slash command opens straight to "resume".
   const [wizardMode, setWizardMode] = useState<"new" | "resume">("new");
@@ -380,6 +400,10 @@ export function App() {
         setUpdateInfo(info);
         return Boolean(info.updateAvailable);
       }}
+      onOpenSettings={() => {
+        setGlobalSettingsOpen(true);
+        setSessionsOpen(false);
+      }}
       onSelect={(id) => {
         setActive(id);
         setSessionsOpen(false);
@@ -645,6 +669,31 @@ export function App() {
             setWizardOpen(false);
             setSessionsOpen(false);
           }}
+        />
+      )}
+      {globalSettingsOpen && (
+        <SettingsPanel
+          defaults={loadDefaults()}
+          onSaveDefaults={saveDefaults}
+          pushState={pushState}
+          onEnablePush={async () => {
+            try {
+              const result = await enablePush(api);
+              setPushState(
+                result === "subscribed" ? "subscribed" : result === "unsupported" ? "unsupported" : "unsubscribed",
+              );
+            } catch {
+              setPushState("unsubscribed");
+            }
+          }}
+          onDisablePush={async () => {
+            try {
+              await disablePush(api);
+            } finally {
+              setPushState("unsubscribed");
+            }
+          }}
+          onClose={() => setGlobalSettingsOpen(false)}
         />
       )}
       {updatePanelOpen && updateInfo && (
