@@ -36,7 +36,16 @@ export interface ApiClient {
   /** Reopen a session: `history` is the FULL transcript (every user + assistant turn, correctly
    * typed); `sinceSeq` is the replay buffer's max seq — connect the WS with `?since=sinceSeq` so it
    * replays only NEW frames (no re-render of the shown history). */
-  getSession(id: string): Promise<{ session: SessionMeta; history: ServerFrame[]; sinceSeq: number }>;
+  getSession(
+    id: string,
+    opts?: { full?: boolean },
+  ): Promise<{
+    session: SessionMeta;
+    history: ServerFrame[];
+    sinceSeq: number;
+    truncated: boolean;
+    total?: number;
+  }>;
   createSession(body: CreateSessionBody): Promise<SessionMeta>;
   /** Close a session: DELETE /sessions/:id → 204 (no body). Removes it from the list + store while
    * keeping the transcript (still resumable via /resume). Idempotent server-side, so deleting an
@@ -122,12 +131,25 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       const body = await req<{ sessions: ResumableSession[] }>(`/resumable${qs}`, { headers: headers() });
       return body.sessions;
     },
-    async getSession(id) {
-      const body = await req<{ session: SessionMeta; history: ServerFrame[]; sinceSeq?: number }>(`/sessions/${id}`, {
-        headers: headers(),
-      });
+    async getSession(id, opts) {
+      // Default: the server returns only the most-recent window of turns (fast open). `full` re-requests
+      // the ENTIRE transcript — the explicit "load earlier" path.
+      const qs = opts?.full ? "?full=1" : "";
+      const body = await req<{
+        session: SessionMeta;
+        history: ServerFrame[];
+        sinceSeq?: number;
+        truncated?: boolean;
+        total?: number;
+      }>(`/sessions/${id}${qs}`, { headers: headers() });
       // sinceSeq is the WS-resume seq; default to 0 (full replay) if an older server omits it.
-      return { session: body.session, history: body.history, sinceSeq: body.sinceSeq ?? 0 };
+      return {
+        session: body.session,
+        history: body.history,
+        sinceSeq: body.sinceSeq ?? 0,
+        truncated: body.truncated ?? false,
+        total: body.total,
+      };
     },
     async createSession(body) {
       const created = await req<{ session: SessionMeta }>("/sessions", {

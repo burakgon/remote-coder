@@ -46,6 +46,22 @@ test("parseTranscript keeps user/assistant turns in file order and drops bookkee
   expect(turns[1]?.parentUuid).toBe("u1");
 });
 
+test("parseTranscript carries isMeta so replayed history can skip injected (skill) user lines", () => {
+  const lines = [
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "skill content" }] },
+      uuid: "m1",
+      isMeta: true,
+    }),
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "typed" }] }, uuid: "u1" }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns).toHaveLength(2);
+  expect(turns[0]?.isMeta).toBe(true); // injected line flagged → client renders it as meta, not "YOU"
+  expect(turns[1]?.isMeta).toBeUndefined(); // a normal typed line is not meta
+});
+
 test("parseTranscript drops the synthetic --resume warm-up pair", () => {
   const lines = [
     JSON.stringify({

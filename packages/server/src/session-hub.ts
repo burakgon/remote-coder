@@ -570,26 +570,39 @@ export class SessionHub {
    *  - When there is NO transcript yet (a brand-new session), fall back to the buffer snapshot, whose
    *    frames already carry real WS seqs, so `sinceSeq` is the buffer's max seq.
    */
-  async getHistory(id: string): Promise<{ history: ServerFrame[]; sinceSeq: number }> {
+  /**
+   * Reopen history for a session. `limit` (when set) returns only the LAST N transcript turns — the
+   * default on open, so a huge "headquarters" session loads fast instead of shipping its entire MB-scale
+   * transcript over the tunnel and folding/rendering thousands of turns on a phone. `truncated` tells the
+   * client older turns were omitted (it offers "load earlier", which re-requests with no limit). Passing
+   * no `limit` returns the full history (the explicit load-earlier path).
+   */
+  async getHistory(
+    id: string,
+    limit?: number,
+  ): Promise<{ history: ServerFrame[]; sinceSeq: number; truncated: boolean; total?: number }> {
     const record = this.require(id);
     const sinceSeq = record.buffer.maxSeq();
     if (this.history) {
       const turns = await this.history.read(record.meta.cwd, id);
       if (turns.length > 0) {
-        const history = turns.map<ServerFrame>((t, i) => ({
+        const windowed = limit !== undefined && turns.length > limit ? turns.slice(-limit) : turns;
+        const history = windowed.map<ServerFrame>((t, i) => ({
           // Display seqs are 1-based and contiguous, DISTINCT from the buffer/WS seq space: the client
           // renders these as history but resumes the WS from `sinceSeq` (the buffer's max), so the two
           // seq spaces never collide.
           seq: i + 1,
           kind: "event",
-          payload: { type: t.type, message: t.message, uuid: t.uuid, raw: t },
+          // `raw` is SLIM ({uuid, isMeta}) — the full turn was a verbatim duplicate of `message` (the
+          // client only reads raw.uuid/raw.isMeta), so shipping it doubled the payload for nothing.
+          payload: { type: t.type, message: t.message, uuid: t.uuid, raw: { uuid: t.uuid, isMeta: t.isMeta } },
         }));
-        return { history, sinceSeq };
+        return { history, sinceSeq, truncated: windowed.length < turns.length, total: turns.length };
       }
     }
     // No transcript (brand-new session, or no HistoryService configured): the buffer is all we have.
     // Its frames already carry real WS seqs, so the client resumes the WS from the same `sinceSeq`.
-    return { history: record.buffer.snapshot(), sinceSeq };
+    return { history: record.buffer.snapshot(), sinceSeq, truncated: false };
   }
 
   /** Live subscriber count for a session (0 if unknown). Lets the WS layer assert no leak. */

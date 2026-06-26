@@ -68,15 +68,21 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
   // (seq ≤ sinceSeq) are skipped and only NEW live frames (seq > sinceSeq) arrive, with no double
   // display and no dropped updates. A load failure still flips the gate so live frames flow over WS.
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  // The server returns only the most-recent window by default (fast open); `truncated` means older turns
+  // exist behind a "load earlier" tap. `loadingEarlier` covers the explicit full re-fetch.
+  const [truncated, setTruncated] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setHistoryLoaded(false);
+    setTruncated(false);
     resetSession(session.id);
     api
       .getSession(session.id)
-      .then(({ history, sinceSeq }) => {
+      .then(({ history, sinceSeq, truncated: more }) => {
         if (cancelled) return;
         loadHistory(session.id, history, sinceSeq);
+        setTruncated(more);
       })
       .catch(() => {
         // history load failure is non-fatal; live frames still arrive over WS (full replay)
@@ -88,6 +94,24 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
       cancelled = true;
     };
   }, [session.id, api, loadHistory, resetSession]);
+
+  // Explicit "load earlier": re-fetch the FULL transcript (accepting the slower load only when the user
+  // asks for it) and replace the windowed view. The WS resume seq is unchanged, so live frames are
+  // unaffected. Guard against the session changing mid-fetch.
+  const loadEarlier = useCallback(() => {
+    setLoadingEarlier(true);
+    const id = session.id;
+    api
+      .getSession(id, { full: true })
+      .then(({ history, sinceSeq, truncated: more }) => {
+        loadHistory(id, history, sinceSeq);
+        setTruncated(more);
+      })
+      .catch(() => {
+        // leave the windowed view in place on failure
+      })
+      .finally(() => setLoadingEarlier(false));
+  }, [api, session.id, loadHistory]);
 
   // Open the live socket AFTER history loads (frames flow into the store via the hook). Gating on
   // `historyLoaded` guarantees the socket's `getSince` reads the lastSeq = sinceSeq we just set.
@@ -246,6 +270,46 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         aria-relevant="additions"
         style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}
       >
+        {/* While the (windowed) history loads, show a quiet placeholder instead of a blank panel. */}
+        {!historyLoaded && (
+          <div
+            role="status"
+            style={{
+              display: "grid",
+              placeItems: "center",
+              minHeight: 120,
+              padding: "var(--sp-6) var(--sp-4)",
+              color: "var(--text-faint)",
+              fontSize: "var(--fs-sm)",
+            }}
+          >
+            Loading conversation…
+          </div>
+        )}
+        {/* Older turns were trimmed for a fast open — one tap pulls the full transcript. */}
+        {historyLoaded && truncated && (
+          <div style={{ display: "grid", placeItems: "center", padding: "var(--sp-3) var(--sp-4)" }}>
+            <button
+              type="button"
+              onClick={loadEarlier}
+              disabled={loadingEarlier}
+              style={{
+                minHeight: "var(--tap-min)",
+                padding: "0 var(--sp-4)",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text-muted)",
+                font: "inherit",
+                fontSize: "var(--fs-sm)",
+                cursor: loadingEarlier ? "default" : "pointer",
+                opacity: loadingEarlier ? 0.6 : 1,
+              }}
+            >
+              {loadingEarlier ? "Loading earlier messages…" : "Load earlier messages"}
+            </button>
+          </div>
+        )}
         <MessageList
           view={safeView}
           downloadUrl={(path) => api.downloadUrl(path)}

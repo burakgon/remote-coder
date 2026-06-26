@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import { SessionManager, SessionHub } from "../src/index.js";
-import type { ServerFrame } from "../src/index.js";
+import type { ServerFrame, HistoryService } from "../src/index.js";
 
 const MOCK = fileURLToPath(new URL("./helpers/mock-claude-interactive.mjs", import.meta.url));
 
@@ -77,6 +77,44 @@ test("reconnect replay: a late subscriber receives buffered frames including the
   const history = await hub.getHistory(meta.id);
   expect(history.history.some((f) => f.kind === "result")).toBe(true);
   expect(history.sinceSeq).toBeGreaterThan(0);
+  hub.stopSession(meta.id);
+});
+
+test("getHistory windows to the last N turns (truncated + slim raw); no limit returns the full history", async () => {
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
+  // A stub transcript of 10 turns so we can assert the window math without writing a real .jsonl.
+  const turns = Array.from({ length: 10 }, (_, i) => ({
+    type: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+    message: { role: i % 2 === 0 ? "user" : "assistant", content: [{ type: "text", text: `m${i}` }] },
+    uuid: `t${i}`,
+  }));
+  const history = {
+    claudeHome: "/x",
+    transcriptPath: () => "/x/s.jsonl",
+    read: async () => turns,
+  } as unknown as HistoryService;
+  const hub = new SessionHub(manager, { history });
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  // Default-style windowed read: only the LAST 4 turns, flagged truncated, with the true total.
+  const win = await hub.getHistory(meta.id, 4);
+  expect(win.history).toHaveLength(4);
+  expect(win.truncated).toBe(true);
+  expect(win.total).toBe(10);
+  expect((win.history[0]!.payload as { uuid: string }).uuid).toBe("t6"); // last 4 = t6..t9
+  // raw is SLIM — it must NOT carry the duplicated message (that was the payload-doubling bug).
+  const raw = (win.history[0]!.payload as { raw: Record<string, unknown> }).raw;
+  expect(raw).not.toHaveProperty("message");
+  expect(raw.uuid).toBe("t6");
+
+  // No limit → the entire transcript, not truncated.
+  const full = await hub.getHistory(meta.id);
+  expect(full.history).toHaveLength(10);
+  expect(full.truncated).toBe(false);
+
   hub.stopSession(meta.id);
 });
 

@@ -30,6 +30,10 @@ import { createUpdater } from "./updater.js";
 import type { Updater } from "./updater.js";
 import type { UsageService } from "./usage-service.js";
 
+/** Default reopen window: how many of the most-recent transcript turns GET /sessions/:id returns when
+ * `?full=1` is absent. Keeps opening a large session fast; "load earlier" re-requests with `?full=1`. */
+const HISTORY_WINDOW = 200;
+
 export interface CreateServerDeps {
   store?: SessionStore;
   history?: HistoryService;
@@ -304,17 +308,18 @@ export function createServer(
     return { sessions };
   });
 
-  app.get<{ Params: { id: string } }>("/sessions/:id", async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { full?: string } }>("/sessions/:id", async (request, reply) => {
     const meta = hub.getSession(request.params.id);
     if (!meta) {
       reply.code(404).send({ error: "session not found" });
       return;
     }
-    // `history` is the FULL transcript (every user + assistant turn, correctly typed) when one exists;
-    // `sinceSeq` is the replay buffer's current max seq, so the client connects the WS with
-    // `?since=sinceSeq` to receive ONLY new live frames (no re-render of the shown history).
-    const { history, sinceSeq } = await hub.getHistory(request.params.id);
-    return { session: meta, history, sinceSeq };
+    // By DEFAULT return only the last HISTORY_WINDOW turns so a big session opens fast (`truncated` tells
+    // the client older turns exist); `?full=1` returns the entire transcript (the explicit "load earlier"
+    // path). `sinceSeq` is the replay buffer's max seq — the client resumes the WS from it for new frames.
+    const limit = request.query.full === "1" ? undefined : HISTORY_WINDOW;
+    const { history, sinceSeq, truncated, total } = await hub.getHistory(request.params.id, limit);
+    return { session: meta, history, sinceSeq, truncated, total };
   });
 
   // Close a session: stop its live process AND remove it from the list + store (transcript untouched,

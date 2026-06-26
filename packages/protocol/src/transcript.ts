@@ -3,6 +3,10 @@ export interface TranscriptTurn {
   message: unknown;
   uuid?: string;
   parentUuid?: string | null;
+  /** True for an INJECTED user-role line (skill content / tool reminders carry `isMeta:true`). Carried
+   * through so the client can skip rendering it as a "YOU" bubble in replayed history, exactly as the
+   * live frame path does. */
+  isMeta?: boolean;
 }
 
 /**
@@ -52,6 +56,7 @@ export function parseTranscript(text: string): TranscriptTurn[] {
       message: obj.message,
       uuid: typeof obj.uuid === "string" ? obj.uuid : undefined,
       parentUuid: typeof obj.parentUuid === "string" ? obj.parentUuid : obj.parentUuid === null ? null : undefined,
+      isMeta: obj.isMeta === true ? true : undefined,
     });
   }
   return turns;
