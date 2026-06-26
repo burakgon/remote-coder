@@ -51,8 +51,10 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
   // server-emitted `rewound` frame drives the marker + (for conversation/both) the display truncation.
   const [rewindTarget, setRewindTarget] = useState<string | undefined>(undefined);
   // SUBAGENTS: the drill-in target (the Agent tool_use id == SubagentThread key). When set, the
-  // SubagentView sheet is open for that subagent (its live chat, task, and result).
-  const [openSubagentId, setOpenSubagentId] = useState<string | null>(null);
+  // SubagentView sheet navigation STACK (its live chat, task, and result). Opening a NESTED subagent
+  // pushes; Back pops to the parent subagent (or closes when empty) instead of jumping straight to chat.
+  const [subagentStack, setSubagentStack] = useState<string[]>([]);
+  const openSubagentId = subagentStack.length > 0 ? subagentStack[subagentStack.length - 1]! : null;
   // Reflect the device's current push-subscription state in Settings. No permission is requested
   // here — `currentPushState` only reads the existing subscription (the opt-in is a deliberate tap).
   const [pushState, setPushState] = useState<"subscribed" | "unsubscribed" | "unsupported">("unsubscribed");
@@ -208,7 +210,7 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
           view={safeView}
           downloadUrl={(path) => api.downloadUrl(path)}
           onRewind={(checkpointId) => setRewindTarget(checkpointId)}
-          onOpenSubagent={(id) => setOpenSubagentId(id)}
+          onOpenSubagent={(id) => setSubagentStack([id])}
         />
 
         {/* The pending permission gate. Hidden once answered (optimistic) or while it is being
@@ -240,7 +242,7 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
       <SubagentTray
         subagents={safeView.subagents}
         subagentOrder={safeView.subagentOrder}
-        onOpen={(id) => setOpenSubagentId(id)}
+        onOpen={(id) => setSubagentStack([id])}
       />
       {/* Compact auto-allow chip near the composer — taps open into the active rules, each clearable.
           Presentation only; the auto-allow set + isAutoAllowed effect (above) are unchanged. */}
@@ -363,8 +365,8 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         <SubagentView
           thread={safeView.subagents[openSubagentId]!}
           subagents={safeView.subagents}
-          onOpenSubagent={(id) => setOpenSubagentId(id)}
-          onClose={() => setOpenSubagentId(null)}
+          onOpenSubagent={(id) => setSubagentStack((s) => [...s, id])}
+          onClose={() => setSubagentStack((s) => s.slice(0, -1))}
           downloadUrl={(path) => api.downloadUrl(path)}
         />
       )}
