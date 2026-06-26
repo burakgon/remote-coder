@@ -13,9 +13,10 @@ import type { LiveWireState } from "../ui/LiveWire";
  * Both stay readable at 390px and reduce to a static dot/label under prefers-reduced-motion.
  */
 
-/** The model's context window in tokens. Current Claude models (Opus/Sonnet/Haiku 4.x) are all 200k;
- *  kept as a function (keyed by model) so a future per-model window has a single home. */
-function contextWindowFor(_model?: string): number {
+/** The model's context window in tokens. Current Claude models (Opus/Sonnet/Haiku 4.x) are 200k; a
+ *  1M-context variant (e.g. Sonnet's 1M beta, surfaced as "…[1m]") maps to 1M. One home for the rule. */
+function contextWindowFor(model?: string): number {
+  if (model && /\b1m\b|\[1m\]/i.test(model)) return 1_000_000;
   return 200_000;
 }
 
