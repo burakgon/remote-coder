@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Icon } from "./ui/Icon";
+import { useFocusTrap } from "./ui/useFocusTrap";
 
 export interface AppLayoutProps {
   children: ReactNode;
@@ -60,6 +61,19 @@ function useIsDesktop(): boolean {
 export function AppLayout({ children, sessionList, onHideSessions, sessionsOpen, conversationActive }: AppLayoutProps) {
   const open = sessionsOpen ? "true" : "false";
   const isDesktop = useIsDesktop();
+  // The mobile sheet is a MODAL (scrim + overlay); the desktop rail is a permanent pane. Only the modal
+  // form gets dialog semantics: a focus trap, Escape-to-close, and role/aria-modal.
+  const railRef = useRef<HTMLElement>(null);
+  const sheetIsModal = Boolean(sessionsOpen) && !isDesktop;
+  useFocusTrap(railRef as RefObject<HTMLElement>, sheetIsModal);
+  useEffect(() => {
+    if (!sheetIsModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onHideSessions?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheetIsModal, onHideSessions]);
   // On desktop the rail is permanently visible, so always mount the list. On mobile the rail is a
   // bottom sheet: keep mounting the list (so it's ready when the sheet opens) EXCEPT while a
   // conversation owns the main panel and the sheet is closed — then the hidden list would just be a
@@ -71,7 +85,13 @@ export function AppLayout({ children, sessionList, onHideSessions, sessionsOpen,
         <button type="button" className="rc-scrim" aria-label="Close sessions" onClick={onHideSessions} />
       )}
 
-      <aside className="rc-rail" data-testid="sessions-rail" data-open={open}>
+      <aside
+        ref={railRef}
+        className="rc-rail"
+        data-testid="sessions-rail"
+        data-open={open}
+        {...(sheetIsModal ? { role: "dialog", "aria-modal": true, "aria-label": "Sessions" } : {})}
+      >
         {/* Mobile-only sheet chrome: a centered grab-handle + a right-aligned close, in their OWN
             fixed-height row, so the content below (the usage bars, the session list) never sits under
             the close button. Hidden on desktop. */}

@@ -149,7 +149,7 @@ describe("NewSessionWizard", () => {
     // Starts on the directory picker (New session).
     await waitFor(() => screen.getByRole("button", { name: /use this directory/i }));
     // Flip to Resume via the segmented toggle.
-    await userEvent.click(screen.getByRole("tab", { name: /resume/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /resume/i }));
     expect(await screen.findByText("Earlier work")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /use this directory/i })).not.toBeInTheDocument();
   });
@@ -175,7 +175,7 @@ describe("NewSessionWizard", () => {
     // No directory picker — the resume pane is shown immediately with its tab selected.
     expect(await screen.findByText("Earlier work")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /use this directory/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /resume/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("radio", { name: /resume/i })).toHaveAttribute("aria-checked", "true");
   });
 
   it("resuming a session calls createSession with resumeSessionId and reports the created session", async () => {
@@ -197,7 +197,7 @@ describe("NewSessionWizard", () => {
         onClose={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByRole("tab", { name: /resume/i }));
+    await userEvent.click(screen.getByRole("radio", { name: /resume/i }));
     await screen.findByText("Pick this up");
     await userEvent.click(screen.getByRole("button", { name: /resume pick this up/i }));
     await waitFor(() => expect(createSession).toHaveBeenCalled());

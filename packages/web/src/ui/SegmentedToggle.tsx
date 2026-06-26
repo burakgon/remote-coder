@@ -16,10 +16,11 @@ export interface SegmentedToggleProps<T extends string> {
 }
 
 /**
- * A small, keyboard-operable segmented control (Variant A). Built with tablist semantics: the group
- * is a `tablist`, each segment a `tab` with `aria-selected`/`aria-pressed`, and ArrowLeft/ArrowRight
- * (and Home/End) move the selection. Design-token only; the active segment gets the surface lift, the
- * rest stay quiet. Tap targets are ≥ var(--tap-min) tall.
+ * A small, keyboard-operable segmented control (Variant A). Built with RADIOGROUP semantics (it swaps
+ * the whole surface, not tabpanels): the group is a `radiogroup`, each segment a `radio` with
+ * `aria-checked` + roving tabindex, and ArrowLeft/ArrowRight (and Home/End) move the selection.
+ * Design-token only; the active segment gets the surface lift, the rest stay quiet. Tap targets are
+ * ≥ var(--tap-min) tall.
  */
 export function SegmentedToggle<T extends string>({ label, options, value, onChange }: SegmentedToggleProps<T>) {
   const index = options.findIndex((o) => o.value === value);
@@ -37,16 +38,15 @@ export function SegmentedToggle<T extends string>({ label, options, value, onCha
   }
 
   return (
-    <div role="tablist" aria-label={label} className="rc-seg" onKeyDown={onKeyDown}>
+    <div role="radiogroup" aria-label={label} className="rc-seg" onKeyDown={onKeyDown}>
       {options.map((o) => {
         const selected = o.value === value;
         return (
           <button
             key={o.value}
             type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-pressed={selected}
+            role="radio"
+            aria-checked={selected}
             tabIndex={selected ? 0 : -1}
             className={`rc-seg__btn${selected ? " rc-seg__btn--on" : ""}`}
             onClick={() => onChange(o.value)}

@@ -737,7 +737,7 @@ describe("App — /resume slash command opens the resume picker", () => {
 
     // The resume picker opened (client-side action) with its tab selected — NOT the directory picker.
     expect(await screen.findByRole("dialog", { name: /resume a past session/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /resume/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("radio", { name: /resume/i })).toHaveAttribute("aria-checked", "true");
     expect(await screen.findByText("Earlier work")).toBeInTheDocument();
     // The composer cleared — the slash text was never sent to claude.
     expect(box.textContent).toBe("");
