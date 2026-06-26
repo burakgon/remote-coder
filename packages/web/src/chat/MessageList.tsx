@@ -4,6 +4,7 @@ import { Mono } from "../ui/Mono";
 import { Icon, iconForFile } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Markdown } from "./Markdown";
+import { CodeBlock } from "./CodeBlock";
 import { imageBlockSrc, extractFilePaths, isImagePath } from "./content-images";
 import { FileChip } from "./FileChip";
 import { planRender, parseToolResult, summarizeToolInput, type ToolStep } from "./tool-cluster";
@@ -301,11 +302,17 @@ function ToolStepRow({ step }: { step: ToolStep }) {
           }}
         >
           <div style={detailLabelStyle}>Input</div>
-          <pre style={rawPanelStyle}>{stringifyInput(use.input)}</pre>
+          <ToolInput name={use.name} input={use.input} />
           {parsed ? (
             <>
-              <div style={detailLabelStyle}>Raw result</div>
-              <pre style={rawPanelStyle}>{parsed.raw}</pre>
+              <div style={detailLabelStyle}>Result</div>
+              {/* Prefer the extracted TEXT (real newlines) over the escaped-JSON dump; fall back to the
+                  pretty raw JSON only for a purely-structured result with no human text. */}
+              {parsed.text ? (
+                <pre style={rawPanelStyle}>{parsed.text}</pre>
+              ) : (
+                <pre style={rawPanelStyle}>{parsed.raw}</pre>
+              )}
             </>
           ) : (
             <div style={{ ...detailLabelStyle, color: "var(--text-faint)" }}>No result yet</div>
@@ -663,14 +670,134 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
   );
 }
 
-function stringifyInput(input: unknown): string {
-  if (input === undefined) return "—";
-  if (typeof input === "string") return input;
+function toJson(value: unknown): string {
   try {
-    return JSON.stringify(input, null, 2);
+    return JSON.stringify(value, null, 2);
   } catch {
-    return String(input);
+    return String(value);
   }
+}
+
+/** Best-effort code language from a file path's extension (CodeBlock normalizes the rest). */
+function langFromPath(p: unknown): string | undefined {
+  if (typeof p !== "string") return undefined;
+  const dot = p.lastIndexOf(".");
+  if (dot < 0) return undefined;
+  const ext = p.slice(dot + 1).toLowerCase();
+  const map: Record<string, string> = {
+    ts: "ts",
+    tsx: "tsx",
+    js: "js",
+    jsx: "jsx",
+    mjs: "js",
+    cjs: "js",
+    py: "python",
+    rb: "ruby",
+    go: "go",
+    rs: "rust",
+    java: "java",
+    c: "c",
+    h: "c",
+    cpp: "cpp",
+    cc: "cpp",
+    cs: "csharp",
+    json: "json",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "toml",
+    html: "html",
+    css: "css",
+    scss: "scss",
+    sh: "bash",
+    bash: "bash",
+    zsh: "bash",
+    sql: "sql",
+    md: "markdown",
+    php: "php",
+    swift: "swift",
+    kt: "kotlin",
+  };
+  return map[ext];
+}
+
+/** One generic input field: a label + a readable value. A multi-line / long string renders with REAL
+ *  newlines (a plain panel, not escaped JSON); scalars render inline; objects/arrays as pretty JSON. */
+function ToolInputField({ name, value }: { name: string; value: unknown }) {
+  if (value === null || value === undefined) return null;
+  let body;
+  if (typeof value === "string") {
+    body = <pre style={rawPanelStyle}>{value}</pre>;
+  } else if (typeof value === "number" || typeof value === "boolean") {
+    body = <pre style={rawPanelStyle}>{String(value)}</pre>;
+  } else {
+    body = <pre style={rawPanelStyle}>{toJson(value)}</pre>;
+  }
+  return (
+    <>
+      <div style={detailLabelStyle}>{name}</div>
+      {body}
+    </>
+  );
+}
+
+/**
+ * Render a tool-use input READABLY instead of dumping the whole object as escaped single-line JSON (the
+ * old behavior made a Bash command — newlines as literal `\n` — and a git message unreadable). The
+ * "starred" string field of well-known tools becomes a real, syntax-highlighted code block; everything
+ * else is shown field-by-field with real newlines.
+ */
+function ToolInput({ name, input }: { name: string; input: unknown }) {
+  if (input === undefined) return <pre style={rawPanelStyle}>—</pre>;
+  if (input === null || typeof input !== "object") return <pre style={rawPanelStyle}>{String(input)}</pre>;
+  const obj = input as Record<string, unknown>;
+
+  // Bash: the command is the star — a real, highlighted shell block (not escaped JSON).
+  if (name === "Bash" && typeof obj.command === "string") {
+    return (
+      <>
+        <CodeBlock code={obj.command} language="bash" />
+        {typeof obj.description === "string" && obj.description.length > 0 && (
+          <ToolInputField name="description" value={obj.description} />
+        )}
+      </>
+    );
+  }
+
+  // Write / NotebookEdit and friends: path + content in the file's own language.
+  if (typeof obj.content === "string" && (typeof obj.file_path === "string" || typeof obj.path === "string")) {
+    const path = (typeof obj.file_path === "string" ? obj.file_path : obj.path) as string;
+    return (
+      <>
+        <ToolInputField name="file_path" value={path} />
+        <CodeBlock code={obj.content} language={langFromPath(path)} />
+      </>
+    );
+  }
+
+  // Edit: path + before/after, each in the file's language.
+  if (typeof obj.old_string === "string" && typeof obj.new_string === "string") {
+    const lang = langFromPath(obj.file_path);
+    return (
+      <>
+        {typeof obj.file_path === "string" && <ToolInputField name="file_path" value={obj.file_path} />}
+        <div style={detailLabelStyle}>old</div>
+        <CodeBlock code={obj.old_string} language={lang} />
+        <div style={detailLabelStyle}>new</div>
+        <CodeBlock code={obj.new_string} language={lang} />
+      </>
+    );
+  }
+
+  // Generic: one readable field per key (real newlines for strings, pretty JSON for nested objects).
+  const entries = Object.entries(obj);
+  if (entries.length === 0) return <pre style={rawPanelStyle}>—</pre>;
+  return (
+    <>
+      {entries.map(([k, v]) => (
+        <ToolInputField key={k} name={k} value={v} />
+      ))}
+    </>
+  );
 }
 
 function renderBlocks(blocks: ContentBlock[]) {

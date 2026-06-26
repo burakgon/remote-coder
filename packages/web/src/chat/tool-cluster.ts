@@ -106,7 +106,10 @@ export function summarizeToolInput(input: unknown): string {
 export interface ParsedResult {
   /** A compact one-line summary of the result (first text line / collapsed JSON), for the step head. */
   summary: string;
-  /** The full raw result, pretty-printed when it's structured — this is the verbose-expand payload. */
+  /** The full human-readable text pulled out of the result (real newlines, no JSON scaffolding) — the
+   *  preferred verbose-expand body. Empty for a purely-structured result (then fall back to `raw`). */
+  text: string;
+  /** The full raw result, pretty-printed when it's structured — the fallback verbose-expand payload. */
   raw: string;
   /** True if the tool reported an error (so the step can flag it). */
   isError: boolean;
@@ -128,7 +131,7 @@ export function parseToolResult(content: unknown): ParsedResult {
       .find((l) => l.trim().length > 0)
       ?.trim() ?? "";
   const summary = firstLine.length > 120 ? firstLine.slice(0, 117) + "…" : firstLine;
-  return { summary, raw, isError };
+  return { summary, text, raw, isError };
 }
 
 function stringifyRaw(content: unknown): string {

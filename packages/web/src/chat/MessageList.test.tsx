@@ -88,16 +88,40 @@ describe("MessageList", () => {
       expect(screen.queryByText(/Sent untitled\.wav/)).not.toBeInTheDocument();
     });
 
-    it("expands a step to show the full input AND the Raw result panel (where the raw JSON now lives)", async () => {
+    it("expands a step to show the full input AND a readable Result panel (extracted text, no JSON scaffolding)", async () => {
       render(<MessageList view={cluster} />);
       await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
       await userEvent.click(screen.getByRole("button", { name: /expand bash step/i }));
-      // The verbose detail is now reachable: an Input panel + a Raw result panel.
+      // The verbose detail is reachable: an Input panel + a Result panel.
       expect(screen.getByText("Input")).toBeInTheDocument();
-      expect(screen.getByText("Raw result")).toBeInTheDocument();
-      // The raw tool_result JSON (the previously-leaking payload) is present on expand.
+      expect(screen.getByText("Result")).toBeInTheDocument();
+      // The result shows the human TEXT (real content), not the escaped JSON scaffolding it used to dump.
       expect(screen.getByText(/Sent untitled\.wav \(4\.8 MB\)\./)).toBeInTheDocument();
-      expect(screen.getByText(/"type": "text"/)).toBeInTheDocument();
+      expect(screen.queryByText(/"type": "text"/)).not.toBeInTheDocument();
+    });
+
+    it("renders a multi-line Bash command as a real shell block, not an escaped-JSON dump", async () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "tool-use",
+                id: "b1",
+                name: "Bash",
+                input: { command: 'cd /tmp\ngit add .\ngit commit -m "msg"', description: "deploy" },
+              },
+              { kind: "tool-result", toolUseId: "b1", content: "ok" },
+            ],
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
+      await userEvent.click(screen.getByRole("button", { name: /expand bash step/i }));
+      // The command renders as real shell text (its later lines are present in the highlighted block)...
+      expect(screen.getAllByText(/git commit -m/).length).toBeGreaterThan(0);
+      // ...not the old escaped single-line JSON object (no "command": key dumped as text).
+      expect(screen.queryByText(/"command":/)).not.toBeInTheDocument();
     });
 
     it("renders a ToolSearch step de-emphasized (meta) but still present + expandable", async () => {
