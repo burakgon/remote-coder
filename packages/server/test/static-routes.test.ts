@@ -82,6 +82,7 @@ beforeEach(async () => {
   await mkdir(join(webDir, "assets"), { recursive: true });
   await writeFile(join(webDir, "index.html"), "<!doctype html><title>remote-coder</title>");
   await writeFile(join(webDir, "assets", "app.js"), "console.log('shell')");
+  await writeFile(join(webDir, "sw.js"), "/* service worker */");
 });
 afterEach(async () => {
   if (result) await result.app.close();
@@ -112,6 +113,18 @@ describe("serving the PWA on the same origin", () => {
     const spa = await result.app.inject({ method: "GET", url: "/login" });
     expect(spa.statusCode).toBe(200);
     expect(spa.body).toContain("remote-coder");
+  });
+
+  test("sw.js is served no-store (the OTA trigger must never be cached), while hashed assets are not", async () => {
+    result = createServer(configFor(), new SessionManager({ claudeBin: process.execPath }), { webDir });
+    const sw = await result.app.inject({ method: "GET", url: "/sw.js" });
+    expect(sw.statusCode).toBe(200);
+    // Must be uncacheable so a CDN/browser can't pin clients to a stale bundle and block OTA updates.
+    expect(sw.headers["cache-control"]).toMatch(/no-store/);
+    // A normal content-hashed asset is immutable → it must NOT inherit the sw.js no-store override.
+    const asset = await result.app.inject({ method: "GET", url: "/assets/app.js" });
+    expect(asset.statusCode).toBe(200);
+    expect(asset.headers["cache-control"] ?? "").not.toMatch(/no-store/);
   });
 
   test("the API stays token-gated even though the shell is public", async () => {

@@ -113,6 +113,21 @@ export interface RegisterStaticOptions {
 export function registerStatic(app: FastifyInstance, opts: RegisterStaticOptions): void {
   app.register(fastifyStatic, { root: opts.webDir, wildcard: false });
 
+  // The service worker is the OTA UPDATE TRIGGER: a client only swaps to a new bundle once the browser
+  // sees a CHANGED sw.js. A cacheable sw.js therefore pins clients to a STALE bundle — behind Cloudflare a
+  // cacheable sw.js inherits a multi-hour browser TTL, which silently blocked OTA updates from reaching
+  // clients until that cache expired (and reopening the PWA kept serving the old bundle). Force sw.js
+  // UNCACHED so every update check fetches it fresh and the OTA lands immediately. Cloudflare won't edge-
+  // cache a no-store response, so origin headers pass straight through — no CDN config needed. Done in
+  // onSend (not @fastify/static's setHeaders, which the plugin's own default cache-control overrides).
+  // Content-hashed `/assets/*` are immutable, so their default caching is left untouched.
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (pathForGate(request.url) === "/sw.js") {
+      reply.header("cache-control", "no-store, no-cache, must-revalidate");
+    }
+    return payload;
+  });
+
   app.setNotFoundHandler((request, reply) => {
     if (
       request.method === "GET" &&
