@@ -192,6 +192,16 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
     return () => clearTimeout(t);
   }, [pending, pendingQuestion, answered, unmarkAnswered]);
 
+  // Keep `answered` BOUNDED: once nothing is pending (every prompt resolved), the accumulated requestIds
+  // are dead weight — clear them. requestIds are unique uuids, so a future prompt is never falsely deduped
+  // against a cleared one. Without this the set grows for the lifetime of a long-lived session view.
+  useEffect(() => {
+    if (!pending && !pendingQuestion && answeredRef.current.size > 0) {
+      answeredRef.current.clear();
+      setAnswered(new Set());
+    }
+  }, [pending, pendingQuestion]);
+
   // Auto-scroll the log to the newest content as turns/streaming text grow — unless the user has
   // scrolled up to read history (then we leave their position alone). A small slack avoids
   // sub-pixel jitter at the bottom counting as "scrolled up".
