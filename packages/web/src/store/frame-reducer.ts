@@ -185,6 +185,34 @@ function isAskUserTool(name: unknown): boolean {
   return name === ASK_USER_TOOL;
 }
 
+/** The MCP tools that send a file/image to the chat — surfaced live as the AttachmentCard via a transient
+ *  `attachment` frame, recorded in the transcript as a plain tool call (so a reopen must reconstruct it). */
+const SEND_IMAGE_TOOL = "mcp__remote-coder__send_image";
+const SEND_FILE_TOOL = "mcp__remote-coder__send_file";
+function isSendTool(name: unknown): boolean {
+  return name === SEND_IMAGE_TOOL || name === SEND_FILE_TOOL;
+}
+
+/** Basename of a path (for the attachment card's name), tolerant of trailing slashes. */
+function basename(p: string): string {
+  const parts = p.replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || p;
+}
+
+/** Build an attachment TurnItem from a send_file/send_image tool_use (its input carries {path, caption}). */
+function attachmentFromSend(id: string, name: string, input: unknown): Extract<TurnItem, { kind: "attachment" }> {
+  const inp = (input ?? {}) as { path?: unknown; caption?: unknown };
+  const path = typeof inp.path === "string" ? inp.path : "";
+  return {
+    kind: "attachment",
+    id,
+    path,
+    name: path ? basename(path) : id,
+    caption: typeof inp.caption === "string" ? inp.caption : undefined,
+    isImage: name === SEND_IMAGE_TOOL,
+  };
+}
+
 /** Pull the {header, question} list out of an ask_user tool input (`{ questions: [...] }`). */
 function extractAskQuestions(input: unknown): AskedQuestion[] {
   const qs = (input as { questions?: unknown } | null)?.questions;
@@ -362,6 +390,11 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     // Claude sent a file/image to the chat — append it as its own turn so the message list renders
     // it inline (image) or as a download chip (file). Does not change the live wire state.
     const a = frame.payload as AttachmentPayload;
+    // DEDUPE: the send_file/send_image tool_use (which precedes this frame, and is the ONLY source on a
+    // transcript reopen) already created the attachment turn for this path. Skip so the live frame doesn't
+    // draw a SECOND card. If no matching turn exists (e.g. the tool_use was evicted from a delta replay),
+    // fall through and create it — the critical frame is the safety net.
+    if (a.path && view.turns.some((t) => t.kind === "attachment" && t.path === a.path)) return next;
     next.turns = [
       ...view.turns,
       { kind: "attachment", id: a.id, path: a.path, name: a.name, caption: a.caption, isImage: a.isImage },
@@ -505,6 +538,10 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
           // AskUserQuestion → a persistent Q&A record (paired with its answer below), NOT a generic tool
           // cluster. Don't mark `active`: the separate `question` frame drives the "awaiting" wire live.
           added.push({ kind: "asked-question", id: String(block.id), questions: extractAskQuestions(block.input) });
+        } else if (parent === undefined && isSendTool(block.name)) {
+          // send_file/send_image → a clean attachment card (NOT raw MCP plumbing) so a reopened chat shows
+          // the file/image the same way the live `attachment` frame does (that frame is deduped below).
+          added.push(attachmentFromSend(String(block.id), String(block.name), block.input));
         } else {
           added.push({ kind: "tool-use", id: String(block.id), name: String(block.name), input: block.input });
           sawTool = true;
@@ -634,6 +671,9 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
           turns[askIdx] = { ...aq, answer: extractResultText(block.content) };
           continue;
         }
+        // A send_file/send_image result ("Sent X to the user.") belongs to an attachment turn → suppress
+        // it (the card already shows the file) so it doesn't surface as an orphan tool-result on reopen.
+        if (turns.some((t) => t.kind === "attachment" && t.id === tuid)) continue;
         turns.push({ kind: "tool-result", toolUseId: tuid, content: block.content });
       }
     }

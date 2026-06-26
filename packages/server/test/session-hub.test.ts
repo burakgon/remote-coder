@@ -118,6 +118,40 @@ test("getHistory windows to the last N turns (truncated + slim raw); no limit re
   hub.stopSession(meta.id);
 });
 
+test("getHistory forwards parentToolUseId so reopened subagent turns route into their thread (not main)", async () => {
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
+  const turns = [
+    {
+      type: "assistant" as const,
+      message: { role: "assistant", content: [{ type: "text", text: "main" }] },
+      uuid: "m1",
+    },
+    // A subagent's own (sidechain) line carrying its Agent tool_use id.
+    {
+      type: "assistant" as const,
+      message: { role: "assistant", content: [{ type: "text", text: "sub" }] },
+      uuid: "s1",
+      parentToolUseId: "ag1",
+    },
+  ];
+  const history = {
+    claudeHome: "/x",
+    transcriptPath: () => "/x/s.jsonl",
+    read: async () => turns,
+  } as unknown as HistoryService;
+  const hub = new SessionHub(manager, { history });
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  const { history: frames } = await hub.getHistory(meta.id);
+  expect((frames[0]!.payload as { parentToolUseId?: string }).parentToolUseId).toBeUndefined();
+  expect((frames[1]!.payload as { parentToolUseId?: string }).parentToolUseId).toBe("ag1");
+
+  hub.stopSession(meta.id);
+});
+
 test("pushAttachment emits an attachment frame to live subscribers and buffers it for replay", async () => {
   const { hub } = hubFor("simple");
   const meta = await hub.createSession({ cwd: process.cwd() });

@@ -7,6 +7,10 @@ export interface TranscriptTurn {
    * through so the client can skip rendering it as a "YOU" bubble in replayed history, exactly as the
    * live frame path does. */
   isMeta?: boolean;
+  /** The Agent/Task tool_use id this line belongs to — set for a SUBAGENT's own (sidechain) lines so the
+   * reducer routes them into that subagent's thread on reopen instead of LEAKING them into the main chat.
+   * Carried through from `parent_tool_use_id` (else `agentId`, else a `"sidechain"` bucket). */
+  parentToolUseId?: string;
 }
 
 /**
@@ -51,12 +55,25 @@ export function parseTranscript(text: string): TranscriptTurn[] {
     if (obj.type !== "user" && obj.type !== "assistant") continue; // drop bookkeeping
     const text = soleText(obj.message);
     if (text === "Continue from where you left off." || text === "No response requested.") continue;
+    // Carry the subagent parent linkage so reopened sidechain (subagent) lines route into their thread,
+    // never the main chat. Prefer the line's own parent_tool_use_id; else (a sidechain line missing it)
+    // fall back to its agentId, else a constant bucket — the invariant is "never leak into main".
+    const sidechain = obj.isSidechain === true;
+    const parentToolUseId =
+      typeof obj.parent_tool_use_id === "string"
+        ? obj.parent_tool_use_id
+        : sidechain
+          ? typeof obj.agentId === "string"
+            ? obj.agentId
+            : "sidechain"
+          : undefined;
     turns.push({
       type: obj.type,
       message: obj.message,
       uuid: typeof obj.uuid === "string" ? obj.uuid : undefined,
       parentUuid: typeof obj.parentUuid === "string" ? obj.parentUuid : obj.parentUuid === null ? null : undefined,
       isMeta: obj.isMeta === true ? true : undefined,
+      parentToolUseId,
     });
   }
   return turns;

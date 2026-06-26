@@ -62,6 +62,32 @@ test("parseTranscript carries isMeta so replayed history can skip injected (skil
   expect(turns[1]?.isMeta).toBeUndefined(); // a normal typed line is not meta
 });
 
+test("parseTranscript carries parent_tool_use_id (subagent linkage) with a sidechain fallback", () => {
+  const lines = [
+    // A subagent's own line with an explicit parent_tool_use_id (the Agent tool_use id).
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "sub work" }] },
+      uuid: "s1",
+      parent_tool_use_id: "ag1",
+    }),
+    // A sidechain line MISSING parent_tool_use_id → falls back to its agentId (so it still routes off main).
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "sidechain" }] },
+      uuid: "s2",
+      isSidechain: true,
+      agentId: "agent-xyz",
+    }),
+    // A normal main line → no parent linkage.
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "main" }] }, uuid: "m1" }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns[0]?.parentToolUseId).toBe("ag1");
+  expect(turns[1]?.parentToolUseId).toBe("agent-xyz"); // sidechain fallback → never leaks into main
+  expect(turns[2]?.parentToolUseId).toBeUndefined();
+});
+
 test("parseTranscript drops the synthetic --resume warm-up pair", () => {
   const lines = [
     JSON.stringify({

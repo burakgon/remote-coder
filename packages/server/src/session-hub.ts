@@ -595,7 +595,15 @@ export class SessionHub {
           kind: "event",
           // `raw` is SLIM ({uuid, isMeta}) — the full turn was a verbatim duplicate of `message` (the
           // client only reads raw.uuid/raw.isMeta), so shipping it doubled the payload for nothing.
-          payload: { type: t.type, message: t.message, uuid: t.uuid, raw: { uuid: t.uuid, isMeta: t.isMeta } },
+          // `parentToolUseId` carries subagent linkage so reopened subagent (sidechain) turns route into
+          // their thread instead of leaking into the main chat.
+          payload: {
+            type: t.type,
+            message: t.message,
+            uuid: t.uuid,
+            parentToolUseId: t.parentToolUseId,
+            raw: { uuid: t.uuid, isMeta: t.isMeta },
+          },
         }));
         return { history, sinceSeq, truncated: windowed.length < turns.length, total: turns.length };
       }

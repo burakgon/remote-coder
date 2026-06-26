@@ -289,6 +289,96 @@ describe("reduceFrame", () => {
     expect(v.turns.some((x) => x.kind === "tool-use" || x.kind === "tool-result")).toBe(false);
   });
 
+  it("folds a send_image MCP call (reopen) into ONE attachment turn — a clean card, not raw plumbing", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "s1",
+              name: "mcp__remote-coder__send_image",
+              input: { path: "/tmp/shot.png", caption: "the chart" },
+            },
+          ],
+        },
+      }),
+    );
+    v = reduceFrame(
+      v,
+      ev(2, {
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "s1", content: "Sent shot.png to the user." }] },
+      }),
+    );
+    expect(v.turns).toHaveLength(1);
+    const t = v.turns[0]!;
+    expect(t.kind).toBe("attachment");
+    if (t.kind === "attachment") {
+      expect(t.path).toBe("/tmp/shot.png");
+      expect(t.name).toBe("shot.png");
+      expect(t.caption).toBe("the chart");
+      expect(t.isImage).toBe(true);
+    }
+    // No raw tool-use/tool-result leaked for the send call.
+    expect(v.turns.some((x) => x.kind === "tool-use" || x.kind === "tool-result")).toBe(false);
+  });
+
+  it("dedupes the LIVE attachment frame against the send tool_use's attachment turn (no double card)", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "s1", name: "mcp__remote-coder__send_file", input: { path: "/tmp/report.pdf" } },
+          ],
+        },
+      }),
+    );
+    // The live `attachment` frame for the SAME path arrives next — must NOT draw a second card.
+    v = reduceFrame(v, {
+      seq: 2,
+      kind: "attachment",
+      payload: { id: "att-uuid", path: "/tmp/report.pdf", name: "report.pdf", isImage: false },
+    });
+    expect(v.turns.filter((t) => t.kind === "attachment")).toHaveLength(1);
+  });
+
+  it("reopen routes a subagent's inline turn into its thread via parentToolUseId, NOT the main chat", () => {
+    let v = emptyView();
+    // Main agent spawns an Agent (tool_use id ag1).
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "ag1", name: "Agent", input: { subagent_type: "Explore", prompt: "find X" } },
+          ],
+        },
+      }),
+    );
+    // The subagent's OWN inline message carries parentToolUseId (now preserved through getHistory on reopen).
+    v = reduceFrame(
+      v,
+      ev(2, {
+        type: "assistant",
+        parentToolUseId: "ag1",
+        message: { content: [{ type: "text", text: "subagent working" }] },
+      }),
+    );
+    // Main has ONLY the subagent-ref anchor; the inline text lives in the thread (no leak into main).
+    expect(turnKinds(v.turns)).toEqual(["subagent-ref"]);
+    expect(v.subagents["ag1"]?.turns.some((t) => t.kind === "assistant-text" && t.text === "subagent working")).toBe(
+      true,
+    );
+  });
+
   it("only reconciles UNRECLAIMED optimistic bubbles: two identical sends keep two distinct bubbles+checkpoints", () => {
     let v = emptyView();
     // Two optimistic sends of the same text.
