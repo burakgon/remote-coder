@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../ui/Icon";
 import { LiveWire } from "../ui/LiveWire";
 import type { LiveWireState } from "../ui/LiveWire";
@@ -50,6 +50,17 @@ function absoluteTime(ms: number): string {
  * available" pill, otherwise it briefly confirms "Up to date". */
 function CheckUpdateButton({ onCheck }: { onCheck: () => Promise<boolean> }) {
   const [state, setState] = useState<"idle" | "checking" | "uptodate">("idle");
+  // Guard against setState after unmount: the footer can swap to the "Update available" pill (or drop
+  // when version goes falsy) while the check is in flight or the "Up to date" timer is pending.
+  const mounted = useRef(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
   return (
     <button
       type="button"
@@ -60,14 +71,17 @@ function CheckUpdateButton({ onCheck }: { onCheck: () => Promise<boolean> }) {
         setState("checking");
         try {
           const found = await onCheck();
+          if (!mounted.current) return;
           if (found) {
             setState("idle"); // parent re-renders into the "Update available" pill
           } else {
             setState("uptodate");
-            setTimeout(() => setState("idle"), 2500);
+            timer.current = setTimeout(() => {
+              if (mounted.current) setState("idle");
+            }, 2500);
           }
         } catch {
-          setState("idle");
+          if (mounted.current) setState("idle");
         }
       }}
     >

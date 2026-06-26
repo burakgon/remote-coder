@@ -24,7 +24,7 @@ const GROUP_LABELS: Record<ChangelogEntry["group"], string> = {
   improvements: "Improvements",
   other: "Other",
 };
-const GROUP_ORDER: ChangelogEntry["group"][] = ["new", "fixes", "improvements"];
+const GROUP_ORDER: ChangelogEntry["group"][] = ["new", "fixes", "improvements", "other"];
 
 /** Map an updater state to a short, human progress label for the updating overlay. */
 const PHASE_LABEL: Record<string, string> = {
@@ -75,7 +75,9 @@ export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePa
         aria-modal="true"
         aria-labelledby="update-title"
         onKeyDown={(e) => {
-          if (e.key === "Escape" && !updating) {
+          // Escape always closes — even while updating: the server work continues, the modal just hides
+          // (so a hung/never-restarting update can't trap the user). App keeps polling + ends the flow.
+          if (e.key === "Escape") {
             e.stopPropagation();
             onClose();
           }
@@ -151,15 +153,21 @@ export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePa
         )}
 
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
-          {!updating && (
+          {updating ? (
+            // Updating keeps running server-side; "Hide" just dismisses the overlay so a hung update can't
+            // trap the user with no closable control. App's status poll finishes the flow + shows the toast.
             <button type="button" onClick={onClose} style={LATER_BTN}>
-              Later
+              Hide
             </button>
-          )}
-          {!updating && (
-            <button type="button" onClick={onUpdate} style={UPDATE_BTN}>
-              {failed ? "Retry" : "Update now"}
-            </button>
+          ) : (
+            <>
+              <button type="button" onClick={onClose} style={LATER_BTN}>
+                Later
+              </button>
+              <button type="button" onClick={onUpdate} style={UPDATE_BTN}>
+                {failed ? "Retry" : "Update now"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -223,6 +231,10 @@ const BACKDROP: CSSProperties = {
 
 const SHEET: CSSProperties = {
   width: "min(480px, 100%)",
+  // Cap to the viewport (minus the backdrop padding) and scroll, so on a short phone a long changelog
+  // doesn't push the header/title above the top of the screen (the sheet is bottom-aligned).
+  maxHeight: "calc(100dvh - 2 * var(--sp-4))",
+  overflowY: "auto",
   borderRadius: "var(--radius)",
   padding: "var(--sp-4)",
   display: "grid",
