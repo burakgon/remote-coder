@@ -148,10 +148,10 @@ export function ChatHeader({ session, onOpenSettings, onShowSessions, needsYou =
             aria-label="Session settings"
             className="rc-hdr-iconbtn"
             style={{
-              // A compact 34px neutral icon tile (spec .ib) that brightens to text on hover — NEUTRAL,
-              // no coral. Sits flush in the right status group.
-              width: 34,
-              height: 34,
+              // A neutral icon tile (spec .ib) that brightens to text on hover — NEUTRAL, no coral.
+              // Sized to the 44px touch minimum; the gear glyph inside stays compact.
+              width: "var(--tap-min)",
+              height: "var(--tap-min)",
               flex: "none",
               display: "grid",
               placeItems: "center",

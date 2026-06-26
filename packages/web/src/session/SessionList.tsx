@@ -315,7 +315,7 @@ const sessionListCss = `
 /* The "+" new-session button — the coral PRIMARY (spec): a compact 34px FLAT coral tile with a dark
    ink glyph. The one coral CTA in the rail. */
 .rc-sl__new {
-  width: 34px; height: 34px; flex: none;
+  width: var(--tap-min); height: var(--tap-min); flex: none;
   display: grid; place-items: center;
   border-radius: 9px;
   background: var(--coral); border: 1px solid transparent;
@@ -395,7 +395,7 @@ const sessionListCss = `
    muted by default, warming to the error tint on hover/focus to read as a destructive action. */
 .rc-sl__close {
   flex: none; align-self: center;
-  width: 36px; height: 36px; margin-right: var(--sp-2);
+  width: var(--tap-min); height: var(--tap-min); margin-right: var(--sp-2);
   display: grid; place-items: center;
   background: transparent; border: 1px solid transparent; border-radius: 8px;
   color: var(--text-faint); cursor: pointer;

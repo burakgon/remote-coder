@@ -30,10 +30,11 @@ export function MobileMenuButton({ onShowSessions, needsYou = 0 }: MobileMenuBut
         </span>
       )}
       <style>{`
-        /* A compact 34px neutral icon tile (spec .ib) that brightens to text on hover — NO coral. */
+        /* A neutral icon tile (spec .ib) that brightens to text on hover — NO coral. Sized to the 44px
+           touch minimum (the primary mobile nav trigger); the glyph inside stays compact. */
         .rc-menu-btn {
           position: relative; flex: none;
-          width: 34px; height: 34px;
+          width: var(--tap-min); height: var(--tap-min);
           display: grid; place-items: center;
           border-radius: 9px;
           background: var(--surface-2); border: 1px solid var(--border);
