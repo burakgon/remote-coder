@@ -187,13 +187,20 @@ const viewCss = `
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   font-family: var(--font-mono); font-size: var(--fs-xs);
 }
-.rc-sa-view__body { flex: 1; overflow-y: auto; padding: var(--sp-4); padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px)); display: grid; gap: var(--sp-4); align-content: start; }
+.rc-sa-view__body {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: var(--sp-4); padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  /* minmax(0,1fr): pin the single column to the body width so a wide child (a code block / long
+     unbroken path) can't stretch the grid and let the WHOLE view scroll sideways forever — wide
+     content now scrolls inside its own box (CodeBlock/pre) instead. */
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); align-content: start;
+}
 .rc-sa-view__usage {
   font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-faint);
   background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill);
   padding: 2px var(--sp-3); justify-self: start;
 }
-.rc-sa-view__section { display: grid; gap: var(--sp-2); }
+.rc-sa-view__section { display: grid; gap: var(--sp-2); min-width: 0; }
 .rc-sa-view__label {
   font-family: var(--font-display); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--text-faint);

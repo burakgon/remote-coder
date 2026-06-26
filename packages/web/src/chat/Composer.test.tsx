@@ -46,6 +46,24 @@ describe("Composer", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("offers Send ALONGSIDE Stop while a turn is running, and queues the message", async () => {
+    const onSend = vi.fn();
+    render(<Composer onSend={onSend} onUploadFile={vi.fn()} running onStop={vi.fn()} />);
+    const box = screen.getByLabelText(/message claude/i);
+    await userEvent.type(box, "do this next");
+    // With text + running, BOTH Stop (interrupt) and Send (queue the next message) are reachable.
+    expect(screen.getByLabelText(/^stop$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^send$/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/^send$/i));
+    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "do this next" });
+  });
+
+  it("shows only Stop (no Send) while running with an empty field", () => {
+    render(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} running onStop={vi.fn()} />);
+    expect(screen.getByLabelText(/^stop$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^send$/i)).not.toBeInTheDocument();
+  });
+
   it("attaches a picked image as a base64 image block in the outbound user frame", async () => {
     const onSend = vi.fn();
     const { container } = render(<Composer onSend={onSend} onUploadFile={vi.fn()} />);

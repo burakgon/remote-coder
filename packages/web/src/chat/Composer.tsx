@@ -322,8 +322,10 @@ export function Composer({
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Don't fire a new turn while one is running — the UI shows Stop, not Send.
-      if (!running) send();
+      // Send even while a turn is RUNNING — the message is queued by the CLI and handled after the
+      // current turn (you can line up the next instruction without waiting). send() self-guards on
+      // canSend, so an empty field is a no-op.
+      send();
       return;
     }
     // Shift+Enter inserts a deterministic single newline (don't rely on contentEditable's default).
@@ -570,10 +572,10 @@ export function Composer({
         >
           <Icon name="paperclip" size={19} />
         </button>
-        {/* Primary control. While a turn is RUNNING (thinking/streaming/running-tool) this is a STOP
-            button — a neutral square with a restrained err outline (NOT the coral Send) that interrupts
-            the turn. Idle/awaiting it is the normal coral Send. */}
-        {running ? (
+        {/* While a turn is RUNNING (thinking/streaming/running-tool) the STOP button appears — a neutral
+            square with a restrained err outline (NOT coral) that interrupts the turn. Send stays
+            available ALONGSIDE it (below) so you can queue the next message without waiting. */}
+        {running && (
           <button
             type="button"
             onClick={stop}
@@ -598,9 +600,11 @@ export function Composer({
           >
             <Icon name="stop" size={16} />
           </button>
-        ) : (
-          /* Send — the ONE coral primary affordance in the composer: a FLAT coral fill, dark ink glyph
-             (spec .send). No glow. */
+        )}
+        {/* Send — the ONE coral primary affordance: a FLAT coral fill, dark ink glyph (spec .send).
+            Shown when idle, OR while running once there's something to send (queues the next message).
+            Hidden only while running with an empty field, so Stop stands alone there. */}
+        {(canSend || !running) && (
           <button
             type="button"
             onClick={send}

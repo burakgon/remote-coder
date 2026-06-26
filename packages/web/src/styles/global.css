@@ -14,6 +14,14 @@ body,
   height: 100%;
   margin: 0;
 }
+/* iOS/WebKit "text autosizing" INFLATES some text it guesses should be bigger — typically a long line
+   inside a block — so a long mono arg (e.g. `cd /Users/…`) rendered MUCH larger than the short label
+   beside it ("Bash"). Pin it to 100% so every element renders at exactly its specified size. Pinch-zoom
+   is unaffected (no user-scalable=no), and the >=16px touch-field rule still prevents focus-zoom. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 body {
   /* Near-black neutral base ink. The ONE very faint top glow is the single fixed
      layer behind #root below (no grain, no vignette, no colored blobs). */
