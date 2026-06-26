@@ -250,7 +250,7 @@ const resumeCss = `
 .rc-resume__title-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .rc-resume__title { font-size: var(--fs-lg); }
 .rc-resume__cancel {
-  min-height: 36px; padding: 0 var(--sp-3);
+  min-height: var(--tap-min); padding: 0 var(--sp-3);
   background: transparent; border: none; color: var(--text-muted);
   font: inherit; font-weight: 500; cursor: pointer; border-radius: var(--radius-sm);
 }
@@ -270,7 +270,7 @@ const resumeCss = `
 }
 .rc-resume__scope { display: flex; gap: var(--sp-2); }
 .rc-resume__scope-btn {
-  min-height: 34px; padding: 0 var(--sp-3);
+  min-height: var(--tap-min); padding: 0 var(--sp-3);
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
   color: var(--text-muted); cursor: pointer; font: inherit; font-size: var(--fs-xs); font-weight: 600;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease;

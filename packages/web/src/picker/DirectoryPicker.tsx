@@ -302,6 +302,7 @@ const pickerCss = `
 .rc-picker__crumb {
   background: transparent; border: none; cursor: pointer;
   color: var(--text-muted); font: inherit;
+  min-height: var(--tap-min); display: inline-flex; align-items: center;
   padding: 4px var(--sp-1); border-radius: var(--radius-sm);
 }
 .rc-picker__crumb:hover { color: var(--text); background: var(--surface-2); }

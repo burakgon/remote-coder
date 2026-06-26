@@ -294,7 +294,7 @@ const wizardCss = `
 .rc-wizard__dir-icon { color: var(--text-muted); display: grid; place-items: center; }
 .rc-wizard__dir > :nth-child(2) { color: var(--text); overflow-wrap: anywhere; flex: 1; min-width: 0; }
 .rc-wizard__change {
-  flex: none; min-height: 32px; padding: 0 var(--sp-2);
+  flex: none; min-height: var(--tap-min); padding: 0 var(--sp-2);
   background: transparent; border: none; cursor: pointer;
   color: var(--text-muted); font: inherit; font-weight: 500;
   border-radius: var(--radius-sm);
