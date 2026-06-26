@@ -51,6 +51,10 @@ export function App() {
   // A small, dismissible error surfaced when a close actually FAILS (so we don't silently pretend a
   // session is gone). Cleared on the next close attempt or when the user dismisses it.
   const [closeError, setCloseError] = useState<string | undefined>();
+  // Surfaced when the INITIAL session load fails for a non-auth reason (server down / wrong host /
+  // network): without this the app silently dropped you into an empty list. Cleared on any successful
+  // (re)load — the background poll keeps retrying.
+  const [loadError, setLoadError] = useState<string | undefined>();
   // Which segment the wizard's New/Resume toggle opens on. The normal +/New affordances open "new"
   // (the directory picker); the in-chat `/resume` slash command opens straight to "resume".
   const [wizardMode, setWizardMode] = useState<"new" | "resume">("new");
@@ -101,6 +105,7 @@ export function App() {
       .then((s) => {
         if (cancelled) return;
         setSessions(s);
+        setLoadError(undefined);
         setPhase("ready");
       })
       .catch((err: unknown) => {
@@ -111,7 +116,9 @@ export function App() {
           setLoginError("Invalid token (401). Check the access token and try again.");
           setPhase("login");
         } else {
-          // network/other error: still enter the app; the list is empty and can be retried.
+          // network/other error: still enter the app (the list is empty), but SURFACE it so the user
+          // knows it's a connection problem, not just "no sessions". The poll keeps retrying + clears it.
+          setLoadError("Couldn't reach the server. Retrying…");
           setPhase("ready");
         }
       });
@@ -146,7 +153,9 @@ export function App() {
       api
         .listSessions()
         .then((s) => {
-          if (!cancelled) mergeSessionMeta(s);
+          if (cancelled) return;
+          mergeSessionMeta(s);
+          setLoadError(undefined); // a successful poll clears any earlier "couldn't reach the server"
         })
         .catch(() => {
           // transient — keep the current list; the next tick retries.
@@ -389,6 +398,44 @@ export function App() {
   return (
     <>
       <ConnectionBanner online={online} />
+      {/* Couldn't reach the server (a non-auth failure) while online — the offline banner covers the
+          offline case. Auto-clears on the next successful poll; tappable to dismiss meanwhile. */}
+      {loadError && online && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--sp-2)",
+            padding: "var(--sp-2) var(--sp-3)",
+            background: "var(--surface-2)",
+            color: "var(--warn)",
+            borderBottom: "1px solid var(--border)",
+            fontSize: "var(--fs-sm)",
+          }}
+        >
+          <Icon name="alert" size={15} />
+          <span style={{ flex: 1, minWidth: 0 }}>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => setLoadError(undefined)}
+            aria-label="Dismiss"
+            style={{
+              flex: "none",
+              display: "grid",
+              placeItems: "center",
+              width: "var(--tap-min)",
+              height: "var(--tap-min)",
+              background: "transparent",
+              border: "none",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
+          >
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+      )}
       {updateInfo && !updateBannerDismissed && updateState !== "updating" && (
         <UpdateBanner
           info={updateInfo}
