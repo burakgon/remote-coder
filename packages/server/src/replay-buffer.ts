@@ -22,8 +22,15 @@ export function isCriticalKind(kind: ServerFrameKind): boolean {
   // attachment is critical: a file Claude sent must survive a WS reconnect (like permission/result).
   // rewound is critical: the "↩ Rewound to here" marker (and the conversation truncation it drives) must
   // survive a reconnect so a reopened chat reflects the rewind rather than the pre-rewind transcript.
+  // resolve is critical: a `?since=` DELTA reconnect must still learn an answered prompt was cleared (the
+  // question/permission frame it refers to is pruned, so this is net-neutral on buffer size).
   return (
-    kind === "permission" || kind === "question" || kind === "result" || kind === "attachment" || kind === "rewound"
+    kind === "permission" ||
+    kind === "question" ||
+    kind === "result" ||
+    kind === "attachment" ||
+    kind === "rewound" ||
+    kind === "resolve"
   );
 }
 
@@ -60,21 +67,21 @@ export class ReplayBuffer {
 
   /** A frame whose content is a transient partial delta — emitted live but never retained for replay. */
   private isTransient(kind: ServerFrameKind, payload: unknown): boolean {
-    // `resolve` is a live-only signal (clear a pending prompt now); it is never retained — resolvePrompt
-    // removes the prompt frame it refers to, so there is nothing to replay.
-    if (kind === "resolve") return true;
     return kind === "event" && (payload as { type?: string } | null)?.type === "stream_event";
   }
 
   /**
    * A prompt (question/permission) was answered/cancelled: drop its retained frame so a client that
    * reconnects and replays the buffer does NOT re-show the already-resolved prompt as still pending.
-   * Matches by the frame payload's `requestId` (questions carry both `requestId` and `askId` — the
-   * `askId` mirrors `requestId`, so matching `requestId` covers both the built-in and MCP ask paths).
+   * Also drops any earlier `resolve` for this id (a re-used requestId never piles duplicates). Matches by
+   * the frame payload's `requestId` (questions carry both `requestId` and `askId` — the `askId` mirrors
+   * `requestId`, so matching `requestId` covers both the built-in and MCP ask paths). The freshly-emitted
+   * `resolve` frame (pushed right after this) is RETAINED so a `?since=` delta reconnect still learns the
+   * prompt is gone.
    */
   resolvePrompt(requestId: string): void {
     this.frames = this.frames.filter((f) => {
-      if (f.kind !== "question" && f.kind !== "permission") return true;
+      if (f.kind !== "question" && f.kind !== "permission" && f.kind !== "resolve") return true;
       return (f.payload as { requestId?: string } | null)?.requestId !== requestId;
     });
   }

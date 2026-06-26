@@ -377,13 +377,18 @@ export class SessionHub {
     return true;
   }
 
-  /** Cancel every pending `ask_user` for a session (stop/delete/exit) so no held request leaks. */
+  /** Cancel every pending `ask_user` for a session (stop/delete/exit) so no held request leaks. Also
+   *  drops each askId from the awaiting set (an ask is in BOTH pendingAsks and `pending`) and recomputes
+   *  meta.awaiting; the exit/reuse paths additionally run clearAllAwaiting, which emits the `resolve`
+   *  frames for any still-connected client. */
   private cancelAllAsks(record: SessionRecord): void {
-    for (const [, pending] of record.pendingAsks) {
+    for (const [askId, pending] of record.pendingAsks) {
       clearTimeout(pending.timer);
       pending.resolve({ cancelled: true });
+      record.pending.delete(askId);
     }
     record.pendingAsks.clear();
+    record.meta.awaiting = record.pending.size > 0;
   }
 
   private attach(proc: ClaudeProcess, record: SessionRecord): void {
@@ -442,8 +447,9 @@ export class SessionHub {
       // an unexpected crash signal is a real failure → errored.
       if (!record.intentionalStop && record.meta.status !== "errored") {
         record.meta.status = isCleanExit(info) ? "dormant" : "errored";
-        record.meta.awaiting = false;
-        record.pending.clear();
+        // Resolve every pending prompt (a live `resolve` per id + prune) so a connected client doesn't
+        // keep showing a prompt whose process just died; clears the set + recomputes awaiting too.
+        this.clearAllAwaiting(record);
         this.persist(record.meta);
       }
       // The child is gone: any `ask_user` still waiting can never be answered now — cancel them so the
@@ -454,23 +460,33 @@ export class SessionHub {
     });
   }
 
+  /**
+   * Fully resolve a pending prompt (question/permission): prune its retained frame from the buffer, drop
+   * the remembered tool_input, and fan a live `resolve` so connected clients clear the prompt NOW. The
+   * `resolve` frame is RETAINED (replay-buffer), so a `?since=` delta reconnect also learns it's gone —
+   * without this the prompt lingered until the turn's `result` (and re-showed on a reconnect/OTA reload).
+   */
+  private resolveFrame(record: SessionRecord, requestId: string): void {
+    record.buffer.resolvePrompt(requestId);
+    record.questionToolInputs.delete(requestId);
+    this.emitFrame(record, "resolve", { requestId });
+  }
+
   /** Mark a request pending/answered and recompute `meta.awaiting` (true iff anything is pending). */
   private setAwaiting(record: SessionRecord, requestId: string, awaiting: boolean): void {
     if (awaiting) {
       record.pending.add(requestId);
     } else if (record.pending.delete(requestId)) {
-      // This prompt (question/permission) was just ANSWERED/cancelled. Prune its retained frame so a
-      // reconnecting client doesn't replay it as still-pending, and fan out a live `resolve` so
-      // connected clients clear the prompt NOW (otherwise it lingered until the turn's `result`, and an
-      // OTA reload / reconnect mid-turn re-showed an already-answered question as if it were unanswered).
-      record.buffer.resolvePrompt(requestId);
-      this.emitFrame(record, "resolve", { requestId });
+      this.resolveFrame(record, requestId);
     }
     record.meta.awaiting = record.pending.size > 0;
   }
 
-  /** Clear every pending prompt for a session (turn boundary / exit). */
+  /** Clear every pending prompt for a session (turn boundary / exit / respawn). Each pending prompt is
+   *  RESOLVED (pruned + a live `resolve`) so a reconnecting client never re-shows a now-moot prompt and
+   *  no stale question/permission frame is retained in the buffer forever. */
   private clearAllAwaiting(record: SessionRecord): void {
+    for (const requestId of [...record.pending]) this.resolveFrame(record, requestId);
     record.pending.clear();
     record.meta.awaiting = false;
   }
@@ -590,15 +606,19 @@ export class SessionHub {
     decision: HookPermissionDecision,
     reason?: string,
   ): Promise<void> {
-    await this.ensureLive(id);
-    this.manager.answerPermission(id, requestId, decision, reason);
-    const record = this.records.get(id);
-    // A skipped/denied AskUserQuestion routes through here (the web client sends a `deny`
-    // permission for "Skip"), so the remembered tool_input would otherwise leak for the session
-    // lifetime — answerQuestion deletes it on the answer path, mirror that on the cancel path.
-    record?.questionToolInputs.delete(requestId);
-    // The prompt is answered: drop it from the pending set and recompute `awaiting`.
-    if (record) this.setAwaiting(record, requestId, false);
+    const record = this.require(id);
+    // Stale/duplicate answer for an already-resolved prompt (e.g. double-tap Allow) — drop it so we never
+    // write a second control response to the CLI.
+    if (!record.pending.has(requestId)) return;
+    // Do NOT resurrect a dead session to deliver an answer: the requestId belongs to the gone process, so
+    // a fresh `claude --resume` would just get a control response it never issued (and the answer is
+    // lost). Only forward to a LIVE process; otherwise clear the prompt locally + tell clients (resolve).
+    if (this.manager.getSession(id)) {
+      this.manager.answerPermission(id, requestId, decision, reason);
+    }
+    // The prompt is resolved: drop it from pending + prune/resolve (this also drops the remembered
+    // tool_input — a skipped/denied AskUserQuestion routes through here, so it cleans that up too).
+    this.setAwaiting(record, requestId, false);
   }
 
   /**
@@ -613,14 +633,18 @@ export class SessionHub {
     _clientToolInput: unknown,
     answers: Record<string, string | string[]>,
   ): Promise<void> {
-    await this.ensureLive(id);
     const record = this.require(id);
-    const remembered = record.questionToolInputs.has(requestId)
-      ? record.questionToolInputs.get(requestId)
-      : _clientToolInput;
-    this.manager.answerQuestion(id, requestId, remembered, answers);
-    record.questionToolInputs.delete(requestId);
-    // The question is answered: drop it from the pending set and recompute `awaiting`.
+    // Stale/duplicate answer for an already-resolved prompt — drop it (no second control response).
+    if (!record.pending.has(requestId)) return;
+    // Only forward to a LIVE process — never resurrect a dead session for an answer the gone process
+    // can't consume (the answer would be lost while the UI believed it landed).
+    if (this.manager.getSession(id)) {
+      const remembered = record.questionToolInputs.has(requestId)
+        ? record.questionToolInputs.get(requestId)
+        : _clientToolInput;
+      this.manager.answerQuestion(id, requestId, remembered, answers);
+    }
+    // Resolve the prompt: drop from pending + prune/resolve + drop the remembered tool_input.
     this.setAwaiting(record, requestId, false);
   }
 

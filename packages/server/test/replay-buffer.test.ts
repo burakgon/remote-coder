@@ -18,7 +18,7 @@ test("isCriticalKind marks permission, result, question and attachment critical 
   expect(isCriticalKind("event")).toBe(false);
   expect(isCriticalKind("diagnostic")).toBe(false);
   expect(isCriticalKind("exit")).toBe(false);
-  expect(isCriticalKind("resolve")).toBe(false); // live-only; the prompt frame it clears is pruned instead
+  expect(isCriticalKind("resolve")).toBe(true); // retained so a ?since= delta reconnect learns the prompt cleared
 });
 
 test("an attachment frame is NEVER evicted even under heavy non-critical churn (file survives reconnect)", () => {
@@ -113,10 +113,16 @@ test("resolvePrompt prunes the matching question/permission so a reconnect won't
   expect(kinds).toContain("event"); // unrelated frames untouched
 });
 
-test("a `resolve` frame gets a real seq (fanned live) but is NOT retained for replay", () => {
+test("a `resolve` frame is RETAINED (so a ?since= delta reconnect learns the prompt cleared)", () => {
   const buf = new ReplayBuffer(100);
-  buf.push("question", { requestId: "ask-1", questions: [] });
-  const r = buf.push("resolve", { requestId: "ask-1" });
-  expect(r.seq).toBeGreaterThan(0);
+  buf.push("question", { requestId: "ask-1", questions: [] }); // seq 1
+  buf.resolvePrompt("ask-1"); // prune the question
+  const r = buf.push("resolve", { requestId: "ask-1" }); // seq 2 (retained)
+  expect(buf.snapshot().some((f) => f.kind === "question")).toBe(false); // question pruned
+  expect(buf.snapshot().some((f) => f.kind === "resolve")).toBe(true); // resolve kept
+  expect(buf.since(1).some((f) => f.kind === "resolve")).toBe(true); // delta reconnect sees it
+  // resolvePrompt also drops a prior resolve for the same id (no pile-up on a re-used requestId).
+  buf.resolvePrompt("ask-1");
   expect(buf.snapshot().some((f) => f.kind === "resolve")).toBe(false);
+  expect(r.seq).toBe(2);
 });

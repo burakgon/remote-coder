@@ -11,13 +11,12 @@ afterEach(() => {
   hub = undefined;
 });
 
-// LEAK FIX (review carry-forward): "Skip" on an AskUserQuestion routes through answerPermission
-// (the web client sends a `deny` permission), which previously did NOT delete the remembered
-// tool_input — so a skipped question leaked its entry for the session lifetime. answerPermission
-// now mirrors answerQuestion's cleanup. We prove the entry is gone by answering the SAME requestId
-// afterwards and asserting the hub falls back to the client-supplied tool_input (which only happens
-// when nothing is remembered for that requestId).
-test("a denied/skipped question's remembered tool_input is cleaned up", async () => {
+// "Skip" on an AskUserQuestion routes through answerPermission (the web client sends a `deny`
+// permission). It must FULLY resolve the prompt: clean up the remembered tool_input AND emit a
+// `resolve` frame (so a connected/reconnecting client clears the prompt). The `resolve` frame proves
+// resolveFrame ran — which is exactly where the remembered tool_input is deleted. A subsequent answer
+// for the same requestId is now a stale/duplicate and is dropped (no second control response).
+test("a denied/skipped question is fully resolved (emits resolve; re-answer is a no-op)", async () => {
   const manager = new SessionManager(
     { claudeBin: process.execPath },
     { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "question" }, startTimeoutMs: 5000 },
@@ -26,27 +25,21 @@ test("a denied/skipped question's remembered tool_input is cleaned up", async ()
   hub = new SessionHub(manager);
   const meta = await hub.createSession({ cwd: process.cwd() });
 
+  let resolveSeen: string | undefined;
   const requestId = await new Promise<string>((resolve, reject) => {
-    const sub = hub!.subscribe(meta.id, (frame: ServerFrame) => {
-      if (frame.kind === "question") {
-        const p = frame.payload as { requestId: string };
-        sub.unsubscribe();
-        resolve(p.requestId);
-      }
+    hub!.subscribe(meta.id, (frame: ServerFrame) => {
+      if (frame.kind === "question") resolve((frame.payload as { requestId: string }).requestId);
+      if (frame.kind === "resolve") resolveSeen = (frame.payload as { requestId: string }).requestId;
     });
     hub!.sendMessage(meta.id, "ask me");
     setTimeout(() => reject(new Error("no question frame")), 10000);
   });
 
-  // Skip = deny via answerPermission. This must clean up the remembered tool_input.
+  // Skip = deny. Resolves the prompt: a `resolve` frame fires (resolveFrame ran → tool_input cleaned).
   await hub.answerPermission(meta.id, requestId, "deny");
+  expect(resolveSeen).toBe(requestId);
 
-  // Now answer the same requestId. With the remembered entry gone, the hub falls back to the
-  // client-supplied tool_input — which is the observable proof the leak was cleaned.
-  const clientToolInput = { fallback: "client-value" };
-  await hub.answerQuestion(meta.id, requestId, clientToolInput, { "Which language?": "Python" });
-
-  expect(spy).toHaveBeenCalledTimes(1);
-  const [, , passedToolInput] = spy.mock.calls[0]!;
-  expect(passedToolInput).toEqual(clientToolInput);
+  // Re-answering the now-resolved requestId is a stale/duplicate → dropped (manager never called again).
+  await hub.answerQuestion(meta.id, requestId, { fallback: "client-value" }, { "Which language?": "Python" });
+  expect(spy).not.toHaveBeenCalled();
 }, 20000);
