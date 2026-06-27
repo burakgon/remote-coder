@@ -497,7 +497,8 @@ export function App() {
             display: "flex",
             alignItems: "center",
             gap: "var(--sp-2)",
-            padding: "var(--sp-2) var(--sp-3)",
+            // Topmost element → clear the status bar / notch itself (the fill still extends behind it).
+            padding: "calc(var(--sp-2) + env(safe-area-inset-top, 0px)) var(--sp-3) var(--sp-2)",
             background: "var(--surface-2)",
             color: "var(--warn)",
             borderBottom: "1px solid var(--border)",

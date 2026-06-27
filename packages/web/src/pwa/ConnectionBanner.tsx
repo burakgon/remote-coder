@@ -21,7 +21,8 @@ export function ConnectionBanner({ online }: ConnectionBannerProps) {
         background: "var(--surface-2)",
         borderBottom: "1px solid var(--accent)",
         color: "var(--text)",
-        padding: "var(--sp-2) var(--sp-4)",
+        // Topmost element → clear the status bar / notch itself (the fill still extends behind it).
+        padding: "calc(var(--sp-2) + env(safe-area-inset-top, 0px)) var(--sp-4) var(--sp-2)",
         fontSize: "var(--fs-sm)",
         textAlign: "center",
       }}

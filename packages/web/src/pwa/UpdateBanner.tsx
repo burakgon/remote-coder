@@ -54,7 +54,10 @@ export function UpdateBanner({ info, onWhatsNew, onUpdate, onDismiss }: UpdateBa
           background: var(--surface-2);
           border-bottom: 1px solid var(--accent-line);
           color: var(--text);
-          padding: var(--sp-2) var(--sp-4);
+          /* The banner is the topmost element, above the inset-padded header — so it must clear the
+             device status bar / notch itself, or its content renders UNDER the status bar. The fill
+             still extends edge-to-edge behind the status bar; only the content drops below it. */
+          padding: calc(var(--sp-2) + env(safe-area-inset-top, 0px)) var(--sp-4) var(--sp-2);
           font-size: var(--fs-sm);
           text-align: center;
         }
