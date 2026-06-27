@@ -15,6 +15,15 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "/resume", hint: "Resume a past session", clientAction: true },
 ];
 
+/**
+ * True when the user's text is a slash command (e.g. "/compact", "/model opus"). Used to decide such a
+ * send must NOT be marked `queued`: the CLI never echoes a slash command back as a user event, so a queued
+ * optimistic bubble would never reconcile and would stay dimmed at the bottom of the chat forever.
+ */
+export function isSlashCommand(text: string | undefined): boolean {
+  return (text ?? "").trimStart().startsWith("/");
+}
+
 /** When `text` starts with `/`, return commands whose name starts with the typed prefix. */
 export function matchSlash(text: string): SlashCommand[] {
   if (!text.startsWith("/")) return [];

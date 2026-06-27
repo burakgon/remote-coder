@@ -1,4 +1,7 @@
 import type { TurnItem } from "../store/frame-reducer";
+import type { ContentBlock } from "../types/server";
+
+type ImageBlock = Extract<ContentBlock, { type: "image" }>;
 
 /**
  * Render-time grouping for the conversation. The reducer keeps turns flat and verbose; here we walk
@@ -91,14 +94,43 @@ export function planRender(turns: TurnItem[]): RenderNode[] {
   return nodes;
 }
 
-/** A short, human one-line argument summary for a tool-use (path / command / first string field). */
+/** Collapse a value to one readable line (no newlines, capped) for the collapsed step head. */
+function clipArg(s: string): string {
+  const oneLine = s.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? oneLine.slice(0, 79) + "…" : oneLine;
+}
+
+/**
+ * A short, human one-line argument summary for a tool-use. Probes the common descriptive fields first
+ * (command/path/query/… plus subject/title/description/prompt so structured tools like TaskCreate aren't
+ * left bare), then a LIST-shaped field (e.g. TodoWrite's `todos`) summarized as a count, then any first
+ * non-empty string field. Always collapsed to one capped line so a multi-line command can't break layout.
+ */
 export function summarizeToolInput(input: unknown): string {
-  if (input && typeof input === "object") {
-    const obj = input as Record<string, unknown>;
-    for (const key of ["command", "file_path", "path", "pattern", "query", "url", "name"]) {
-      const v = obj[key];
-      if (typeof v === "string" && v.length > 0) return v;
-    }
+  if (!input || typeof input !== "object") return "";
+  const obj = input as Record<string, unknown>;
+  for (const key of [
+    "command",
+    "file_path",
+    "path",
+    "pattern",
+    "query",
+    "url",
+    "name",
+    "subject",
+    "title",
+    "description",
+    "prompt",
+  ]) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim().length > 0) return clipArg(v);
+  }
+  for (const key of ["todos", "edits", "tasks"]) {
+    const v = obj[key];
+    if (Array.isArray(v) && v.length > 0) return `${v.length} item${v.length === 1 ? "" : "s"}`;
+  }
+  for (const v of Object.values(obj)) {
+    if (typeof v === "string" && v.trim().length > 0) return clipArg(v);
   }
   return "";
 }
@@ -109,19 +141,26 @@ export interface ParsedResult {
   /** The full human-readable text pulled out of the result (real newlines, no JSON scaffolding) — the
    *  preferred verbose-expand body. Empty for a purely-structured result (then fall back to `raw`). */
   text: string;
-  /** The full raw result, pretty-printed when it's structured — the fallback verbose-expand payload. */
+  /** The full raw result, pretty-printed when it's structured (base64 image data REDACTED) — the
+   *  fallback verbose-expand payload. */
   raw: string;
   /** True if the tool reported an error (so the step can flag it). */
   isError: boolean;
+  /** Image blocks carried in the result (e.g. Reading an image file) — rendered as <img>, never dumped
+   *  as a base64 blob. Empty for an ordinary text/JSON result. */
+  images: ImageBlock[];
 }
 
 /**
- * Parse a `tool-result` content blob into a one-line summary + the full raw string. Tool results are
- * commonly `[{ type: "text", text: "..." }]`, a bare string, or `{ content: [...] }`; we extract the
- * human text for the summary while preserving the ENTIRE structure (pretty JSON) as `raw` so the
- * previously-leaking raw payload is still fully reachable on expand.
+ * Parse a `tool-result` content blob into a one-line summary + the full raw string + any image blocks.
+ * Tool results are commonly `[{ type: "text", text: "..." }]`, a bare string, `{ content: [...] }`, an
+ * `[{ type: "image", source }]` (Reading an image), or `[{ type: "tool_reference", tool_name }]`
+ * (ToolSearch). We extract human text for the summary, collect images to render inline, map other
+ * structured blocks to a readable line, and preserve the ENTIRE structure (pretty JSON, base64 redacted)
+ * as `raw` so detail is reachable on expand without dumping a megabyte of base64.
  */
 export function parseToolResult(content: unknown): ParsedResult {
+  const images = collectImages(content);
   const raw = stringifyRaw(content);
   const text = extractText(content);
   const isError = detectError(content);
@@ -130,17 +169,75 @@ export function parseToolResult(content: unknown): ParsedResult {
       .split("\n")
       .find((l) => l.trim().length > 0)
       ?.trim() ?? "";
-  const summary = firstLine.length > 120 ? firstLine.slice(0, 117) + "…" : firstLine;
-  return { summary, text, raw, isError };
+  let summary = firstLine.length > 120 ? firstLine.slice(0, 117) + "…" : firstLine;
+  // A purely-image result (no text) gets a clean "[image]" head instead of an empty/JSON one.
+  if (!summary && images.length > 0) summary = images.length === 1 ? "[image]" : `[${images.length} images]`;
+  return { summary, text, raw, isError, images };
+}
+
+/** A well-formed image content block (base64 or url source), or undefined. */
+function toImageBlock(b: unknown): ImageBlock | undefined {
+  if (!b || typeof b !== "object" || (b as { type?: unknown }).type !== "image") return undefined;
+  const src = (b as { source?: unknown }).source;
+  if (!src || typeof src !== "object") return undefined;
+  const s = src as { type?: unknown; media_type?: unknown; data?: unknown; url?: unknown };
+  if (s.type === "base64" && typeof s.media_type === "string" && typeof s.data === "string") {
+    return { type: "image", source: { type: "base64", media_type: s.media_type, data: s.data } };
+  }
+  if (s.type === "url" && typeof s.url === "string") {
+    return {
+      type: "image",
+      source: { type: "url", url: s.url, ...(typeof s.media_type === "string" ? { media_type: s.media_type } : {}) },
+    };
+  }
+  return undefined;
+}
+
+/** Collect every image block in a tool-result (recursing arrays + a `{content}` wrapper). */
+function collectImages(content: unknown): ImageBlock[] {
+  const out: ImageBlock[] = [];
+  const visit = (c: unknown): void => {
+    if (Array.isArray(c)) {
+      for (const b of c) visit(b);
+      return;
+    }
+    const img = toImageBlock(c);
+    if (img) {
+      out.push(img);
+      return;
+    }
+    if (c && typeof c === "object" && (c as { content?: unknown }).content !== undefined) {
+      visit((c as { content?: unknown }).content);
+    }
+  };
+  visit(content);
+  return out;
+}
+
+/** JSON.stringify replacer that redacts a long base64 `data` string (image blob) so the raw panel stays
+ *  readable instead of dumping the whole encoded image. */
+function redactBase64(key: string, value: unknown): unknown {
+  if (key === "data" && typeof value === "string" && value.length > 128) return `<base64 ${value.length} chars>`;
+  return value;
 }
 
 function stringifyRaw(content: unknown): string {
   if (typeof content === "string") return content;
   try {
-    return JSON.stringify(content, null, 2);
+    return JSON.stringify(content, redactBase64, 2);
   } catch {
     return String(content);
   }
+}
+
+/** A readable one-line rendering of a non-text structured block (image / tool_reference / other). */
+function blockToText(b: unknown): string {
+  if (!b || typeof b !== "object") return "";
+  const o = b as { type?: unknown; text?: unknown; tool_name?: unknown };
+  if (o.type === "text" && typeof o.text === "string") return o.text;
+  if (o.type === "tool_reference" && typeof o.tool_name === "string") return `→ ${o.tool_name}`;
+  // image blocks render as <img>, not text — contribute nothing to the text body.
+  return "";
 }
 
 /** Pull the concatenated human-readable text out of a tool-result, ignoring the JSON scaffolding. */
@@ -148,11 +245,7 @@ function extractText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
-      .map((b) =>
-        b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string"
-          ? (b as { text: string }).text
-          : "",
-      )
+      .map((b) => blockToText(b))
       .filter(Boolean)
       .join("\n");
   }

@@ -246,6 +246,63 @@ function SystemNote({ item }: { item: Extract<TurnItem, { kind: "system-note" }>
   );
 }
 
+/** Assistant extended-thinking — a quiet, collapsed-by-default reasoning card (mirrors SystemNote). The
+ *  persistent counterpart to the live streaming "thinkingText"; on reopen it's the ONLY place the model's
+ *  reasoning survives. Only created for non-empty thinking, so a redacted block never shows an empty card. */
+function ThinkingNote({ item }: { item: Extract<TurnItem, { kind: "thinking" }> }) {
+  const [open, setOpen] = useState(false);
+  const firstLine =
+    item.text
+      .split("\n")
+      .find((l) => l.trim().length > 0)
+      ?.trim() ?? "Thought";
+  const peek = firstLine.length > 64 ? `${firstLine.slice(0, 64)}…` : firstLine;
+  return (
+    <div style={{ borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={`${open ? "Collapse" : "Expand"} thinking`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--sp-2)",
+          width: "100%",
+          minHeight: "var(--tap-min)",
+          background: "transparent",
+          border: 0,
+          textAlign: "left",
+          color: "var(--text-faint)",
+          padding: "var(--sp-1) var(--sp-2)",
+          fontSize: "var(--fs-sm)",
+          fontStyle: "italic",
+          cursor: "pointer",
+        }}
+      >
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={13} style={{ color: "var(--text-faint)" }} />
+        <Icon name="bolt" size={13} style={{ color: "var(--text-faint)", flex: "none" }} />
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          Thought · {peek}
+        </span>
+      </button>
+      {open && (
+        <div
+          style={{
+            padding: "0 var(--sp-2) var(--sp-2) calc(var(--sp-2) + 20px)",
+            color: "var(--text-muted)",
+            fontSize: "var(--fs-sm)",
+            fontStyle: "italic",
+            animation: "rc-reveal 0.18s ease-out",
+          }}
+        >
+          <Markdown>{item.text}</Markdown>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Assistant prose — the visual focus: clean, generous, real markdown. File/image paths the model merely
  *  MENTIONS are NOT auto-extracted into chips or inline previews (too noisy / produced bogus chips); a
  *  file or image is shown only when the model DELIBERATELY sends it (send_file/send_image → AttachmentCard). */
@@ -292,6 +349,9 @@ function ToolStepRow({ step }: { step: ToolStep }) {
   const { use, result, isMeta } = step;
   const arg = summarizeToolInput(use.input);
   const parsed = result ? parseToolResult(result.content) : undefined;
+  // Prefer the tool_result's own `is_error` flag (carried on the turn) over sniffing the content — a
+  // failed Bash returns a bare STRING with the flag as a sibling, which content inspection can't detect.
+  const isError = result?.isError === true || parsed?.isError === true;
   const resultLang = resultCodeLang(use.name, use.input);
   const icon: IconName = isMeta ? "search" : "terminal";
   const headColor = isMeta ? "var(--text-faint)" : "var(--text-muted)";
@@ -349,8 +409,8 @@ function ToolStepRow({ step }: { step: ToolStep }) {
           </>
         )}
         {result && (
-          <span style={{ marginLeft: "auto", flex: "none", color: parsed?.isError ? "var(--err)" : "var(--ok)" }}>
-            <Icon name={parsed?.isError ? "x" : "check"} size={14} label={parsed?.isError ? "failed" : "succeeded"} />
+          <span style={{ marginLeft: "auto", flex: "none", color: isError ? "var(--err)" : "var(--ok)" }}>
+            <Icon name={isError ? "x" : "check"} size={14} label={isError ? "failed" : "succeeded"} />
           </span>
         )}
       </button>
@@ -366,14 +426,36 @@ function ToolStepRow({ step }: { step: ToolStep }) {
           {parsed ? (
             <>
               <div style={detailLabelStyle}>Result</div>
+              {/* An image result (e.g. Reading an image file) renders as an image, never a base64 dump. */}
+              {parsed.images.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "var(--sp-2)",
+                    marginBottom: parsed.text ? "var(--sp-2)" : 0,
+                  }}
+                >
+                  {parsed.images.map((img, i) => (
+                    <img
+                      key={i}
+                      src={imageBlockSrc(img)}
+                      alt="tool result image"
+                      loading="lazy"
+                      style={{ maxWidth: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
+                    />
+                  ))}
+                </div>
+              )}
               {/* A file-READ result is source code → syntax-highlight it in the file's language. Other
                   results (bash output, search hits, status messages) stay plain; a purely-structured
-                  result with no human text falls back to the pretty raw JSON. */}
-              {resultLang && parsed.text && !parsed.isError ? (
+                  result with no human text falls back to the pretty raw JSON — UNLESS it was images
+                  (already shown above), in which case there's nothing more to dump. */}
+              {resultLang && parsed.text && !isError ? (
                 <CodeBlock code={parsed.text} language={resultLang} />
               ) : parsed.text ? (
                 <pre style={rawPanelStyle}>{parsed.text}</pre>
-              ) : (
+              ) : parsed.images.length > 0 ? null : (
                 <pre style={rawPanelStyle}>{parsed.raw}</pre>
               )}
             </>
@@ -686,6 +768,8 @@ function Turn({
   switch (item.kind) {
     case "assistant-text":
       return <AssistantTurn item={item} />;
+    case "thinking":
+      return <ThinkingNote item={item} />;
     case "user":
       return <UserTurn item={item} onRewind={onRewind} imageUrl={imageUrl} />;
     case "command":

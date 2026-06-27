@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { matchSlash } from "./slash";
+import { isSlashCommand, matchSlash } from "./slash";
+
+describe("isSlashCommand", () => {
+  it("is true for a slash command (even with leading whitespace or args)", () => {
+    expect(isSlashCommand("/compact")).toBe(true);
+    expect(isSlashCommand("  /model opus")).toBe(true);
+  });
+  it("is false for ordinary prose, empty, or undefined", () => {
+    expect(isSlashCommand("hello /not-a-command")).toBe(false);
+    expect(isSlashCommand("")).toBe(false);
+    expect(isSlashCommand(undefined)).toBe(false);
+  });
+});
 
 describe("matchSlash", () => {
   it("returns nothing when the text isn't a slash command", () => {

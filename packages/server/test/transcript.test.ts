@@ -52,6 +52,16 @@ test("parseTranscript truncates a long summary to ~100 chars and trims it", () =
   expect(parsed.summary).toBe("x".repeat(100));
 });
 
+test("parseTranscript collapses internal whitespace in the summary (no raw newlines)", () => {
+  const line = JSON.stringify({
+    type: "user",
+    message: { role: "user", content: [{ type: "text", text: "first line\n\nsecond  line\ttabbed" }] },
+  });
+  const parsed = parseTranscript(line);
+  expect(parsed.summary).toBe("first line second line tabbed");
+  expect(parsed.summary).not.toContain("\n");
+});
+
 test("parseTranscript never throws on a fully-malformed transcript", () => {
   expect(() => parseTranscript("garbage\n{bad\n\n")).not.toThrow();
   expect(parseTranscript("garbage\n{bad").messageCount).toBe(0);

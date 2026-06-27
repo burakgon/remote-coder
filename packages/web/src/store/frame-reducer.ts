@@ -38,8 +38,17 @@ export type TurnItem =
   // special-cased away — so a manual /compact shows both this note and a clean "/compact · Compacted" row.
   | { kind: "system-note"; text: string }
   | { kind: "assistant-text"; text: string }
+  // An assistant extended-thinking block (the model's reasoning). LIVE it also streams transiently as
+  // `thinkingText` (cleared when the turn settles); this PERSISTENT turn is what a reopened chat shows —
+  // without it, the transcript's thinking block was silently dropped. Only NON-EMPTY thinking becomes a
+  // turn (this CLI redacts thinking to "" unless `thinking_display:"summarized"` is set), so a redacted
+  // block never renders an empty card.
+  | { kind: "thinking"; text: string }
   | { kind: "tool-use"; id: string; name: string; input: unknown }
-  | { kind: "tool-result"; toolUseId: string; content: unknown }
+  // `isError` mirrors the tool_result block's `is_error` flag (a SIBLING of `content` on the wire), so a
+  // failed Bash / denied tool renders as an error even when `content` is a bare string (where inspecting
+  // the content alone can't tell). Omitted (not false) on success.
+  | { kind: "tool-result"; toolUseId: string; content: unknown; isError?: boolean }
   // A SUBAGENT anchor: where an `Agent`/`Task` tool_use spawned a subagent. Renders as a SubagentCard
   // (in the main chat, or inside a parent subagent's transcript for a nested spawn) — NOT a generic
   // tool-use cluster. `id` is the Agent tool_use id == the SubagentThread key.
@@ -164,7 +173,7 @@ interface DeltaEvent {
 }
 interface AssistantMsg {
   message?: {
-    content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }>;
+    content?: Array<{ type?: string; text?: string; thinking?: string; id?: string; name?: string; input?: unknown }>;
     /** Per-turn token usage. The SUM of its input/cache_read/cache_creation/output is the CURRENT context
      *  occupancy — the right context-meter numerator. (The `result` event's usage is CUMULATIVE across the
      *  whole session — cache reads add up every turn — so it over-reads to many× the window on a long chat.) */
@@ -663,6 +672,10 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     for (const block of content) {
       if (block.type === "text" && typeof block.text === "string") {
         added.push({ kind: "assistant-text", text: block.text });
+      } else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim().length > 0) {
+        // Persist NON-EMPTY thinking as its own turn (routed into the subagent thread too, via `added`),
+        // so a reopened chat keeps the reasoning the transcript stored. Redacted ("") blocks are skipped.
+        added.push({ kind: "thinking", text: block.thinking });
       } else if (block.type === "tool_use") {
         if (isAgentTool(block.name)) {
           const childId = String(block.id);
@@ -744,7 +757,12 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
             applySubagentResult(tuid, block);
             continue;
           }
-          add.push({ kind: "tool-result", toolUseId: tuid, content: block.content });
+          add.push({
+            kind: "tool-result",
+            toolUseId: tuid,
+            content: block.content,
+            ...(block.is_error === true ? { isError: true } : {}),
+          });
         }
       }
       if (add.length > 0) appendThreadTurns(parent, add);
@@ -882,7 +900,12 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
         // A send_file/send_image result ("Sent X to the user.") belongs to an attachment turn → suppress
         // it (the card already shows the file) so it doesn't surface as an orphan tool-result on reopen.
         if (turns.some((t) => t.kind === "attachment" && t.id === tuid)) continue;
-        turns.push({ kind: "tool-result", toolUseId: tuid, content: block.content });
+        turns.push({
+          kind: "tool-result",
+          toolUseId: tuid,
+          content: block.content,
+          ...(block.is_error === true ? { isError: true } : {}),
+        });
       }
     }
 

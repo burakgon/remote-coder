@@ -85,6 +85,36 @@ describe("useStore", () => {
     expect(useStore.getState().viewFor("s1").lastSeq).toBe(2);
   });
 
+  it("keeps meta.awaiting in sync with the live view: a prompt raises it, a result clears it instantly", () => {
+    const { applyFrame, setSessions } = useStore.getState();
+    setSessions([meta]);
+    const awaitingOf = () => useStore.getState().sessions.find((s) => s.id === "s1")?.awaiting;
+    // A permission prompt arrives on the live wire → the rail must show "needs you" NOW, not 15s later.
+    applyFrame("s1", {
+      seq: 1,
+      kind: "permission",
+      payload: { requestId: "r1", kind: "hook_callback", toolName: "Bash" },
+    });
+    expect(awaitingOf()).toBe(true);
+    // The turn ends (answered) → awaiting clears instantly so the badge/Stop button don't lag the poll.
+    applyFrame("s1", { seq: 2, kind: "result", payload: { subtype: "success" } });
+    expect(awaitingOf()).toBe(false);
+  });
+
+  it("a non-prompt frame never reallocates the sessions array (no needless rail re-render)", () => {
+    const { applyFrame, setSessions } = useStore.getState();
+    setSessions([meta]);
+    const before = useStore.getState().sessions;
+    applyFrame(
+      "s1",
+      ev(1, {
+        type: "stream_event",
+        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "x" } },
+      }),
+    );
+    expect(useStore.getState().sessions).toBe(before); // same reference — awaiting unchanged (false→false)
+  });
+
   it("appendUserMessage adds an optimistic user turn to the view", () => {
     useStore.getState().appendUserMessage("s1", [{ type: "text", text: "hi there" }]);
     const turns = useStore.getState().viewFor("s1").turns;

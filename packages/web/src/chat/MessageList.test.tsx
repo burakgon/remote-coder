@@ -87,6 +87,17 @@ describe("MessageList", () => {
     expect(screen.getAllByText("Hello, world")).toHaveLength(1);
   });
 
+  it("renders a thinking turn as a collapsed 'Thought' card that expands to the reasoning", async () => {
+    const text =
+      "Let me carefully work through whether 91 is prime by testing small factors one by one.\nActually 91 = 7 × 13, so it is composite.";
+    render(<MessageList view={viewWith({ turns: [{ kind: "thinking", text }] })} />);
+    // Collapsed: a quiet "Thought · …" peek (truncated first line); the rest of the reasoning is hidden.
+    expect(screen.getByText(/Thought ·/)).toBeInTheDocument();
+    expect(screen.queryByText(/7 × 13/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /expand thinking/i }));
+    expect(screen.getByText(/Actually 91 = 7 × 13/)).toBeInTheDocument();
+  });
+
   describe("tool clusters (collapsed by default, verbose-on-expand)", () => {
     const cluster = viewWith({
       turns: [
@@ -126,6 +137,24 @@ describe("MessageList", () => {
       // The result shows the human TEXT (real content), not the escaped JSON scaffolding it used to dump.
       expect(screen.getByText(/Sent untitled\.wav \(4\.8 MB\)\./)).toBeInTheDocument();
       expect(screen.queryByText(/"type": "text"/)).not.toBeInTheDocument();
+    });
+
+    it("flags a failed tool step (is_error on a STRING result) with the error icon, not a green check", async () => {
+      // Real CLI shape: a failed Bash returns is_error:true with a bare-STRING content. The error must
+      // surface from the turn's isError flag (content sniffing can't see it).
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              { kind: "tool-use", id: "e1", name: "Bash", input: { command: "cat /nope" } },
+              { kind: "tool-result", toolUseId: "e1", content: "Exit code 1\ncat: /nope: No such file", isError: true },
+            ],
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
+      expect(screen.getByRole("img", { name: "failed" })).toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: "succeeded" })).not.toBeInTheDocument();
     });
 
     it("renders a multi-line Bash command as a real shell block, not an escaped-JSON dump", async () => {

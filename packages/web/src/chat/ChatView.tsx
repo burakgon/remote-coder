@@ -10,6 +10,7 @@ import { QuestionPrompt } from "./QuestionPrompt";
 import { AutoAllowChip } from "./AutoAllowChip";
 import { SubagentTray } from "./SubagentTray";
 import { SubagentView } from "./SubagentView";
+import { isSlashCommand } from "./slash";
 import { useStore } from "../store/store";
 import { useSessionSocket } from "../session/use-session-socket";
 import { wireStateForSession } from "../session/status";
@@ -394,7 +395,9 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             }
             // While a turn is RUNNING the CLI queues this for after the current turn — mark the bubble
             // `queued` so it renders BELOW the live stream (correct order) until the echo reconciles it.
-            if (blocks.length > 0) appendUserMessage(session.id, blocks, running);
+            // EXCEPT a slash command (e.g. /compact): the CLI never echoes it back, so a queued bubble would
+            // never reconcile and would stay dimmed at the bottom forever — so it's never queued.
+            if (blocks.length > 0) appendUserMessage(session.id, blocks, running && !isSlashCommand(frame.text));
             // Optimistic instant feedback for a composer-sent /compact: flag compacting right away so the
             // indicator shows before the wire's `status:"compacting"` arrives. The wire signal (reducer) is
             // the authoritative source that ALSO covers a /compact triggered outside the composer.

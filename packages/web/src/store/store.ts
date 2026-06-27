@@ -24,6 +24,22 @@ function reconcileActivity(prev: Record<string, number>, sessions: SessionMeta[]
   return next;
 }
 
+/**
+ * Return `sessions` with `id`'s `awaiting` flag set to `awaiting`, or the SAME array reference when nothing
+ * changes (no id match, or already that value). meta.awaiting is otherwise only refreshed by the 15s
+ * `GET /sessions` poll, so without this an answered prompt kept the rail "needs you" chip, the global
+ * badge, and the active chat's Stop button stuck for up to ~15s. Syncing it from the live view (in
+ * applyFrame) clears/raises all of them instantly; the poll re-confirms. The no-op-same-ref path keeps an
+ * ordinary stream frame from reallocating the array (no needless rail re-render).
+ */
+function syncAwaiting(sessions: SessionMeta[], id: string, awaiting: boolean): SessionMeta[] {
+  const idx = sessions.findIndex((s) => s.id === id);
+  if (idx < 0 || (sessions[idx]!.awaiting ?? false) === awaiting) return sessions;
+  const next = sessions.slice();
+  next[idx] = { ...next[idx]!, awaiting };
+  return next;
+}
+
 /** A frame that represents a real conversation turn (user text or assistant message) — the only
  * inbound frames that count as "activity" for rail ordering. Stream deltas, permission/question,
  * result, diagnostic, exit and system frames are plumbing, not a new turn, so they don't reorder. */
@@ -135,12 +151,17 @@ export const useStore = create<StoreState>((set, get) => ({
   applyFrame: (id, frame) =>
     set((state) => {
       const current = state.views[id] ?? emptyView();
+      const nextView = reduceFrame(current, frame);
       // Activity-sort is driven by conversation activity ONLY: bump the stamp on an inbound user/
       // assistant MESSAGE frame (real turns), but NOT on plumbing frames (stream deltas, permissions,
       // diagnostics, system) — and never on select/open. This keeps the rail honest about which chat
       // last actually moved.
       const lastActiveAt = isMessageFrame(frame) ? { ...state.lastActiveAt, [id]: Date.now() } : state.lastActiveAt;
-      return { views: { ...state.views, [id]: reduceFrame(current, frame) }, lastActiveAt };
+      // Keep meta.awaiting in lockstep with the live view for the CONNECTED session so the "needs you"
+      // chip / global badge / Stop button react the instant a prompt arrives or is answered (the poll lags).
+      const liveAwaiting = nextView.pendingQuestion !== undefined || nextView.pendingPermission !== undefined;
+      const sessions = syncAwaiting(state.sessions, id, liveAwaiting);
+      return { views: { ...state.views, [id]: nextView }, lastActiveAt, sessions };
     }),
   // Fold a batch of frames in a single store update (one re-render) — used to replay REST history.
   // History replay must NOT reorder the rail (replaying an old transcript isn't new activity), so it

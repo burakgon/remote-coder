@@ -24,6 +24,34 @@ describe("summarizeToolInput", () => {
   });
 });
 
+describe("summarizeToolInput", () => {
+  it("uses the primary descriptive field for common tools", () => {
+    expect(summarizeToolInput({ command: "ls -la" })).toBe("ls -la");
+    expect(summarizeToolInput({ file_path: "/a/b.ts" })).toBe("/a/b.ts");
+  });
+  it("summarizes a structured tool (a list field) as an item count, not an empty string", () => {
+    expect(summarizeToolInput({ todos: [{ content: "a" }, { content: "b" }, { content: "c" }] })).toBe("3 items");
+    expect(summarizeToolInput({ todos: [{ content: "a" }] })).toBe("1 item");
+  });
+  it("recognizes descriptive fields beyond the path/command set (subject/title/description)", () => {
+    expect(summarizeToolInput({ subject: "Design the API" })).toBe("Design the API");
+    expect(summarizeToolInput({ status: "in_progress", description: "build it" })).toBe("build it");
+  });
+  it("collapses newlines and caps a long value to one readable line", () => {
+    const r = summarizeToolInput({ command: "cd /tmp\ngit add .\ngit commit -m 'msg'" });
+    expect(r).not.toContain("\n");
+    expect(r.startsWith("cd /tmp git add .")).toBe(true);
+    const long = summarizeToolInput({ command: "x".repeat(200) });
+    expect(long.length).toBeLessThanOrEqual(80);
+    expect(long.endsWith("…")).toBe(true);
+  });
+  it("falls back to the first non-empty string field, else empty", () => {
+    expect(summarizeToolInput({ weird: "value" })).toBe("value");
+    expect(summarizeToolInput({})).toBe("");
+    expect(summarizeToolInput(undefined)).toBe("");
+  });
+});
+
 describe("parseToolResult", () => {
   it("extracts the human text as the summary and keeps the full JSON as raw", () => {
     const content = [{ type: "text", text: "Sent untitled.wav (4.8 MB) to the chat." }];
@@ -48,6 +76,31 @@ describe("parseToolResult", () => {
 
   it("detects an error result", () => {
     expect(parseToolResult({ is_error: true, content: "boom" }).isError).toBe(true);
+  });
+
+  it("surfaces an image tool_result as an image, summary '[image]', with the base64 blob redacted from raw", () => {
+    // Reading an image file yields a tool_result whose content is an image block. It must render as an
+    // image, never as a giant base64 JSON dump.
+    const data = "A".repeat(500);
+    const content = [{ type: "image", source: { type: "base64", media_type: "image/png", data } }];
+    const r = parseToolResult(content);
+    expect(r.images).toHaveLength(1);
+    expect(r.images[0]).toEqual({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+    expect(r.text).toBe("");
+    expect(r.summary).toBe("[image]");
+    expect(r.raw).not.toContain(data); // the blob is redacted from the raw panel
+    expect(r.raw).toContain("base64");
+  });
+
+  it("summarizes a tool_reference result (ToolSearch) readably instead of dumping raw JSON", () => {
+    const content = [
+      { type: "tool_reference", tool_name: "TaskList" },
+      { type: "tool_reference", tool_name: "TaskCreate" },
+    ];
+    const r = parseToolResult(content);
+    expect(r.text).toContain("TaskList");
+    expect(r.text).toContain("TaskCreate");
+    expect(r.summary).toContain("TaskList");
   });
 
   it("truncates a very long summary but keeps the raw intact", () => {

@@ -159,6 +159,86 @@ describe("reduceFrame", () => {
     expect(v.turns.at(-1)).toEqual({ kind: "tool-result", toolUseId: "tu1", content: "done" });
   });
 
+  it("carries the tool_result error flag onto the turn (real CLI shape: is_error sibling of a STRING content)", () => {
+    // A failed Bash / denied tool: the CLI sets is_error:true on the tool_result block and the content is
+    // a bare string. Previously the reducer dropped is_error, so the step never rendered as an error.
+    const v = reduceFrame(
+      emptyView(),
+      ev(1, {
+        type: "user",
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "tu1", content: "Exit code 1\ncat: nope", is_error: true }],
+        },
+      }),
+    );
+    expect(v.turns.at(-1)).toEqual({
+      kind: "tool-result",
+      toolUseId: "tu1",
+      content: "Exit code 1\ncat: nope",
+      isError: true,
+    });
+  });
+
+  it("a successful tool_result carries NO isError field (omitted, not false)", () => {
+    const v = reduceFrame(
+      emptyView(),
+      ev(1, { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu2", content: "ok" }] } }),
+    );
+    expect(v.turns.at(-1)).toEqual({ kind: "tool-result", toolUseId: "tu2", content: "ok" });
+  });
+
+  it("renders a non-empty assistant thinking block as a thinking turn (so reopen preserves reasoning)", () => {
+    const v = reduceFrame(
+      emptyView(),
+      ev(1, {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "91 isn't prime since 7 × 13." },
+            { type: "text", text: "No, 91 is not prime." },
+          ],
+        },
+      }),
+    );
+    expect(v.turns).toEqual([
+      { kind: "thinking", text: "91 isn't prime since 7 × 13." },
+      { kind: "assistant-text", text: "No, 91 is not prime." },
+    ]);
+  });
+
+  it("skips an empty/redacted thinking block (no thinking turn)", () => {
+    const v = reduceFrame(
+      emptyView(),
+      ev(1, {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "" },
+            { type: "text", text: "hi" },
+          ],
+        },
+      }),
+    );
+    expect(v.turns).toEqual([{ kind: "assistant-text", text: "hi" }]);
+  });
+
+  it("routes a subagent's thinking block into its thread, not the main chat", () => {
+    let v = reduceFrame(
+      emptyView(),
+      ev(1, { type: "assistant", message: { content: [{ type: "tool_use", id: "ag1", name: "Task", input: {} }] } }),
+    );
+    v = reduceFrame(
+      v,
+      ev(2, {
+        type: "assistant",
+        parentToolUseId: "ag1",
+        message: { content: [{ type: "thinking", thinking: "subagent reasoning" }] },
+      }),
+    );
+    expect(v.turns.some((t) => t.kind === "thinking")).toBe(false);
+    expect(sub(v, "ag1").turns).toEqual([{ kind: "thinking", text: "subagent reasoning" }]);
+  });
+
   it("context meter: assistant per-turn usage sets contextTokens; result sets ONLY contextWindow (its usage is cumulative)", () => {
     let v = emptyView();
     // An assistant turn carries per-turn usage → contextTokens = sum(input+cache_read+cache_creation+output).

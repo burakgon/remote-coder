@@ -82,7 +82,9 @@ function soleText(message: unknown): string | undefined {
 }
 
 function truncate(text: string): string {
-  const trimmed = text.trim();
+  // Collapse internal whitespace (incl. newlines) to single spaces so a multi-line first message renders
+  // as one clean line in the resume picker's clamped summary box (raw newlines caused odd early wraps).
+  const trimmed = text.replace(/\s+/g, " ").trim();
   return trimmed.length > SUMMARY_MAX ? trimmed.slice(0, SUMMARY_MAX) : trimmed;
 }
 
