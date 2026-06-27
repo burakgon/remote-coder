@@ -26,37 +26,68 @@ import { slimImageBlocks } from "./transcript-images.js";
 
 export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
 
-/** The last result's token usage (for the context meter) + whether a turn is currently in flight. Derived
- *  from the replay buffer so a (re)opened/switched chat can seed its wire state + meter immediately. */
+/** Token usage for the context meter + whether a turn is currently in flight. Derived from the replay
+ *  buffer so a (re)opened/switched chat can seed its wire state + meter immediately. */
 export interface LiveState {
   /** True when a turn is mid-flight (assistant/stream/user activity after the last result/exit) — so a
    *  switched-to chat shows "working" instead of a wrong "idle" while Claude is between visible frames. */
   turnActive: boolean;
-  /** The most recent result's usage, for the context meter (absent if no result is still in the buffer). */
+  /** `contextTokens` = CURRENT context occupancy from the newest assistant turn's per-turn usage (NOT the
+   *  result's cumulative usage, which over-reads to many× the window on a long chat). `contextWindow` = the
+   *  authoritative denominator from the newest result's modelUsage. Either may be absent if not in buffer. */
   usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
+}
+
+/** Sum a Claude per-turn `message.usage` into current context occupancy (input + cache-read + cache-create
+ *  + output). Mirror of the web reducer's `contextTokensFromUsage`. Undefined when no usage / all zero. */
+function sumAssistantUsage(u: Record<string, unknown> | undefined): number | undefined {
+  if (!u || typeof u !== "object") return undefined;
+  const n = (k: string) => (typeof u[k] === "number" ? (u[k] as number) : 0);
+  const total =
+    n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens") + n("output_tokens");
+  return total > 0 ? total : undefined;
 }
 
 /**
  * Derive {@link LiveState} from a session's replay-buffer snapshot (newest→oldest). `turnActive` is true
- * iff there is turn activity (assistant/stream/user event, or a pending permission/question) AFTER the
- * most recent `result`/`exit` boundary. `usage` is that most-recent result's usage. Pure; never throws.
+ * iff there is turn activity (assistant/stream/user event, or a pending permission/question) AFTER the most
+ * recent `result`/`exit` boundary. `contextTokens` comes from the newest MAIN assistant turn's per-turn
+ * usage; `contextWindow`/`outputTokens` from the newest result. Pure; never throws.
  */
 export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
   let turnActive = false;
-  let usage: LiveState["usage"];
+  let boundaryHit = false; // hit the most recent result/exit — freezes turnActive but keeps scanning for usage
+  let contextTokens: number | undefined;
+  let contextWindow: number | undefined;
+  let outputTokens: number | undefined;
   for (let i = frames.length - 1; i >= 0; i--) {
     const f = frames[i]!;
     if (f.kind === "result") {
-      usage = (f.payload as { usage?: LiveState["usage"] }).usage;
-      break; // the newest result bounds the current turn; activity after it (already scanned) set turnActive
+      boundaryHit = true;
+      const u = (f.payload as { usage?: { contextWindow?: number; outputTokens?: number } }).usage;
+      if (contextWindow === undefined && typeof u?.contextWindow === "number") contextWindow = u.contextWindow;
+      if (outputTokens === undefined && typeof u?.outputTokens === "number") outputTokens = u.outputTokens;
+    } else if (f.kind === "exit") {
+      boundaryHit = true;
+    } else if (f.kind === "permission" || f.kind === "question") {
+      if (!boundaryHit) turnActive = true;
+    } else if (f.kind === "event") {
+      const p = f.payload as { type?: string; parentToolUseId?: string; message?: { usage?: Record<string, unknown> } };
+      if (!boundaryHit && (p.type === "assistant" || p.type === "stream_event" || p.type === "user")) turnActive = true;
+      if (contextTokens === undefined && p.type === "assistant" && p.parentToolUseId === undefined) {
+        contextTokens = sumAssistantUsage(p.message?.usage);
+      }
     }
-    if (f.kind === "exit") break; // process ended — turn not active (unless newer activity already set it)
-    if (f.kind === "permission" || f.kind === "question") turnActive = true;
-    if (f.kind === "event") {
-      const t = (f.payload as { type?: string }).type;
-      if (t === "assistant" || t === "stream_event" || t === "user") turnActive = true;
-    }
+    if (boundaryHit && contextTokens !== undefined && contextWindow !== undefined) break;
   }
+  const usage =
+    contextTokens !== undefined || contextWindow !== undefined || outputTokens !== undefined
+      ? {
+          ...(contextTokens !== undefined ? { contextTokens } : {}),
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
+          ...(outputTokens !== undefined ? { outputTokens } : {}),
+        }
+      : undefined;
   return { turnActive, ...(usage ? { usage } : {}) };
 }
 

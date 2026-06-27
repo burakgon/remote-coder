@@ -92,6 +92,9 @@ export interface SessionView {
    * chat can show the meter immediately even though the transcript carries no result frame.
    */
   usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
+  /** TRUE while a `/compact` the user sent is being processed — drives the telemetry "Compacting…" label
+   *  (the CLI emits no distinct compaction event, so this is set on send and cleared on the turn's result). */
+  compacting?: boolean;
   diagnostics: DiagnosticPayload[];
   wireState: LiveWireState;
   lastSeq: number;
@@ -143,7 +146,13 @@ interface DeltaEvent {
   delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
 }
 interface AssistantMsg {
-  message?: { content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }> };
+  message?: {
+    content?: Array<{ type?: string; text?: string; id?: string; name?: string; input?: unknown }>;
+    /** Per-turn token usage. The SUM of its input/cache_read/cache_creation/output is the CURRENT context
+     *  occupancy — the right context-meter numerator. (The `result` event's usage is CUMULATIVE across the
+     *  whole session — cache reads add up every turn — so it over-reads to many× the window on a long chat.) */
+    usage?: Record<string, number>;
+  };
   /** Top-level sibling of `message`: the Agent tool_use id when this is a subagent's own message. */
   parentToolUseId?: string;
 }
@@ -230,6 +239,19 @@ function toImageBlock(block: {
     return { type: "image", source: { type: "base64", media_type: s.media_type, data: s.data } };
   }
   return undefined;
+}
+
+/**
+ * Sum a Claude per-turn `message.usage` into the CURRENT context occupancy (the meter numerator):
+ * input + cache-read + cache-creation + output tokens — i.e. everything that occupied the model's window
+ * for this turn. Returns undefined when no usage is present (so a turn without it doesn't reset the meter).
+ */
+function contextTokensFromUsage(usage: Record<string, number> | undefined): number | undefined {
+  if (!usage) return undefined;
+  const n = (k: string) => (typeof usage[k] === "number" ? usage[k] : 0);
+  const total =
+    n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens") + n("output_tokens");
+  return total > 0 ? total : undefined;
 }
 
 /** Basename of a path (for the attachment card's name), tolerant of trailing slashes. */
@@ -422,12 +444,21 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     // marker and return the wire to idle (so the user can type the next message), never the red error.
     const stopped = r.terminalReason === "aborted_streaming" || r.subtype === "error_during_execution";
     next.lastResult = r;
-    // Keep the meter fed: update usage when this result reports it, else retain the last known value.
-    if (r.usage) next.usage = r.usage;
+    // The result's usage is CUMULATIVE (it over-reads to many× the window on a long chat), so do NOT take
+    // its contextTokens — the assistant handler owns the (per-turn) numerator. Take only the authoritative
+    // contextWindow (the meter denominator, from the CLI's modelUsage) and outputTokens; keep the rest.
+    if (r.usage?.contextWindow !== undefined || r.usage?.outputTokens !== undefined) {
+      next.usage = {
+        ...next.usage,
+        ...(r.usage.contextWindow !== undefined ? { contextWindow: r.usage.contextWindow } : {}),
+        ...(r.usage.outputTokens !== undefined ? { outputTokens: r.usage.outputTokens } : {}),
+      };
+    }
     next.pendingPermission = undefined;
     next.pendingQuestion = undefined;
     next.liveText = "";
     next.thinkingText = "";
+    next.compacting = false; // a /compact turn ends here → clear the "Compacting…" indicator
     next.wireState = stopped ? "idle" : r.isError ? "error" : "success";
     next.turns = [
       ...view.turns,
@@ -609,6 +640,11 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     next.liveText = "";
     next.thinkingText = "";
     if (active) next.wireState = "running-tool";
+    // CONTEXT METER numerator: this turn's per-turn usage IS the current context occupancy. Update
+    // contextTokens here (NOT from the result, whose usage is cumulative); keep the contextWindow that a
+    // `result` provides. Works live AND on reopen (the transcript's assistant lines carry message.usage).
+    const ctxTokens = contextTokensFromUsage(ev.message?.usage);
+    if (ctxTokens !== undefined) next.usage = { ...next.usage, contextTokens: ctxTokens };
     return next;
   }
   if (ev.type === "user") {
@@ -800,6 +836,7 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       next.wireState = "idle";
       next.liveText = "";
       next.thinkingText = "";
+      next.compacting = false; // a restart ends any in-flight /compact indicator
       // A fresh/resumed process has none of the OLD process's pending prompts — their requestIds belong
       // to the gone process, so clear them (the server also resolves them on respawn). Otherwise a stale
       // permission/question lingered after a resume and "answering" it hit a process that never issued it.

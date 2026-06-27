@@ -251,6 +251,14 @@ describe("useStore", () => {
     expect(v.usage).toEqual({ contextTokens: 42000, contextWindow: 200000 });
   });
 
+  it("setCompacting flags the session; a result frame clears it", () => {
+    useStore.getState().setCompacting("s1", true);
+    expect(useStore.getState().viewFor("s1").compacting).toBe(true);
+    // The /compact turn's result clears the indicator.
+    useStore.getState().applyFrame("s1", { seq: 1, kind: "result", payload: { type: "result", raw: {} } });
+    expect(useStore.getState().viewFor("s1").compacting).toBe(false);
+  });
+
   it("loadHistory seeds idle wire when the server says no turn is active (and still seeds usage)", () => {
     const history: ServerFrame[] = [
       ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "go" }] } }),

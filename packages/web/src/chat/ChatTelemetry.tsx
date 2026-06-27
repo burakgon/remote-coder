@@ -68,14 +68,19 @@ export interface ChatTelemetryProps {
   contextWindow?: number;
   /** Fallback only: infer the window from the model name when `contextWindow` isn't reported yet. */
   model?: string;
+  /** TRUE while a user-issued `/compact` is being processed — the label reads "Compacting…" (the wire is
+   *  a normal working state; only the label changes) so the user sees that compaction is underway. */
+  compacting?: boolean;
 }
 
-export function ChatTelemetry({ wireState, contextTokens, contextWindow, model }: ChatTelemetryProps) {
+export function ChatTelemetry({ wireState, contextTokens, contextWindow, model, compacting }: ChatTelemetryProps) {
   const working = WORKING.has(wireState);
   // The dot radar-pings whenever the session is "live": the agent working OR waiting on you. Only the
   // agent-working states get the typing ellipsis (it would misread on an awaiting-you state).
   const pinging = working || wireState === "awaiting";
   const color = statusColor(wireState);
+  // "Compacting…" overrides the working label (the wire stays a normal working state underneath).
+  const label = compacting ? "Compacting…" : STATUS_LABEL[wireState];
 
   // Prefer the CLI's authoritative window; the name heuristic is a fallback for the pre-result frames.
   const windowTokens = contextWindow && contextWindow > 0 ? contextWindow : contextWindowFor(model);
@@ -86,17 +91,12 @@ export function ChatTelemetry({ wireState, contextTokens, contextWindow, model }
 
   return (
     <div className="rc-tele">
-      <span
-        className="rc-tele__status"
-        role="status"
-        data-state={wireState}
-        aria-label={`Model ${STATUS_LABEL[wireState]}`}
-      >
+      <span className="rc-tele__status" role="status" data-state={wireState} aria-label={`Model ${label}`}>
         <span className={`rc-tele__dot${pinging ? " rc-tele__dot--live" : ""}`} style={{ background: color }}>
           {pinging && <span className="rc-tele__ping" style={{ background: color }} aria-hidden="true" />}
         </span>
         <span className="rc-tele__label" style={{ color }}>
-          {STATUS_LABEL[wireState]}
+          {label}
         </span>
         {working && (
           <span className="rc-tele__dots" aria-hidden="true">

@@ -298,7 +298,11 @@ export function App() {
       api
         .getUsage()
         .then((u) => {
-          if (!cancelled) setUsage(u);
+          // Only update on a REAL snapshot. The server returns `usage:null` when its `claude /usage`
+          // spawn fails — which happens on a transiently loaded host — and clobbering the last-known
+          // value with null made the session/weekly bars VANISH on a single slow poll. Keep the last
+          // good value instead; a later good poll refreshes it (and they refresh every ~60s anyway).
+          if (!cancelled && u) setUsage(u);
         })
         .catch(() => {
           // transient — keep the last value.

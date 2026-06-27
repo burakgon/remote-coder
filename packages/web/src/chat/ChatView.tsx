@@ -41,6 +41,7 @@ export interface ChatViewProps {
 export function ChatView({ session, api, token, onSlashCommand, onClose, onShowSessions, needsYou }: ChatViewProps) {
   const loadHistory = useStore((s) => s.loadHistory);
   const resetSession = useStore((s) => s.resetSession);
+  const setCompacting = useStore((s) => s.setCompacting);
   const view = useStore((s) => s.views[session.id]);
   const sessions = useStore((s) => s.sessions);
   const setSessions = useStore((s) => s.setSessions);
@@ -367,12 +368,14 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
           a sent message visibly gets a reaction without looking up to the header. */}
       <ChatTelemetry
         wireState={wireState}
-        // `view.usage` is the durable meter source: seeded from the server's live tail on switch AND
-        // updated by each live `result`, so the meter shows immediately on switch (the transcript has no
-        // result frame). Fall back to the last result for older paths.
-        contextTokens={safeView.usage?.contextTokens ?? safeView.lastResult?.usage?.contextTokens}
-        contextWindow={safeView.usage?.contextWindow ?? safeView.lastResult?.usage?.contextWindow}
+        // `view.usage` is the durable meter source: contextTokens is the CURRENT occupancy (per-turn
+        // assistant usage), contextWindow the authoritative denominator — both seeded on switch and
+        // updated live, so the meter shows immediately and reads correctly even on a long chat.
+        contextTokens={safeView.usage?.contextTokens}
+        contextWindow={safeView.usage?.contextWindow}
         model={session.model}
+        // Show "Compacting…" while a /compact the user sent is in flight (only meaningful while working).
+        compacting={safeView.compacting && running}
       />
       <Composer
         onSend={(frame) => {
@@ -389,6 +392,9 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             // While a turn is RUNNING the CLI queues this for after the current turn — mark the bubble
             // `queued` so it renders BELOW the live stream (correct order) until the echo reconciles it.
             if (blocks.length > 0) appendUserMessage(session.id, blocks, running);
+            // `/compact` has no distinct event in the stream, so show a "Compacting…" indicator from the
+            // moment it's sent until the turn's result clears it (the user otherwise saw nothing happen).
+            if (frame.text?.trim() === "/compact") setCompacting(session.id, true);
           }
           send(frame);
         }}

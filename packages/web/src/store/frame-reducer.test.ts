@@ -159,17 +159,35 @@ describe("reduceFrame", () => {
     expect(v.turns.at(-1)).toEqual({ kind: "tool-result", toolUseId: "tu1", content: "done" });
   });
 
-  it("a result frame updates view.usage (drives the context meter); a result without usage keeps the last", () => {
+  it("context meter: assistant per-turn usage sets contextTokens; result sets ONLY contextWindow (its usage is cumulative)", () => {
     let v = emptyView();
+    // An assistant turn carries per-turn usage → contextTokens = sum(input+cache_read+cache_creation+output).
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "ok" }],
+          usage: {
+            input_tokens: 2,
+            cache_read_input_tokens: 574510,
+            cache_creation_input_tokens: 855,
+            output_tokens: 794,
+          },
+        },
+      }),
+    );
+    expect(v.usage?.contextTokens).toBe(576161);
+    // The result's usage is CUMULATIVE — its contextTokens (8M) must be IGNORED; only contextWindow is taken.
     v = reduceFrame(v, {
-      seq: 1,
+      seq: 2,
       kind: "result",
-      payload: { type: "result", usage: { contextTokens: 1234, contextWindow: 200000 }, raw: {} },
+      payload: { type: "result", usage: { contextTokens: 7997608, contextWindow: 1000000 }, raw: {} },
     });
-    expect(v.usage).toEqual({ contextTokens: 1234, contextWindow: 200000 });
-    // A later result with no usage must not wipe the meter — keep the last known value.
-    v = reduceFrame(v, { seq: 2, kind: "result", payload: { type: "result", raw: {} } });
-    expect(v.usage).toEqual({ contextTokens: 1234, contextWindow: 200000 });
+    expect(v.usage).toEqual({ contextTokens: 576161, contextWindow: 1000000 });
+    // A later result with no usage keeps the last known meter values.
+    v = reduceFrame(v, { seq: 3, kind: "result", payload: { type: "result", raw: {} } });
+    expect(v.usage).toEqual({ contextTokens: 576161, contextWindow: 1000000 });
   });
 
   it("renders a user TEXT event (string content) as a user turn — needed for resume replay", () => {

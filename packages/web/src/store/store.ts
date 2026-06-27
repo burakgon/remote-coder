@@ -88,6 +88,9 @@ interface StoreState {
    * typed user text back as a render-able turn, so without this the sender never sees their message). */
   appendUserMessage: (id: string, blocks: ContentBlock[], queued?: boolean) => void;
   resetSession: (id: string) => void;
+  /** Mark a session as compacting (the user sent `/compact`) so the telemetry shows "Compacting…" until
+   *  the turn's result clears it. No-op-safe on an unknown id (seeds an empty view). */
+  setCompacting: (id: string, compacting: boolean) => void;
   viewFor: (id: string) => SessionView;
 }
 
@@ -163,11 +166,21 @@ export const useStore = create<StoreState>((set, get) => ({
       // a dormant reopen has no phantom "Running tool". `usage` seeds the context meter, which the
       // transcript can't (it has no result). Granular live WS frames (seq > sinceSeq) refine the wire from
       // here, and the race guard below carries any already-arrived live state forward.
+      // Merge the meter usage: folding the transcript already set `contextTokens` from the LAST assistant
+      // message's per-turn usage (the correct, current occupancy) — prefer that; take the `contextWindow`
+      // denominator from the seed (the transcript has no result frame). Undefined when neither exists.
+      const foldedUsage = view.usage;
+      const seededUsage = {
+        contextTokens: foldedUsage?.contextTokens ?? live?.usage?.contextTokens,
+        contextWindow: live?.usage?.contextWindow ?? foldedUsage?.contextWindow,
+        outputTokens: foldedUsage?.outputTokens ?? live?.usage?.outputTokens,
+      };
+      const hasUsage = seededUsage.contextTokens !== undefined || seededUsage.contextWindow !== undefined;
       view = {
         ...view,
         lastSeq: sinceSeq,
         wireState: live?.turnActive ? "running-tool" : "idle",
-        usage: live?.usage,
+        usage: hasUsage ? seededUsage : undefined,
         liveText: "",
         thinkingText: "",
       };
@@ -219,5 +232,7 @@ export const useStore = create<StoreState>((set, get) => ({
       };
     }),
   resetSession: (id) => set((state) => ({ views: { ...state.views, [id]: emptyView() } })),
+  setCompacting: (id, compacting) =>
+    set((state) => ({ views: { ...state.views, [id]: { ...(state.views[id] ?? emptyView()), compacting } } })),
   viewFor: (id) => get().views[id] ?? emptyView(),
 }));
