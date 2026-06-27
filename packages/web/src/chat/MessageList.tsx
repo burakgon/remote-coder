@@ -5,51 +5,11 @@ import { Icon, iconForFile } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Markdown } from "./Markdown";
 import { CodeBlock } from "./CodeBlock";
-import { imageBlockSrc, extractFilePaths, isImagePath } from "./content-images";
+import { imageBlockSrc } from "./content-images";
 import { planRender, parseToolResult, summarizeToolInput, type ToolStep } from "./tool-cluster";
 import { SubagentCard } from "./SubagentCard";
 import type { SessionView, SubagentThread, TurnItem } from "../store/frame-reducer";
 import type { ContentBlock } from "../types/server";
-
-function fileBasename(p: string): string {
-  const parts = p.split("/");
-  return parts[parts.length - 1] || p;
-}
-
-/**
- * Turn IMAGE paths MENTIONED in a message (claude's own text, or a tool result) into inline previews —
- * how claude "sends" an image to the user: when it names an image path it produced/read, the user sees
- * it inline, loaded through the fsRoot-confined `/fs/download` endpoint (the `downloadUrl`). Non-image
- * file paths mentioned in prose are intentionally NOT turned into download chips (too noisy).
- */
-function FileAttachments({ text, downloadUrl }: { text: string; downloadUrl: (p: string) => string }) {
-  const images = extractFilePaths(text).filter(isImagePath);
-  if (images.length === 0) return null;
-  return (
-    <div style={{ display: "grid", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
-      {images.map((p) => (
-        <a
-          key={p}
-          href={downloadUrl(p)}
-          download
-          title={p}
-          style={{ display: "block", width: "fit-content", maxWidth: "100%" }}
-        >
-          <img
-            src={downloadUrl(p)}
-            alt={fileBasename(p)}
-            style={{
-              maxWidth: "min(100%, 360px)",
-              borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)",
-              display: "block",
-            }}
-          />
-        </a>
-      ))}
-    </div>
-  );
-}
 
 /** Tiny uppercase "who is speaking" breadcrumb in the display font, with a hairline trailing rule. */
 function TurnTag({ children }: { children: string }) {
@@ -175,18 +135,13 @@ function RewoundMarker({ item }: { item: Extract<TurnItem, { kind: "rewound" }> 
   );
 }
 
-/** Assistant prose — the visual focus: clean, generous, real markdown, plus inline file attachments. */
-function AssistantTurn({
-  item,
-  downloadUrl,
-}: {
-  item: Extract<TurnItem, { kind: "assistant-text" }>;
-  downloadUrl?: (path: string) => string;
-}) {
+/** Assistant prose — the visual focus: clean, generous, real markdown. File/image paths the model merely
+ *  MENTIONS are NOT auto-extracted into chips or inline previews (too noisy / produced bogus chips); a
+ *  file or image is shown only when the model DELIBERATELY sends it (send_file/send_image → AttachmentCard). */
+function AssistantTurn({ item }: { item: Extract<TurnItem, { kind: "assistant-text" }> }) {
   return (
     <div style={{ color: "var(--text)" }}>
       <Markdown>{item.text}</Markdown>
-      {downloadUrl && <FileAttachments text={item.text} downloadUrl={downloadUrl} />}
     </div>
   );
 }
@@ -619,7 +574,7 @@ function Turn({
 }) {
   switch (item.kind) {
     case "assistant-text":
-      return <AssistantTurn item={item} downloadUrl={downloadUrl} />;
+      return <AssistantTurn item={item} />;
     case "user":
       return <UserTurn item={item} onRewind={onRewind} imageUrl={imageUrl} />;
     case "result":

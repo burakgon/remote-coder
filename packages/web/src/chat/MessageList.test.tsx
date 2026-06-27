@@ -326,31 +326,25 @@ describe("MessageList", () => {
     });
   });
 
-  describe("file paths in assistant text: images preview inline, other files are not turned into chips", () => {
+  describe("assistant prose does NOT auto-extract file/image paths into chips or previews", () => {
     const downloadUrl = (p: string) => `https://host/fs/download?path=${encodeURIComponent(p)}&token=tok`;
 
-    it("does NOT turn a non-image file path in assistant prose into a download chip (too noisy — fb90ae9)", () => {
+    it("neither a file path nor an image path mentioned in prose renders a link or inline image", () => {
       render(
         <MessageList
           view={viewWith({
-            turns: [{ kind: "assistant-text", text: "Done — I saved it to /Users/me/report.pdf for you." }],
+            turns: [
+              {
+                kind: "assistant-text",
+                text: "Saved /Users/me/report.pdf and here is the chart: /Users/me/chart.png",
+              },
+            ],
           })}
           downloadUrl={downloadUrl}
         />,
       );
-      expect(screen.queryByRole("link", { name: /report\.pdf/i })).not.toBeInTheDocument();
-    });
-
-    it("previews an image path from assistant text inline (img src = the download URL)", () => {
-      render(
-        <MessageList
-          view={viewWith({ turns: [{ kind: "assistant-text", text: "Here is the chart: /Users/me/chart.png" }] })}
-          downloadUrl={downloadUrl}
-        />,
-      );
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", "https://host/fs/download?path=%2FUsers%2Fme%2Fchart.png&token=tok");
-      expect(screen.getByRole("link")).toHaveAttribute("download");
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.queryByRole("img")).not.toBeInTheDocument();
     });
   });
 
