@@ -2,8 +2,16 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { SettingsPanel } from "./SettingsPanel";
-import type { SessionMeta } from "../types/server";
+import type { ModelInfo, SessionMeta } from "../types/server";
 import type { SessionDefaults } from "./defaults";
+
+// Account models from GET /models — passed so the model control is the real dropdown (ModelSelect falls
+// back to a free-text input when this is empty).
+const models: ModelInfo[] = [
+  { value: "opus", displayName: "Opus" },
+  { value: "sonnet", displayName: "Sonnet" },
+  { value: "haiku", displayName: "Haiku" },
+];
 
 const session: SessionMeta = {
   id: "s1",
@@ -121,12 +129,13 @@ describe("SettingsPanel", () => {
       <SettingsPanel
         session={session}
         defaults={defaults}
+        models={models}
         onSaveDefaults={vi.fn()}
         onApplyLiveSettings={onApply}
         onClose={vi.fn()}
       />,
     );
-    // The model is now a dropdown of the account's models (fallback list here: Default/Opus/Sonnet/Haiku).
+    // The model is a dropdown of the account's models (ModelSelect); pick a different one.
     await userEvent.selectOptions(screen.getByLabelText(/active session model/i), "sonnet");
     await userEvent.click(screen.getByRole("button", { name: /apply to session/i }));
     expect(onApply).toHaveBeenCalledTimes(1);
