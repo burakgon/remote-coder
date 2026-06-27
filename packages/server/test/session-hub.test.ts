@@ -118,6 +118,36 @@ test("getHistory windows to the last N turns (truncated + slim raw); no limit re
   hub.stopSession(meta.id);
 });
 
+test("getHistory slim raw carries isCompactSummary so a reopened compaction renders the clean marker", async () => {
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
+  const turns = [
+    // The post-compaction seed: isCompactSummary, NOT isMeta (the giant "YOU" bubble bug).
+    {
+      type: "user" as const,
+      message: { role: "user", content: "This session is being continued…" },
+      uuid: "cs1",
+      isCompactSummary: true,
+    },
+    { type: "user" as const, message: { role: "user", content: [{ type: "text", text: "typed" }] }, uuid: "u1" },
+  ];
+  const history = {
+    claudeHome: "/x",
+    transcriptPath: () => "/x/s.jsonl",
+    read: async () => turns,
+  } as unknown as HistoryService;
+  const hub = new SessionHub(manager, { history });
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  const { history: frames } = await hub.getHistory(meta.id);
+  expect((frames[0]!.payload as { raw: { isCompactSummary?: boolean } }).raw.isCompactSummary).toBe(true);
+  expect((frames[1]!.payload as { raw: { isCompactSummary?: boolean } }).raw.isCompactSummary).toBeUndefined();
+
+  hub.stopSession(meta.id);
+});
+
 test("getHistory forwards parentToolUseId so reopened subagent turns route into their thread (not main)", async () => {
   const manager = new SessionManager(
     { claudeBin: process.execPath },

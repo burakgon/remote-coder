@@ -35,6 +35,13 @@ describe("MessageList", () => {
     expect(screen.queryByText(/command-name|local-command-stdout/)).not.toBeInTheDocument();
   });
 
+  it("renders a post-compaction summary as a clean 'Context compacted' marker (never the giant summary text)", () => {
+    render(<MessageList view={viewWith({ turns: [{ kind: "compaction" }] })} />);
+    expect(screen.getByText(/context compacted/i)).toBeInTheDocument();
+    // The continuation-summary wall of text is never dumped into the chat as a bubble.
+    expect(screen.queryByText(/this session is being continued/i)).not.toBeInTheDocument();
+  });
+
   it("renders an interrupted turn as a calm 'stopped' marker, not a red error", () => {
     render(
       <MessageList

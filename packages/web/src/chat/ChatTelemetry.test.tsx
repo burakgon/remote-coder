@@ -10,6 +10,14 @@ describe("ChatTelemetry", () => {
     expect(screen.getByText("Thinking")).toBeInTheDocument();
   });
 
+  it("shows 'Compacting…' and an alive (working) indicator even when the wire is not in a working state", () => {
+    // /compact emits no streaming/tool frames, so the wire stays idle the whole time. The indicator must
+    // still read "Compacting…" AND look alive (the animated typing dots render only for working states).
+    const { container } = render(<ChatTelemetry wireState="idle" compacting />);
+    expect(screen.getByText("Compacting…")).toBeInTheDocument();
+    expect(container.querySelector(".rc-tele__dots")).not.toBeNull();
+  });
+
   it("shows the context meter (percent + token count) from contextTokens", () => {
     render(<ChatTelemetry wireState="idle" contextTokens={92000} />);
     // 92000 / 200000 = 46%.

@@ -62,6 +62,25 @@ test("parseTranscript carries isMeta so replayed history can skip injected (skil
   expect(turns[1]?.isMeta).toBeUndefined(); // a normal typed line is not meta
 });
 
+test("parseTranscript carries isCompactSummary so a reopened compaction renders a marker, not a giant 'YOU' bubble", () => {
+  const lines = [
+    // The post-compaction seed: flagged isCompactSummary (and isVisibleInTranscriptOnly) but NOT isMeta,
+    // so without carrying the flag it falls through to a giant raw "YOU" bubble on reopen.
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: "This session is being continued from a previous conversation…" },
+      uuid: "cs1",
+      isCompactSummary: true,
+      isVisibleInTranscriptOnly: true,
+    }),
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "typed" }] }, uuid: "u1" }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns).toHaveLength(2);
+  expect(turns[0]?.isCompactSummary).toBe(true); // the compaction seed → a clean marker on reopen
+  expect(turns[1]?.isCompactSummary).toBeUndefined(); // a normal typed line is not a compaction summary
+});
+
 test("parseTranscript folds a harness-injected origin (task-notification) into isMeta — not a 'YOU' turn", () => {
   const lines = [
     // A background task-notification: injected by the harness as a plain user line. It carries NO

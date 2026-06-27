@@ -690,8 +690,9 @@ export class SessionHub {
             // seq spaces never collide.
             seq: i + 1,
             kind: "event",
-            // `raw` is SLIM ({uuid, isMeta}) — the full turn was a verbatim duplicate of `message` (the
-            // client only reads raw.uuid/raw.isMeta), so shipping it doubled the payload for nothing.
+            // `raw` is SLIM ({uuid, isMeta, isCompactSummary}) — the full turn was a verbatim duplicate of
+            // `message` (the client only reads those flags), so shipping it doubled the payload for nothing.
+            // `isCompactSummary` lets a reopened compaction render the clean marker (not a giant "YOU" bubble).
             // `parentToolUseId` carries subagent linkage so reopened subagent (sidechain) turns route into
             // their thread instead of leaking into the main chat.
             // LAZY IMAGES: move every inline base64 image into the content-addressed image store and ship a
@@ -702,7 +703,7 @@ export class SessionHub {
               message: this.imageStore ? await slimImageBlocks(t.message, this.imageStore) : t.message,
               uuid: t.uuid,
               parentToolUseId: t.parentToolUseId,
-              raw: { uuid: t.uuid, isMeta: t.isMeta },
+              raw: { uuid: t.uuid, isMeta: t.isMeta, isCompactSummary: t.isCompactSummary },
             },
           })),
         );

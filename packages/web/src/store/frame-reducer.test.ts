@@ -372,6 +372,95 @@ describe("reduceFrame", () => {
     expect(userTurns).toHaveLength(1);
   });
 
+  it("renders a post-compaction summary (isCompactSummary) as a clean compaction marker, NOT a giant YOU bubble", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "cs1",
+        message: {
+          content:
+            "This session is being continued from a previous conversation that ran out of context.\n\nSummary: 1. Primary Request and Intent: …",
+        },
+        // The compaction seed is flagged isCompactSummary (and isVisibleInTranscriptOnly) — NOT isMeta.
+        raw: { uuid: "cs1", isCompactSummary: true },
+      }),
+    );
+    expect(v.turns).toEqual([{ kind: "compaction" }]);
+    expect(v.turns.some((t) => t.kind === "user")).toBe(false);
+  });
+
+  it("collapses a full manual /compact (summary + caveat + command + stdout) to ONE compaction marker", () => {
+    let v = emptyView();
+    // 1) the compaction summary (isCompactSummary, NOT isMeta)
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "s1",
+        message: { content: "This session is being continued from a previous conversation…" },
+        raw: { uuid: "s1", isCompactSummary: true },
+      }),
+    );
+    // 2) the caveat (isMeta) → hidden
+    v = reduceFrame(
+      v,
+      ev(2, {
+        type: "user",
+        uuid: "s2",
+        message: { content: "<local-command-caveat>Caveat: … DO NOT respond …</local-command-caveat>" },
+        raw: { uuid: "s2", isMeta: true },
+      }),
+    );
+    // 3) the <command-name>/compact envelope (NOT isMeta) → redundant with the marker, so suppressed
+    v = reduceFrame(
+      v,
+      ev(3, {
+        type: "user",
+        uuid: "s3",
+        message: { content: "<command-name>/compact</command-name><command-args></command-args>" },
+      }),
+    );
+    // 4) the <local-command-stdout> "Compacted" (NOT isMeta) → its command marker was suppressed, so dropped
+    v = reduceFrame(
+      v,
+      ev(4, {
+        type: "user",
+        uuid: "s4",
+        message: { content: "<local-command-stdout>Compacted </local-command-stdout>" },
+      }),
+    );
+    expect(v.turns).toEqual([{ kind: "compaction" }]);
+  });
+
+  it("dedupes a re-delivered compaction summary by uuid — no second marker", () => {
+    let v = emptyView();
+    const frame = {
+      type: "user",
+      uuid: "cs9",
+      message: { content: "This session is being continued…" },
+      raw: { uuid: "cs9", isCompactSummary: true },
+    };
+    v = reduceFrame(v, ev(1, frame));
+    v = reduceFrame(v, ev(2, frame));
+    expect(v.turns.filter((t) => t.kind === "compaction")).toHaveLength(1);
+  });
+
+  it("clears the 'Compacting…' indicator once the compaction summary arrives", () => {
+    let v: SessionView = { ...emptyView(), compacting: true };
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "cs10",
+        message: { content: "This session is being continued…" },
+        raw: { uuid: "cs10", isCompactSummary: true },
+      }),
+    );
+    expect(v.compacting).toBe(false);
+  });
+
   it("a user event with BOTH text and a tool_result yields a user turn AND a tool-result turn", () => {
     let v = emptyView();
     v = reduceFrame(

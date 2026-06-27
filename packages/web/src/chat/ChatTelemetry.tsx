@@ -74,12 +74,14 @@ export interface ChatTelemetryProps {
 }
 
 export function ChatTelemetry({ wireState, contextTokens, contextWindow, model, compacting }: ChatTelemetryProps) {
-  const working = WORKING.has(wireState);
+  // Compaction counts as a working state for ALL the visuals: a /compact emits no streaming/tool frames,
+  // so the wire stays idle — but the indicator must still look alive (coral dot, ping, typing ellipsis).
+  const working = WORKING.has(wireState) || !!compacting;
   // The dot radar-pings whenever the session is "live": the agent working OR waiting on you. Only the
   // agent-working states get the typing ellipsis (it would misread on an awaiting-you state).
   const pinging = working || wireState === "awaiting";
-  const color = statusColor(wireState);
-  // "Compacting…" overrides the working label (the wire stays a normal working state underneath).
+  const color = compacting ? "var(--coral-2)" : statusColor(wireState);
+  // "Compacting…" overrides the wire's own label (the visuals above already read as working).
   const label = compacting ? "Compacting…" : STATUS_LABEL[wireState];
 
   // Prefer the CLI's authoritative window; the name heuristic is a fallback for the pre-result frames.

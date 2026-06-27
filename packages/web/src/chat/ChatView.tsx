@@ -374,8 +374,10 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         contextTokens={safeView.usage?.contextTokens}
         contextWindow={safeView.usage?.contextWindow}
         model={session.model}
-        // Show "Compacting…" while a /compact the user sent is in flight (only meaningful while working).
-        compacting={safeView.compacting && running}
+        // Show "Compacting…" the whole time a /compact is in flight. It is NOT gated on `running`: a
+        // /compact emits no streaming/tool frames, so the wire never enters a working state — gating on it
+        // hid the indicator entirely. The flag is set on send and cleared on the compaction summary/result.
+        compacting={safeView.compacting}
       />
       <Composer
         onSend={(frame) => {

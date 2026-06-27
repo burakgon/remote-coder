@@ -37,6 +37,7 @@ export type IconName =
   | "history"
   | "stop"
   | "agent"
+  | "archive"
   | "arrow-right";
 
 export interface IconProps {
@@ -84,6 +85,13 @@ const PATHS: Record<IconName, ReactElement> = {
     </>
   ),
   bolt: <path d="M13 2 4 14h7l-1 8 9-12h-7z" />,
+  archive: (
+    <>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+      <path d="M10 12h4" />
+    </>
+  ),
   "chevron-right": <path d="m9 5 7 7-7 7" />,
   "chevron-down": <path d="m5 9 7 7 7-7" />,
   settings: (

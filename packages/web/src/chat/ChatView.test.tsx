@@ -86,6 +86,17 @@ describe("ChatView", () => {
     expect(screen.getByText("done")).toBeInTheDocument();
   });
 
+  it("shows 'Compacting…' while a /compact is in flight even though the wire is not in a working state", async () => {
+    await renderSettled(apiStub());
+    // After history load the wire is "success" (the history ends in a result) — NOT a working state. A
+    // /compact emits no streaming/tool frames, so gating the indicator on `running` hid it the whole time.
+    // The indicator must show purely from the `compacting` flag.
+    act(() => {
+      useStore.getState().setCompacting(session.id, true);
+    });
+    expect(await screen.findByText("Compacting…")).toBeInTheDocument();
+  });
+
   it("on open, loads the FULL transcript (user + assistant in order) and sets lastSeq = sinceSeq", async () => {
     // Reopen bug regression: the user's OWN typed messages must survive a reopen (the buffer never held
     // them), correctly attributed, in order — and lastSeq must be the server's sinceSeq so the WS

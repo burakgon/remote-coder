@@ -28,6 +28,12 @@ export type TurnItem =
   // NEITHER flagged isMeta — so without this it renders as a raw-XML "YOU" bubble. Surfaced as a clean,
   // centered command marker instead: the command stays visible (e.g. "the chat was compacted"), not hidden.
   | { kind: "command"; command?: string; output?: string }
+  // A context COMPACTION (manual `/compact` OR auto-compaction). Claude writes the continuation seed as a
+  // user-role line flagged `isCompactSummary`/`isVisibleInTranscriptOnly` (NEVER isMeta) — the summary that
+  // seeds the next turn, not something the human typed. Surfaced as ONE clean "Context compacted" marker
+  // (the fact stays visible; the wall-of-text summary is not dumped as a "YOU" bubble). For a manual
+  // /compact the paired `/compact` command envelope is suppressed so this is the single marker shown.
+  | { kind: "compaction" }
   | { kind: "assistant-text"; text: string }
   | { kind: "tool-use"; id: string; name: string; input: unknown }
   | { kind: "tool-result"; toolUseId: string; content: unknown }
@@ -181,8 +187,10 @@ interface UserMsg {
    * Skill tool, a `<system-reminder>`, command output) rather than something the human typed — these
    * must NOT render as a "YOU" turn. `origin.kind` is set by the harness on messages IT injected (e.g. a
    * background `task-notification`); a human message has no `origin`. The LIVE wire ships the full raw
-   * (so `origin` is present here); on reopen the server folds the same signal into `isMeta`. */
-  raw?: { uuid?: string; isMeta?: boolean; origin?: { kind?: string } };
+   * (so `origin` is present here); on reopen the server folds the same signal into `isMeta`.
+   * `isCompactSummary` flags the post-compaction seed (the "This session is being continued…" summary) —
+   * NOT isMeta — so the client can surface a clean "Context compacted" marker, not a giant "YOU" bubble. */
+  raw?: { uuid?: string; isMeta?: boolean; isCompactSummary?: boolean; origin?: { kind?: string } };
 }
 /** The typed subagent lifecycle fields surfaced by parseLine on a `system` `task_*` event. */
 interface TaskInfo {
@@ -687,6 +695,9 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     // `origin.kind` catches the harness-injected ones live, where the full raw is on the wire. Its
     // tool_result blocks, if any, are still processed below.
     const isMeta = userEv.raw?.isMeta === true || isInjectedOrigin(userEv.raw?.origin);
+    // The post-compaction seed (manual /compact OR auto-compaction): a user-role line flagged
+    // isCompactSummary, NOT isMeta. The summary is the model's continuation context, not a human message.
+    const isCompactSummary = userEv.raw?.isCompactSummary === true;
 
     // A subagent's OWN inline message (its prompt turn, its tool_use's result) → route into its thread.
     // A tool_result whose tool_use_id is a known subagent id is THAT subagent's final result (captured
@@ -720,6 +731,18 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       return next;
     }
 
+    // A context COMPACTION seed (manual /compact OR auto-compaction). Render ONE clean "Context compacted"
+    // marker — the fact stays visible — instead of dumping the whole continuation summary as a giant "YOU"
+    // bubble. Works for auto-compaction too (which has no /compact command envelope at all).
+    if (isCompactSummary) {
+      const uuid = userEv.uuid ?? userEv.raw?.uuid;
+      if (uuid !== undefined && view.seenUserUuids.has(uuid)) return next; // dedupe re-delivery
+      next.turns = [...view.turns, { kind: "compaction" }];
+      if (uuid !== undefined) next.seenUserUuids = new Set(view.seenUserUuids).add(uuid);
+      next.compacting = false; // the summary IS the result → drop any in-flight "Compacting…" indicator
+      return next;
+    }
+
     // A slash command the human ran (e.g. `/compact`). Its `<command-name>` envelope and
     // `<local-command-stdout>` output are NOT flagged isMeta, so without this they render as raw-XML "YOU"
     // bubbles. Surface them as one clean command marker (the command stays visible — never silently
@@ -729,14 +752,22 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       if (cmd) {
         const uuid = userEv.uuid ?? userEv.raw?.uuid;
         if (uuid !== undefined && view.seenUserUuids.has(uuid)) return next; // dedupe re-delivery
+        const last = view.turns[view.turns.length - 1];
+        // A manual /compact's envelope is REDUNDANT with the "Context compacted" marker the preceding
+        // isCompactSummary already produced — suppress both its command row and its "Compacted" stdout so
+        // one clean marker stands. (If /compact did nothing — no summary — `last` isn't compaction, so it
+        // falls through to a normal command marker.)
         if (cmd.kind === "name") {
-          next.turns = [...view.turns, { kind: "command", command: cmd.command }];
+          if (!(cmd.command === "/compact" && last?.kind === "compaction")) {
+            next.turns = [...view.turns, { kind: "command", command: cmd.command }];
+          }
         } else if (cmd.kind === "stdout") {
           const turns = [...view.turns];
-          const last = turns[turns.length - 1];
           if (last?.kind === "command" && last.output === undefined) {
             turns[turns.length - 1] = { ...last, output: cmd.output };
             next.turns = turns;
+          } else if (last?.kind === "compaction") {
+            // orphan "Compacted" from the suppressed /compact envelope → the marker covers it; drop.
           } else if (cmd.output.length > 0) {
             next.turns = [...turns, { kind: "command", output: cmd.output }];
           }

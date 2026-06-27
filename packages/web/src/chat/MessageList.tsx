@@ -170,6 +170,32 @@ function CommandMarker({ item }: { item: Extract<TurnItem, { kind: "command" }> 
   );
 }
 
+/** A context compaction (manual `/compact` or auto-compaction), rendered as a quiet centered divider — the
+ *  same hairline treatment as the command/rewind markers. The FACT of compaction stays visible (never
+ *  hidden), but the wall-of-text continuation summary is not dumped into the chat as a "YOU" bubble. */
+function CompactionMarker() {
+  return (
+    <div
+      role="status"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--sp-2)",
+        color: "var(--text-faint)",
+        fontSize: "var(--fs-xs)",
+        fontFamily: "var(--font-mono)",
+      }}
+    >
+      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+      <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <Icon name="archive" size={13} />
+        Context compacted
+      </span>
+      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+    </div>
+  );
+}
+
 /** Assistant prose — the visual focus: clean, generous, real markdown. File/image paths the model merely
  *  MENTIONS are NOT auto-extracted into chips or inline previews (too noisy / produced bogus chips); a
  *  file or image is shown only when the model DELIBERATELY sends it (send_file/send_image → AttachmentCard). */
@@ -614,6 +640,8 @@ function Turn({
       return <UserTurn item={item} onRewind={onRewind} imageUrl={imageUrl} />;
     case "command":
       return <CommandMarker item={item} />;
+    case "compaction":
+      return <CompactionMarker />;
     case "result":
       return <ResultMarker item={item} />;
     case "rewound":

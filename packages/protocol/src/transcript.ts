@@ -9,6 +9,11 @@ export interface TranscriptTurn {
    * messages IT injected (e.g. a background `task-notification`) with an `origin.kind` (a human message
    * has none) — both are folded into this single flag here. */
   isMeta?: boolean;
+  /** True for the post-compaction SEED line — the "This session is being continued…" summary claude writes
+   * after a `/compact` (or an auto-compaction). It's flagged `isCompactSummary` (and `isVisibleInTranscriptOnly`)
+   * but NOT `isMeta`, so without carrying it the client renders the whole summary as a giant "YOU" bubble.
+   * The client surfaces a clean "Context compacted" marker instead (works for auto-compact too). */
+  isCompactSummary?: boolean;
   /** The Agent/Task tool_use id this line belongs to — set for a SUBAGENT's own (sidechain) lines so the
    * reducer routes them into that subagent's thread on reopen instead of LEAKING them into the main chat.
    * Carried through from `parent_tool_use_id` (else `agentId`, else a `"sidechain"` bucket). */
@@ -82,6 +87,7 @@ export function parseTranscript(text: string): TranscriptTurn[] {
       uuid: typeof obj.uuid === "string" ? obj.uuid : undefined,
       parentUuid: typeof obj.parentUuid === "string" ? obj.parentUuid : obj.parentUuid === null ? null : undefined,
       isMeta: obj.isMeta === true || isInjectedOrigin(obj.origin) ? true : undefined,
+      isCompactSummary: obj.isCompactSummary === true ? true : undefined,
       parentToolUseId,
     });
   }
