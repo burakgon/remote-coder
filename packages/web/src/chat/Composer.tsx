@@ -2,21 +2,26 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
-import { validateImage, fileToBase64 } from "./image-util";
+import { validateImage } from "./image-util";
 import { matchSlash } from "./slash";
 import type { SlashCommand } from "./slash";
 import type { OutboundFrame } from "../types/server";
 
 export interface PendingImage {
   id: string;
-  mediaType: string;
-  dataBase64: string;
   name: string;
+  /** Content-store ref returned by the upload (sent to the server, never base64). */
+  ref: string;
+  /** A local object URL (real) or data URI (harness) for the inline thumbnail, shown before send. */
+  previewUrl: string;
 }
 
 export interface ComposerProps {
   onSend: (frame: OutboundFrame) => void;
   onUploadFile: (file: File) => Promise<void>;
+  /** Upload an attached image (binary) to the content-addressed store, returning its ref. Required for
+   *  image attachments; when absent the image buttons surface an "unavailable" error instead of base64. */
+  onUploadImage?: (file: File) => Promise<{ ref: string }>;
   /** A client-action slash command (e.g. `/resume`) was chosen. The composer clears itself; the host
    * runs the UI action (opening a popup) rather than sending the text to claude. */
   onSlashCommand?: (name: string) => void;
@@ -122,6 +127,7 @@ const visuallyHidden: React.CSSProperties = {
 export function Composer({
   onSend,
   onUploadFile,
+  onUploadImage,
   onSlashCommand,
   running,
   onStop,
@@ -204,14 +210,12 @@ export function Composer({
     if ((!trimmed && images.length === 0) || disabled || stopping) return;
     const frame: OutboundFrame =
       images.length > 0
-        ? {
-            type: "user",
-            text: trimmed || undefined,
-            images: images.map((i) => ({ mediaType: i.mediaType, dataBase64: i.dataBase64 })),
-          }
+        ? { type: "user", text: trimmed || undefined, imageRefs: images.map((i) => i.ref) }
         : { type: "user", text: trimmed };
     onSend(frame);
     setContent("");
+    // The sent bubble renders from the store ref, so the pre-send object-URL previews are done — revoke them.
+    images.forEach((i) => URL.revokeObjectURL(i.previewUrl));
     setImages([]);
     setError(undefined);
     // Keep the keyboard up on mobile so the next message flows without re-tapping the field.
@@ -224,11 +228,11 @@ export function Composer({
     onStop?.();
   }
 
-  // Validate + read a set of image files (from the picker, paste, or drop), append the valid ones, and
-  // surface the first error without dropping the good ones.
+  // Validate + UPLOAD a set of image files (from the picker, paste, or drop) to the content-addressed
+  // store, attaching the valid ones as refs (the bytes go up as binary, never base64). The object-URL
+  // preview shows the thumbnail immediately; the first error is surfaced without dropping the good ones.
   async function addImageFiles(files: File[]) {
     if (files.length === 0) return;
-    const added: PendingImage[] = [];
     let firstErr: string | undefined;
     for (const file of files) {
       const err = validateImage(file);
@@ -236,15 +240,21 @@ export function Composer({
         if (firstErr === undefined) firstErr = err;
         continue;
       }
+      if (!onUploadImage) {
+        if (firstErr === undefined) firstErr = "image upload is unavailable";
+        continue;
+      }
+      const previewUrl = URL.createObjectURL(file);
       try {
-        const dataBase64 = await fileToBase64(file);
+        const { ref } = await onUploadImage(file);
         const id = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        added.push({ id, mediaType: file.type, dataBase64, name: file.name });
-      } catch (readErr) {
-        if (firstErr === undefined) firstErr = readErr instanceof Error ? readErr.message : "failed to read image";
+        setImages((prev) => [...prev, { id, name: file.name, ref, previewUrl }]);
+      } catch (uploadErr) {
+        URL.revokeObjectURL(previewUrl);
+        if (firstErr === undefined)
+          firstErr = uploadErr instanceof Error ? uploadErr.message : "failed to upload image";
       }
     }
-    if (added.length > 0) setImages((prev) => [...prev, ...added]);
     setError(firstErr);
   }
 
@@ -445,7 +455,7 @@ export function Composer({
               }}
             >
               <img
-                src={`data:${img.mediaType};base64,${img.dataBase64}`}
+                src={img.previewUrl}
                 alt=""
                 style={{
                   width: 40,
@@ -459,7 +469,13 @@ export function Composer({
               <button
                 type="button"
                 aria-label={`Remove ${img.name}`}
-                onClick={() => setImages((p) => p.filter((x) => x.id !== img.id))}
+                onClick={() =>
+                  setImages((p) => {
+                    const target = p.find((x) => x.id === img.id);
+                    if (target) URL.revokeObjectURL(target.previewUrl); // free the object URL we created
+                    return p.filter((x) => x.id !== img.id);
+                  })
+                }
                 style={{
                   // 44px tap target (transparent) wrapping a compact 24px visible circle, so the remove
                   // affordance is easy to hit on a phone without a chunky chip.

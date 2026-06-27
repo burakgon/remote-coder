@@ -29,6 +29,7 @@ import type { ServerFrame } from "./replay-buffer.js";
 import { createUpdater } from "./updater.js";
 import type { Updater } from "./updater.js";
 import type { UsageService } from "./usage-service.js";
+import { ImageStore } from "./image-store.js";
 
 /** Default reopen window: how many of the most-recent transcript turns GET /sessions/:id returns when
  * `?full=1` is absent. Keeps opening a large session fast; "load earlier" re-requests with `?full=1`. */
@@ -93,7 +94,16 @@ export function createServer(
   sessionManager: SessionManager,
   deps: CreateServerDeps = {},
 ): CreateServerResult {
-  const hub = new SessionHub(sessionManager, { store: deps.store, history: deps.history, onFrame: deps.onFrame });
+  // Content-addressed image store under the data dir. Images uploaded from the PWA live here as files,
+  // referenced by a ref everywhere we control (WS send, chat render, reopen) so base64 never travels on
+  // our wire or sits in our payloads — only Claude's own transcript keeps base64 (vision needs the bytes).
+  const imageStore = new ImageStore({ dataDir: config.dataDir });
+  const hub = new SessionHub(sessionManager, {
+    store: deps.store,
+    history: deps.history,
+    imageStore,
+    onFrame: deps.onFrame,
+  });
   hub.loadFromStore();
   const projectsDir = deps.projectsDir ?? defaultProjectsDir();
   // Per-idempotency-key in-flight lock: two simultaneous same-key POSTs must yield ONE session.
@@ -197,7 +207,7 @@ export function createServer(
           } catch {
             return; // ignore malformed client frames
           }
-          handleClientFrame(hub, id, msg);
+          handleClientFrame(hub, id, msg, imageStore);
         });
 
         socket.on("close", () => subscription.unsubscribe());
@@ -320,6 +330,59 @@ export function createServer(
     const limit = request.query.full === "1" ? undefined : HISTORY_WINDOW;
     const { history, sinceSeq, truncated, total } = await hub.getHistory(request.params.id, limit);
     return { session: meta, history, sinceSeq, truncated, total };
+  });
+
+  // POST /images — upload an image (multipart, BINARY, no base64) into the content-addressed store and
+  // return its `{ ref }`. The PWA composer calls this on attach so the phone never uplinks base64; the
+  // WS `user` send then carries the ref. Token-gated by the global preHandler (/images is in the denylist).
+  app.post("/images", async (request, reply) => {
+    let data;
+    try {
+      data = await request.file();
+    } catch (err) {
+      reply.code(400).send({ error: (err as Error).message });
+      return;
+    }
+    if (!data) {
+      reply.code(400).send({ error: "no file field in the upload" });
+      return;
+    }
+    if (!/^image\//.test(data.mimetype)) {
+      reply.code(400).send({ error: "only image/* uploads are allowed" });
+      return;
+    }
+    let buffer: Buffer;
+    try {
+      buffer = await data.toBuffer();
+    } catch (err) {
+      reply.code(413).send({ error: (err as Error).message }); // @fastify/multipart throws past the limit
+      return;
+    }
+    if (data.file.truncated) {
+      reply.code(413).send({ error: "image exceeds the upload size limit" });
+      return;
+    }
+    const ref = await imageStore.save(buffer, data.mimetype);
+    reply.code(201).send({ ref });
+  });
+
+  // GET /images/:ref — serve a stored image by its content ref (file-served, immutable). This is what
+  // renders in the chat live AND on reopen (the slim history ships `/images/<ref>` instead of base64), so
+  // the MB of base64 never travels on our wire. Token-gated by the global preHandler; the <img> carries
+  // the token via `?token=`. A bad/missing ref 404s. Hardened against SVG script execution on direct
+  // navigation with `nosniff` + a `default-src 'none'` CSP (images in <img> never run scripts anyway).
+  app.get<{ Params: { ref: string } }>("/images/:ref", async (request, reply) => {
+    const image = await imageStore.read(request.params.ref);
+    if (!image) {
+      reply.code(404).send({ error: "image not found" });
+      return;
+    }
+    reply
+      .header("cache-control", "private, max-age=31536000, immutable")
+      .header("x-content-type-options", "nosniff")
+      .header("content-security-policy", "default-src 'none'; sandbox")
+      .type(image.mediaType)
+      .send(image.data);
   });
 
   // Close a session: stop its live process AND remove it from the list + store (transcript untouched,
@@ -632,12 +695,15 @@ function contentDisposition(filename: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unknown>): void {
+function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unknown>, imageStore: ImageStore): void {
   // The hub methods are async (a dormant session may resume first). They are fire-and-forget here:
   // a rejected resume must never throw into the WS message handler, so each is `.catch`-guarded.
   if (msg.type === "user") {
-    const blocks = toContentBlocks(msg);
-    if (blocks.length > 0) void hub.sendMessage(id, blocks).catch(() => {});
+    // Resolving image refs reads files from the store (async), so build the blocks then send — still
+    // fire-and-forget + `.catch`-guarded so nothing throws into the WS handler.
+    void buildUserBlocks(msg, imageStore)
+      .then((blocks) => (blocks.length > 0 ? hub.sendMessage(id, blocks) : undefined))
+      .catch(() => {});
     return;
   }
   if (msg.type === "permission") {
@@ -778,14 +844,27 @@ function isValidContentBlock(b: unknown): b is ContentBlock {
   return false;
 }
 
-/** Build a content-block array from a flexible inbound `user` frame. Never forwards arbitrary JSON. */
-function toContentBlocks(msg: Record<string, unknown>): ContentBlock[] {
+/**
+ * Build a content-block array from a flexible inbound `user` frame. Never forwards arbitrary JSON.
+ * Async because the preferred image path is a `imageRefs` array: the composer uploaded each image to the
+ * content-addressed store (binary, no base64 uplink) and sends only its ref; we read the bytes HERE and
+ * build the base64 image block solely for Claude's stdin (the model needs the bytes for vision). A ref
+ * that doesn't resolve is skipped. Back-compat: an older client may still inline `images` as base64.
+ */
+async function buildUserBlocks(msg: Record<string, unknown>, imageStore: ImageStore): Promise<ContentBlock[]> {
   // Explicit `blocks` array: keep only well-formed text/image blocks (don't cast raw client JSON
   // straight into serializeUserMessage -> claude stdin).
   if (Array.isArray(msg.blocks)) return msg.blocks.filter(isValidContentBlock);
   const blocks: ContentBlock[] = [];
   const text = typeof msg.content === "string" ? msg.content : typeof msg.text === "string" ? msg.text : undefined;
   if (text) blocks.push({ type: "text", text });
+  if (Array.isArray(msg.imageRefs)) {
+    for (const ref of msg.imageRefs) {
+      if (typeof ref !== "string") continue;
+      const image = await imageStore.read(ref);
+      if (image) blocks.push(buildImageBlock(image.mediaType, image.data.toString("base64")));
+    }
+  }
   if (Array.isArray(msg.images)) {
     for (const img of msg.images as { mediaType?: string; dataBase64?: string }[]) {
       if (img && typeof img.mediaType === "string" && typeof img.dataBase64 === "string") {

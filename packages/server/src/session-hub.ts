@@ -21,6 +21,8 @@ import type {
 } from "@remote-coder/protocol";
 import type { SessionStore } from "./session-store.js";
 import type { HistoryService } from "./history-service.js";
+import type { ImageStore } from "./image-store.js";
+import { slimImageBlocks } from "./transcript-images.js";
 
 export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
 
@@ -147,6 +149,9 @@ export interface SessionHubOptions {
   now?: () => number;
   store?: SessionStore;
   history?: HistoryService;
+  /** Content-addressed image store. When set, getHistory moves each transcript's inline base64 image
+   *  into it and ships a `/images/<ref>` url ref instead (small payload, file-served, lazy). */
+  imageStore?: ImageStore;
   /**
    * Observe every emitted frame (push-trigger seam). Invoked AFTER the WS listener fan-out so a push
    * dispatcher sees result/permission/question frames without coupling to the WS layer. Must never
@@ -161,6 +166,7 @@ export class SessionHub {
   private readonly now: () => number;
   private readonly store?: SessionStore;
   private readonly history?: HistoryService;
+  private readonly imageStore?: ImageStore;
   private readonly onFrame?: (sessionId: string, frame: ServerFrame) => void;
   private readonly records = new Map<string, SessionRecord>();
   /**
@@ -179,6 +185,7 @@ export class SessionHub {
     this.now = opts.now ?? Date.now;
     this.store = opts.store;
     this.history = opts.history;
+    this.imageStore = opts.imageStore;
     this.onFrame = opts.onFrame;
   }
 
@@ -587,24 +594,29 @@ export class SessionHub {
       const turns = await this.history.read(record.meta.cwd, id);
       if (turns.length > 0) {
         const windowed = limit !== undefined && turns.length > limit ? turns.slice(-limit) : turns;
-        const history = windowed.map<ServerFrame>((t, i) => ({
-          // Display seqs are 1-based and contiguous, DISTINCT from the buffer/WS seq space: the client
-          // renders these as history but resumes the WS from `sinceSeq` (the buffer's max), so the two
-          // seq spaces never collide.
-          seq: i + 1,
-          kind: "event",
-          // `raw` is SLIM ({uuid, isMeta}) — the full turn was a verbatim duplicate of `message` (the
-          // client only reads raw.uuid/raw.isMeta), so shipping it doubled the payload for nothing.
-          // `parentToolUseId` carries subagent linkage so reopened subagent (sidechain) turns route into
-          // their thread instead of leaking into the main chat.
-          payload: {
-            type: t.type,
-            message: t.message,
-            uuid: t.uuid,
-            parentToolUseId: t.parentToolUseId,
-            raw: { uuid: t.uuid, isMeta: t.isMeta },
-          },
-        }));
+        const history = await Promise.all(
+          windowed.map<Promise<ServerFrame>>(async (t, i) => ({
+            // Display seqs are 1-based and contiguous, DISTINCT from the buffer/WS seq space: the client
+            // renders these as history but resumes the WS from `sinceSeq` (the buffer's max), so the two
+            // seq spaces never collide.
+            seq: i + 1,
+            kind: "event",
+            // `raw` is SLIM ({uuid, isMeta}) — the full turn was a verbatim duplicate of `message` (the
+            // client only reads raw.uuid/raw.isMeta), so shipping it doubled the payload for nothing.
+            // `parentToolUseId` carries subagent linkage so reopened subagent (sidechain) turns route into
+            // their thread instead of leaking into the main chat.
+            // LAZY IMAGES: move every inline base64 image into the content-addressed image store and ship a
+            // tiny `/images/<ref>` url ref instead (file-served, lazy, deduped). A user-uploaded screenshot
+            // is ~MB of base64 inline; shipping it made a long chat take 15–20s to load on a phone.
+            payload: {
+              type: t.type,
+              message: this.imageStore ? await slimImageBlocks(t.message, this.imageStore) : t.message,
+              uuid: t.uuid,
+              parentToolUseId: t.parentToolUseId,
+              raw: { uuid: t.uuid, isMeta: t.isMeta },
+            },
+          })),
+        );
         return { history, sinceSeq, truncated: windowed.length < turns.length, total: turns.length };
       }
     }

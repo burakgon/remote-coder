@@ -77,10 +77,13 @@ function TurnTag({ children }: { children: string }) {
 function UserTurn({
   item,
   onRewind,
+  imageUrl,
 }: {
   item: Extract<TurnItem, { kind: "user" }>;
   /** When provided AND this turn carries a checkpointId, render the tappable rewind affordance. */
   onRewind?: (checkpointId: string) => void;
+  /** Resolve a file-backed image `url` ref (e.g. `/images/<ref>`) to its absolute, token-bearing URL. */
+  imageUrl?: (url: string) => string;
 }) {
   // A turn is rewindable only once its live checkpointId (user-message uuid) has been reconciled.
   const checkpointId = item.checkpointId;
@@ -117,7 +120,7 @@ function UserTurn({
             lineHeight: 1.45,
           }}
         >
-          {renderBlocks(item.blocks)}
+          {renderBlocks(item.blocks, imageUrl)}
         </div>
       </div>
     </div>
@@ -607,16 +610,18 @@ function Turn({
   item,
   downloadUrl,
   onRewind,
+  imageUrl,
 }: {
   item: TurnItem;
   downloadUrl?: (path: string) => string;
   onRewind?: (checkpointId: string) => void;
+  imageUrl?: (url: string) => string;
 }) {
   switch (item.kind) {
     case "assistant-text":
       return <AssistantTurn item={item} downloadUrl={downloadUrl} />;
     case "user":
-      return <UserTurn item={item} onRewind={onRewind} />;
+      return <UserTurn item={item} onRewind={onRewind} imageUrl={imageUrl} />;
     case "result":
       return <ResultMarker item={item} />;
     case "rewound":
@@ -645,9 +650,12 @@ export interface MessageListProps {
   subagents?: Record<string, SubagentThread>;
   /** Open a subagent's drill-in view. Absent → the card renders inert (e.g. read-only contexts). */
   onOpenSubagent?: (id: string) => void;
+  /** Resolve a file-backed image `url` ref (e.g. `/images/<ref>`, shipped by the optimistic bubble and a
+   *  reopen) to its absolute, token-bearing URL (api.mediaUrl). Absent → the bare relative ref is used. */
+  imageUrl?: (url: string) => string;
 }
 
-export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSubagent }: MessageListProps) {
+export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSubagent, imageUrl }: MessageListProps) {
   // Split off any TRAILING queued user bubbles (sent while a turn was still running — the CLI handles
   // them after the current turn). They render BELOW the live stream so the transcript stays in order;
   // once the CLI starts processing one its echo reconciles + clears `queued`, dropping it back inline.
@@ -681,7 +689,7 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
             );
           })()
         ) : (
-          <Turn key={node.index} item={node.item} downloadUrl={downloadUrl} onRewind={onRewind} />
+          <Turn key={node.index} item={node.item} downloadUrl={downloadUrl} onRewind={onRewind} imageUrl={imageUrl} />
         ),
       )}
       {view.thinkingText && <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>{view.thinkingText}</div>}
@@ -695,7 +703,7 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
           current reply rather than jumping above it. They reconcile inline once the CLI processes them. */}
       {queuedTurns.map((item, i) => (
         <div key={`queued-${i}`} style={{ opacity: 0.6 }}>
-          <Turn item={item} downloadUrl={downloadUrl} onRewind={onRewind} />
+          <Turn item={item} downloadUrl={downloadUrl} onRewind={onRewind} imageUrl={imageUrl} />
         </div>
       ))}
     </div>
@@ -841,7 +849,7 @@ function ToolInput({ name, input }: { name: string; input: unknown }) {
   );
 }
 
-function renderBlocks(blocks: ContentBlock[]) {
+function renderBlocks(blocks: ContentBlock[], imageUrl?: (url: string) => string) {
   return blocks.map((b, i) =>
     b.type === "text" ? (
       // pre-wrap preserves the user's own line breaks (a multi-line message kept its newlines); anywhere
@@ -850,10 +858,13 @@ function renderBlocks(blocks: ContentBlock[]) {
         {b.text}
       </div>
     ) : (
+      // A lazy `url` source (reopen) is loaded on demand; `loading="lazy"` defers off-screen fetches so a
+      // long history's images don't all download at once. `imageBlockSrc` resolves base64 inline.
       <img
         key={i}
-        src={imageBlockSrc(b)}
+        src={imageBlockSrc(b, imageUrl)}
         alt="attachment"
+        loading="lazy"
         style={{ maxWidth: "100%", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
       />
     ),

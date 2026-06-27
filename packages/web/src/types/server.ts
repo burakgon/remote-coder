@@ -113,9 +113,18 @@ export interface DirListing {
   entries: DirEntry[];
 }
 
-export type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+/**
+ * An image block's source. `base64` is the inline form (a freshly-sent image, or a transcript image the
+ * store couldn't back). `url` is the file-backed form used everywhere we control: the bytes live in the
+ * content-addressed image store at the relative `url` (GET /images/<ref>) — the composer's optimistic
+ * bubble and a reopen both ship this, fetched on demand so no base64 travels on our wire. `media_type`
+ * is carried for the url form too (hint only). See content-images.ts.
+ */
+export type ImageSource =
+  | { type: "base64"; media_type: string; data: string }
+  | { type: "url"; media_type?: string; url: string };
+
+export type ContentBlock = { type: "text"; text: string } | { type: "image"; source: ImageSource };
 
 export interface PermissionPayload {
   requestId: string;
@@ -284,6 +293,10 @@ export type OutboundFrame =
       content?: string;
       blocks?: ContentBlock[];
       text?: string;
+      /** Refs of images uploaded to the content-addressed store (POST /images). The server reads the
+       *  bytes and builds the base64 image block for Claude — no base64 travels on the WS. */
+      imageRefs?: string[];
+      /** Legacy inline base64 images (kept for back-compat; the composer now sends `imageRefs`). */
       images?: { mediaType: string; dataBase64: string }[];
     }
   | { type: "permission"; requestId: string; decision: "allow" | "deny"; reason?: string }

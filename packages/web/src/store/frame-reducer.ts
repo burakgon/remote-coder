@@ -145,7 +145,14 @@ interface UserMsg {
   message?: {
     content?:
       | string
-      | Array<{ type?: string; tool_use_id?: string; content?: unknown; text?: string; is_error?: boolean }>;
+      | Array<{
+          type?: string;
+          tool_use_id?: string;
+          content?: unknown;
+          text?: string;
+          is_error?: boolean;
+          source?: unknown;
+        }>;
   };
   parentToolUseId?: string;
   /** Present on transcript-replayed lines (parseLine passes the raw line through); used to dedupe. */
@@ -193,6 +200,30 @@ const SEND_IMAGE_TOOL = "mcp__remote-coder__send_image";
 const SEND_FILE_TOOL = "mcp__remote-coder__send_file";
 function isSendTool(name: unknown): boolean {
   return name === SEND_IMAGE_TOOL || name === SEND_FILE_TOOL;
+}
+
+/**
+ * Extract a renderable image ContentBlock from a raw user content block, or undefined if it isn't a
+ * well-formed image. Handles BOTH the lazy `url` ref a reopen ships (the slim history payload) AND an
+ * inline `base64` source (a live-sent image, or a transcript image with no uuid to ref). Keeping these
+ * is what lets a reopened chat show the user's uploaded images instead of silently dropping them.
+ */
+function toImageBlock(block: {
+  type?: string;
+  source?: unknown;
+}): Extract<ContentBlock, { type: "image" }> | undefined {
+  if (block.type !== "image" || !block.source || typeof block.source !== "object") return undefined;
+  const s = block.source as { type?: unknown; media_type?: unknown; data?: unknown; url?: unknown };
+  if (s.type === "url" && typeof s.url === "string") {
+    return {
+      type: "image",
+      source: { type: "url", url: s.url, ...(typeof s.media_type === "string" ? { media_type: s.media_type } : {}) },
+    };
+  }
+  if (s.type === "base64" && typeof s.media_type === "string" && typeof s.data === "string") {
+    return { type: "image", source: { type: "base64", media_type: s.media_type, data: s.data } };
+  }
+  return undefined;
 }
 
 /** Basename of a path (for the attachment card's name), tolerant of trailing slashes. */
@@ -628,20 +659,26 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     //      instead it stamps the checkpointId onto that existing turn;
     //   3. otherwise (resume replay, or no matching optimistic turn) append a fresh user turn carrying
     //      the checkpointId.
-    const textBlocks: ContentBlock[] = [];
+    // Collect the user turn's renderable blocks: text AND images. On reopen an uploaded screenshot is an
+    // image block — a lazy `url` ref from the slim history payload (or inline base64 when no uuid existed
+    // to ref it); keeping it here is what makes a reopened chat show the user's images, not drop them.
+    const blocks: ContentBlock[] = [];
     if (typeof content === "string") {
-      if (content.length > 0) textBlocks.push({ type: "text", text: content });
+      if (content.length > 0) blocks.push({ type: "text", text: content });
     } else if (Array.isArray(content)) {
       for (const block of content) {
         if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
-          textBlocks.push({ type: "text", text: block.text });
+          blocks.push({ type: "text", text: block.text });
+        } else {
+          const image = toImageBlock(block);
+          if (image) blocks.push(image);
         }
       }
     }
     const uuid = userEv.uuid ?? userEv.raw?.uuid;
     const alreadySeen = uuid !== undefined && view.seenUserUuids.has(uuid);
-    if (!isMeta && textBlocks.length > 0 && !alreadySeen) {
-      const echoedText = textOf(textBlocks);
+    if (!isMeta && blocks.length > 0 && !alreadySeen) {
+      const echoedText = textOf(blocks);
       // Reconcile against the most recent UNRECONCILED optimistic user bubble (no checkpointId) whose
       // text matches this echo — search from the end so the newest optimistic send is the one stamped.
       let reconciledIdx = -1;
@@ -660,7 +697,7 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
         // renders inline at its real position rather than below the live stream.
         turns[reconciledIdx] = { kind: "user", blocks: existing.blocks, checkpointId: uuid };
       } else {
-        turns.push({ kind: "user", blocks: textBlocks, ...(uuid !== undefined ? { checkpointId: uuid } : {}) });
+        turns.push({ kind: "user", blocks, ...(uuid !== undefined ? { checkpointId: uuid } : {}) });
       }
       if (uuid !== undefined) next.seenUserUuids = new Set(view.seenUserUuids).add(uuid);
     }

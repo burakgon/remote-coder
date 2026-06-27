@@ -16,8 +16,7 @@ import type { PendingImage } from "../chat/Composer";
 
 // A small, neutral 48×48 SVG thumbnail (a clean dark tile with a faint coral data accent) so the
 // composer thumbnail renders a real image, not a broken-image glyph. Inert, self-contained — matches
-// the clean look (not the old amber gradient). Rendered as `data:${mediaType};base64,${dataBase64}`,
-// so the mediaType for this seed is image/svg+xml (see COMPOSER_IMAGES).
+// the clean look (not the old amber gradient). Used as the harness preview data URI (see COMPOSER_IMAGES).
 export const THUMB_B64 = btoa(
   `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
     <rect width="48" height="48" rx="9" fill="#1c1c20"/>
@@ -636,7 +635,7 @@ export const RESUMABLE: ResumableSession[] = [
 // The composer pre-fill: a draft message + one attached image thumbnail (REAL <img>).
 export const COMPOSER_TEXT = "Then open a PR and send me the diff stat.";
 export const COMPOSER_IMAGES: PendingImage[] = [
-  { id: "img-1", mediaType: "image/svg+xml", dataBase64: THUMB_B64, name: "diagram.png" },
+  { id: "img-1", name: "diagram.png", ref: "seed", previewUrl: `data:image/svg+xml;base64,${THUMB_B64}` },
 ];
 
 // Usage limit bars atop the rail: session low (coral) + weekly mid (amber) — two thresholds, real

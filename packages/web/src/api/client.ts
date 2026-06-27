@@ -56,7 +56,13 @@ export interface ApiClient {
   stopSession(id: string): Promise<void>;
   listDir(path?: string): Promise<DirListing>;
   uploadFile(dir: string, file: File): Promise<{ path: string }>;
+  /** Upload an image (binary) to the content-addressed store (POST /images) → its `{ ref }`. The composer
+   *  uploads on attach so the phone never uplinks base64; the WS `user` send then carries the ref. */
+  uploadImage(file: File): Promise<{ ref: string }>;
   downloadUrl(path: string): string;
+  /** Resolve a relative server media path (e.g. a file-backed image ref `/images/<ref>`) to an absolute,
+   *  token-bearing URL usable as an <img src>. The token is appended (`?` or `&` as needed). */
+  mediaUrl(relativePath: string): string;
   getVapidPublicKey(): Promise<string>;
   subscribePush(sub: PushSubscriptionJSON): Promise<void>;
   unsubscribePush(endpoint: string): Promise<void>;
@@ -191,10 +197,30 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       }
       return (await res.json()) as { path: string };
     },
+    async uploadImage(file) {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await fetch(`${baseUrl}/images`, {
+        method: "POST",
+        headers: headers(), // do NOT set content-type; the browser sets the multipart boundary
+        body: form,
+      });
+      if (!res.ok) throw await errorFor(res);
+      return (await res.json()) as { ref: string };
+    },
     downloadUrl(path) {
       const token = getToken();
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
       return `${baseUrl}/fs/download?path=${encodeURIComponent(path)}${tokenParam}`;
+    },
+    mediaUrl(relativePath) {
+      const token = getToken();
+      // The relative ref already includes a `?` query, so append the token with `&` (or `?` defensively
+      // if a future ref has none). The browser's <img> GET can't set an Authorization header, so the
+      // token MUST travel as a query param (the server's auth gate accepts `?token=`).
+      const sep = relativePath.includes("?") ? "&" : "?";
+      const tokenParam = token ? `${sep}token=${encodeURIComponent(token)}` : "";
+      return `${baseUrl}${relativePath}${tokenParam}`;
     },
     async getVapidPublicKey() {
       const body = await req<{ publicKey: string }>("/push/vapid", { headers: headers() });

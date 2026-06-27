@@ -46,6 +46,8 @@ export type { RegisterStaticOptions } from "./static-routes.js";
 export { startServer } from "./start.js";
 export { HistoryService } from "./history-service.js";
 export type { HistoryServiceOptions } from "./history-service.js";
+export { ImageStore } from "./image-store.js";
+export type { ImageStoreOptions } from "./image-store.js";
 export {
   parseTranscript,
   transcriptToFrames,

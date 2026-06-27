@@ -313,6 +313,7 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         <MessageList
           view={safeView}
           downloadUrl={(path) => api.downloadUrl(path)}
+          imageUrl={(url) => api.mediaUrl(url)}
           onRewind={(checkpointId) => setRewindTarget(checkpointId)}
           onOpenSubagent={(id) => setSubagentStack([id])}
         />
@@ -375,11 +376,10 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
           if (frame.type === "user") {
             const blocks: ContentBlock[] = [];
             if (frame.text) blocks.push({ type: "text", text: frame.text });
-            for (const img of frame.images ?? []) {
-              blocks.push({
-                type: "image",
-                source: { type: "base64", media_type: img.mediaType, data: img.dataBase64 },
-              });
+            // Images were uploaded to the store; the optimistic bubble renders them from `/images/<ref>`
+            // (file-served, no base64) — same source the reopen history ships, so it stays consistent.
+            for (const ref of frame.imageRefs ?? []) {
+              blocks.push({ type: "image", source: { type: "url", url: `/images/${ref}` } });
             }
             // While a turn is RUNNING the CLI queues this for after the current turn — mark the bubble
             // `queued` so it renders BELOW the live stream (correct order) until the echo reconciles it.
@@ -390,6 +390,7 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         onUploadFile={async (file) => {
           await api.uploadFile(session.cwd, file);
         }}
+        onUploadImage={(file) => api.uploadImage(file)}
         onSlashCommand={onSlashCommand}
         running={running}
         onStop={() => send({ type: "interrupt" })}

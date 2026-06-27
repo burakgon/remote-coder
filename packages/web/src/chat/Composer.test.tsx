@@ -1,8 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Composer } from "./Composer";
-import * as imageUtil from "./image-util";
+
+// jsdom has no URL.createObjectURL/revokeObjectURL — the composer uses them for the inline image
+// thumbnail preview, so stub them for the test environment.
+beforeEach(() => {
+  (URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = vi.fn(() => "blob:mock");
+  (URL as unknown as { revokeObjectURL: (u: string) => void }).revokeObjectURL = vi.fn();
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -64,37 +70,35 @@ describe("Composer", () => {
     expect(screen.queryByLabelText(/^send$/i)).not.toBeInTheDocument();
   });
 
-  it("attaches a picked image as a base64 image block in the outbound user frame", async () => {
+  it("uploads a picked image to the store and sends its ref (no base64) in the outbound user frame", async () => {
     const onSend = vi.fn();
-    const { container } = render(<Composer onSend={onSend} onUploadFile={vi.fn()} />);
+    const onUploadImage = vi.fn().mockResolvedValue({ ref: "deadbeef.png" });
+    const { container } = render(<Composer onSend={onSend} onUploadFile={vi.fn()} onUploadImage={onUploadImage} />);
     const file = new File(["png-bytes"], "shot.png", { type: "image/png" });
     const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
     await userEvent.upload(imageInput, file);
-    // The thumbnail/chip with a remove control appears once the image is read.
+    // The thumbnail/chip with a remove control appears once the image is uploaded.
     await screen.findByLabelText(/remove shot\.png/i);
+    expect(onUploadImage).toHaveBeenCalledWith(file);
 
     const box = screen.getByLabelText(/message claude/i);
     await userEvent.type(box, "look at this");
     await userEvent.click(screen.getByLabelText(/^send$/i));
 
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith({
-      type: "user",
-      text: "look at this",
-      images: [{ mediaType: "image/png", dataBase64: btoa("png-bytes") }],
-    });
+    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "look at this", imageRefs: ["deadbeef.png"] });
   });
 
-  it("surfaces an error and stays usable when reading the image fails", async () => {
+  it("surfaces an error and stays usable when the image upload fails", async () => {
     const onSend = vi.fn();
-    vi.spyOn(imageUtil, "fileToBase64").mockRejectedValue(new Error("failed to read file"));
-    const { container } = render(<Composer onSend={onSend} onUploadFile={vi.fn()} />);
+    const onUploadImage = vi.fn().mockRejectedValue(new Error("upload failed (413)"));
+    const { container } = render(<Composer onSend={onSend} onUploadFile={vi.fn()} onUploadImage={onUploadImage} />);
     const file = new File(["png-bytes"], "broken.png", { type: "image/png" });
     const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
     await userEvent.upload(imageInput, file);
 
     // An error is surfaced...
-    expect(await screen.findByRole("alert")).toHaveTextContent(/failed to read/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/upload failed/i);
     // ...no image chip is attached...
     expect(screen.queryByLabelText(/remove broken\.png/i)).not.toBeInTheDocument();
     // ...and the composer is still usable: a plain text message still sends.

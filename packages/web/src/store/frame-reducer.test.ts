@@ -174,6 +174,58 @@ describe("reduceFrame", () => {
     expect(v.turns).toEqual([{ kind: "user", blocks: [{ type: "text", text: "do the thing" }], checkpointId: "u2" }]);
   });
 
+  it("KEEPS a reopened user IMAGE block (lazy url ref) so an uploaded screenshot still renders", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "img-u",
+        message: {
+          content: [
+            { type: "text", text: "look" },
+            {
+              type: "image",
+              source: { type: "url", media_type: "image/png", url: "/images/abc123.png" },
+            },
+          ],
+        },
+      }),
+    );
+    expect(v.turns).toEqual([
+      {
+        kind: "user",
+        blocks: [
+          { type: "text", text: "look" },
+          {
+            type: "image",
+            source: { type: "url", media_type: "image/png", url: "/images/abc123.png" },
+          },
+        ],
+        checkpointId: "img-u",
+      },
+    ]);
+  });
+
+  it("renders an IMAGE-ONLY user turn (no text) — base64 inline form survives reopen too", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "img2",
+        message: { content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } }] },
+      }),
+    );
+    expect(v.turns).toEqual([
+      {
+        kind: "user",
+        blocks: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "QUJD" } }],
+        checkpointId: "img2",
+      },
+    ]);
+  });
+
   it("does NOT render an injected isMeta user message (skill content / system-reminder) as a YOU turn", () => {
     let v = emptyView();
     v = reduceFrame(
