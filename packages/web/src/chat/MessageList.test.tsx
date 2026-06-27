@@ -35,11 +35,16 @@ describe("MessageList", () => {
     expect(screen.queryByText(/command-name|local-command-stdout/)).not.toBeInTheDocument();
   });
 
-  it("renders a post-compaction summary as a clean 'Context compacted' marker (never the giant summary text)", () => {
-    render(<MessageList view={viewWith({ turns: [{ kind: "compaction" }] })} />);
-    expect(screen.getByText(/context compacted/i)).toBeInTheDocument();
-    // The continuation-summary wall of text is never dumped into the chat as a bubble.
-    expect(screen.queryByText(/this session is being continued/i)).not.toBeInTheDocument();
+  it("renders a synthetic system message (post-compaction seed) as a quiet collapsible note, never a giant 'YOU' bubble", () => {
+    const text =
+      "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion.";
+    render(<MessageList view={viewWith({ turns: [{ kind: "system-note", text }] })} />);
+    // The note shows (a peek of the content) — the fact is never hidden …
+    expect(screen.getByText(/this session is being continued/i)).toBeInTheDocument();
+    // … but it is NOT rendered as a human "You" bubble.
+    expect(screen.queryByText("You")).not.toBeInTheDocument();
+    // It is collapsible (a toggle button), not a wall of text dumped inline.
+    expect(screen.getByRole("button", { name: /system message/i })).toBeInTheDocument();
   });
 
   it("renders an interrupted turn as a calm 'stopped' marker, not a red error", () => {

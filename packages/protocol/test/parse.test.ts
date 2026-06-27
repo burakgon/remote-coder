@@ -42,6 +42,15 @@ test("parses system/init with session and model", () => {
   });
 });
 
+test("surfaces the compaction status signal: status:'compacting' (start) and compact_result (end)", () => {
+  // The CLI emits these on the live stream-json stdout during /compact — the authoritative signal the
+  // web uses to show "Compacting…" (start) and to clear it (end), for ANY trigger origin.
+  const start = JSON.stringify({ type: "system", subtype: "status", status: "compacting", session_id: "s1" });
+  expect(parseLine(start)).toMatchObject({ type: "system", subtype: "status", status: "compacting" });
+  const end = JSON.stringify({ type: "system", subtype: "status", compact_result: "success", session_id: "s1" });
+  expect(parseLine(end)).toMatchObject({ type: "system", subtype: "status", compactResult: "success" });
+});
+
 test("parses a hook_callback control_request: requestId top-level, subtype from request", () => {
   const line = JSON.stringify({
     type: "control_request",

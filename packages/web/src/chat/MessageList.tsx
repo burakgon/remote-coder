@@ -170,28 +170,76 @@ function CommandMarker({ item }: { item: Extract<TurnItem, { kind: "command" }> 
   );
 }
 
-/** A context compaction (manual `/compact` or auto-compaction), rendered as a quiet centered divider — the
- *  same hairline treatment as the command/rewind markers. The FACT of compaction stays visible (never
- *  hidden), but the wall-of-text continuation summary is not dumped into the chat as a "YOU" bubble. */
-function CompactionMarker() {
+/**
+ * A SYNTHETIC, system-injected message (the post-compaction continuation seed is the dominant case) —
+ * rendered GENERICALLY as a quiet, collapsible muted note rather than a giant "YOU" bubble. Collapsed it's
+ * a single muted line peeking at the content (e.g. "This session is being continued…"); tapping expands the
+ * full text. The fact and the content stay accessible — never hidden, never a human bubble — and any other
+ * synthetic system message renders the same way.
+ */
+function SystemNote({ item }: { item: Extract<TurnItem, { kind: "system-note" }> }) {
+  const [open, setOpen] = useState(false);
+  const firstLine =
+    item.text
+      .split("\n")
+      .find((l) => l.trim().length > 0)
+      ?.trim() ?? "System message";
+  const peek = firstLine.length > 72 ? `${firstLine.slice(0, 72)}…` : firstLine;
   return (
     <div
-      role="status"
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--sp-2)",
-        color: "var(--text-faint)",
-        fontSize: "var(--fs-xs)",
-        fontFamily: "var(--font-mono)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-sm)",
+        background: "var(--surface-2)",
+        overflow: "hidden",
       }}
     >
-      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
-      <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: 4 }}>
-        <Icon name="archive" size={13} />
-        Context compacted
-      </span>
-      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={`${open ? "Collapse" : "Expand"} system message`}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--sp-2)",
+          width: "100%",
+          minHeight: "var(--tap-min)",
+          background: "transparent",
+          border: 0,
+          textAlign: "left",
+          color: "var(--text-muted)",
+          padding: "var(--sp-2) var(--sp-3)",
+          fontSize: "var(--fs-sm)",
+          cursor: "pointer",
+        }}
+      >
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={13} style={{ color: "var(--text-faint)" }} />
+        <Icon name="archive" size={14} style={{ color: "var(--text-faint)", flex: "none" }} />
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "var(--text-muted)",
+          }}
+        >
+          {peek}
+        </span>
+      </button>
+      {open && (
+        <div
+          style={{
+            padding: "0 var(--sp-3) var(--sp-3)",
+            color: "var(--text-muted)",
+            fontSize: "var(--fs-sm)",
+            animation: "rc-reveal 0.18s ease-out",
+          }}
+        >
+          <Markdown>{item.text}</Markdown>
+        </div>
+      )}
     </div>
   );
 }
@@ -640,8 +688,8 @@ function Turn({
       return <UserTurn item={item} onRewind={onRewind} imageUrl={imageUrl} />;
     case "command":
       return <CommandMarker item={item} />;
-    case "compaction":
-      return <CompactionMarker />;
+    case "system-note":
+      return <SystemNote item={item} />;
     case "result":
       return <ResultMarker item={item} />;
     case "rewound":

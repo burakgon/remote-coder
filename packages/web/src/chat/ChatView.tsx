@@ -374,9 +374,10 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
         contextTokens={safeView.usage?.contextTokens}
         contextWindow={safeView.usage?.contextWindow}
         model={session.model}
-        // Show "Compacting…" the whole time a /compact is in flight. It is NOT gated on `running`: a
-        // /compact emits no streaming/tool frames, so the wire never enters a working state — gating on it
-        // hid the indicator entirely. The flag is set on send and cleared on the compaction summary/result.
+        // Show "Compacting…" the whole time a /compact is in flight. NOT gated on `running`: a /compact
+        // emits no streaming/tool frames, so the wire never enters a working state — gating on it hid the
+        // indicator. The flag is driven by the authoritative wire signal `system status:"compacting"` (set
+        // in the reducer, fires for ANY trigger origin) and cleared when the compaction ends.
         compacting={safeView.compacting}
       />
       <Composer
@@ -394,8 +395,9 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
             // While a turn is RUNNING the CLI queues this for after the current turn — mark the bubble
             // `queued` so it renders BELOW the live stream (correct order) until the echo reconciles it.
             if (blocks.length > 0) appendUserMessage(session.id, blocks, running);
-            // `/compact` has no distinct event in the stream, so show a "Compacting…" indicator from the
-            // moment it's sent until the turn's result clears it (the user otherwise saw nothing happen).
+            // Optimistic instant feedback for a composer-sent /compact: flag compacting right away so the
+            // indicator shows before the wire's `status:"compacting"` arrives. The wire signal (reducer) is
+            // the authoritative source that ALSO covers a /compact triggered outside the composer.
             if (frame.text?.trim() === "/compact") setCompacting(session.id, true);
           }
           send(frame);

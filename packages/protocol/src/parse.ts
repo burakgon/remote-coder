@@ -80,6 +80,10 @@ export function parseLine(line: string): InboundEvent | null {
         agents: Array.isArray(obj.agents) ? (obj.agents as string[]) : undefined,
         // Subagent lifecycle: surface the task_* fields typed so the web never digs in `raw`.
         ...(subtype.startsWith("task_") ? { task: parseTaskInfo(obj) } : {}),
+        // Compaction signal (subtype "status"): `status:"compacting"` starts a /compact, a status carrying
+        // `compact_result` ends it. Surfaced typed so the reducer drives "Compacting…" without digging raw.
+        status: str(obj.status),
+        compactResult: str(obj.compact_result),
         raw: obj,
       };
     }

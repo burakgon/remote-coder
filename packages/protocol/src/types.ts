@@ -38,6 +38,12 @@ export interface SystemEvent {
   agents?: string[];
   /** present when subtype starts with `task_` — the subagent lifecycle, typed (see SystemTaskInfo). */
   task?: SystemTaskInfo;
+  /** present when subtype === "status" — the process status string ("requesting" | "compacting" | …).
+   *  `status === "compacting"` marks a /compact (manual OR auto-compaction) IN PROGRESS: the authoritative
+   *  "Compacting…" trigger, emitted on the live stream for ANY trigger origin (composer OR terminal). */
+  status?: string;
+  /** present on the status event that ENDS a compaction — "success" | "failed". Clears "Compacting…". */
+  compactResult?: string;
   raw: unknown;
 }
 export interface StreamEvent {

@@ -372,7 +372,7 @@ describe("reduceFrame", () => {
     expect(userTurns).toHaveLength(1);
   });
 
-  it("renders a post-compaction summary (isCompactSummary) as a clean compaction marker, NOT a giant YOU bubble", () => {
+  it("renders a REOPEN post-compaction summary (isCompactSummary) as a clean system-note, NOT a giant YOU bubble", () => {
     let v = emptyView();
     v = reduceFrame(
       v,
@@ -383,15 +383,42 @@ describe("reduceFrame", () => {
           content:
             "This session is being continued from a previous conversation that ran out of context.\n\nSummary: 1. Primary Request and Intent: …",
         },
-        // The compaction seed is flagged isCompactSummary (and isVisibleInTranscriptOnly) — NOT isMeta.
+        // On REOPEN the transcript flags the seed isCompactSummary (+ isVisibleInTranscriptOnly) — NOT isMeta.
         raw: { uuid: "cs1", isCompactSummary: true },
       }),
     );
-    expect(v.turns).toEqual([{ kind: "compaction" }]);
+    expect(v.turns).toEqual([
+      {
+        kind: "system-note",
+        text: "This session is being continued from a previous conversation that ran out of context.\n\nSummary: 1. Primary Request and Intent: …",
+      },
+    ]);
     expect(v.turns.some((t) => t.kind === "user")).toBe(false);
   });
 
-  it("collapses a full manual /compact (summary + caveat + command + stdout) to ONE compaction marker", () => {
+  it("renders a LIVE post-compaction summary (isSynthetic) as a system-note, NOT a giant YOU bubble", () => {
+    let v = emptyView();
+    // LIVE the stream-json seed carries isSynthetic (NOT isCompactSummary — that's transcript-only); it must
+    // still surface as the clean system-note, never a human "YOU" bubble (the actual production bug).
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "live1",
+        message: { content: "This session is being continued from a previous conversation that ran out of context." },
+        raw: { uuid: "live1", isSynthetic: true },
+      }),
+    );
+    expect(v.turns).toEqual([
+      {
+        kind: "system-note",
+        text: "This session is being continued from a previous conversation that ran out of context.",
+      },
+    ]);
+    expect(v.turns.some((t) => t.kind === "user")).toBe(false);
+  });
+
+  it("collapses a full manual /compact (summary + caveat + command + stdout) to ONE system-note", () => {
     let v = emptyView();
     // 1) the compaction summary (isCompactSummary, NOT isMeta)
     v = reduceFrame(
@@ -431,10 +458,12 @@ describe("reduceFrame", () => {
         message: { content: "<local-command-stdout>Compacted </local-command-stdout>" },
       }),
     );
-    expect(v.turns).toEqual([{ kind: "compaction" }]);
+    expect(v.turns).toEqual([
+      { kind: "system-note", text: "This session is being continued from a previous conversation…" },
+    ]);
   });
 
-  it("dedupes a re-delivered compaction summary by uuid — no second marker", () => {
+  it("dedupes a re-delivered compaction summary by uuid — no second note", () => {
     let v = emptyView();
     const frame = {
       type: "user",
@@ -444,7 +473,29 @@ describe("reduceFrame", () => {
     };
     v = reduceFrame(v, ev(1, frame));
     v = reduceFrame(v, ev(2, frame));
-    expect(v.turns.filter((t) => t.kind === "compaction")).toHaveLength(1);
+    expect(v.turns.filter((t) => t.kind === "system-note")).toHaveLength(1);
+  });
+
+  it("sets the 'Compacting…' flag from the wire status:'compacting' signal (works for ANY trigger origin)", () => {
+    // The CLI emits a system status:"compacting" when a /compact STARTS — the authoritative indicator
+    // trigger, firing whether /compact came from the web composer OR the terminal. The optimistic
+    // composer flag never fires for a terminal /compact; this wire signal does.
+    let v = emptyView();
+    expect(v.compacting).toBeFalsy();
+    v = reduceFrame(v, ev(1, { type: "system", subtype: "status", status: "compacting" }));
+    expect(v.compacting).toBe(true);
+  });
+
+  it("a normal turn's status:'requesting' does NOT raise the Compacting… flag", () => {
+    let v = emptyView();
+    v = reduceFrame(v, ev(1, { type: "system", subtype: "status", status: "requesting" }));
+    expect(v.compacting).toBeFalsy();
+  });
+
+  it("clears the 'Compacting…' flag when the status carries a compact_result (compaction ended)", () => {
+    let v: SessionView = { ...emptyView(), compacting: true };
+    v = reduceFrame(v, ev(1, { type: "system", subtype: "status", compactResult: "success" }));
+    expect(v.compacting).toBe(false);
   });
 
   it("clears the 'Compacting…' indicator once the compaction summary arrives", () => {

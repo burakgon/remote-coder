@@ -28,12 +28,14 @@ export type TurnItem =
   // NEITHER flagged isMeta — so without this it renders as a raw-XML "YOU" bubble. Surfaced as a clean,
   // centered command marker instead: the command stays visible (e.g. "the chat was compacted"), not hidden.
   | { kind: "command"; command?: string; output?: string }
-  // A context COMPACTION (manual `/compact` OR auto-compaction). Claude writes the continuation seed as a
-  // user-role line flagged `isCompactSummary`/`isVisibleInTranscriptOnly` (NEVER isMeta) — the summary that
-  // seeds the next turn, not something the human typed. Surfaced as ONE clean "Context compacted" marker
-  // (the fact stays visible; the wall-of-text summary is not dumped as a "YOU" bubble). For a manual
-  // /compact the paired `/compact` command envelope is suppressed so this is the single marker shown.
-  | { kind: "compaction" }
+  // A SYNTHETIC, system-injected user-role message — NOT something the human typed. The post-compaction
+  // continuation seed ("This session is being continued…") is the dominant case: LIVE it's flagged
+  // `isSynthetic`; on REOPEN the transcript flags it `isCompactSummary` instead (NEVER isMeta either way),
+  // so without this it renders as a giant "YOU" bubble. Surfaced GENERICALLY as one quiet, collapsible
+  // "system note" carrying its `text` — the content stays accessible (never hidden, never a human bubble),
+  // and any other synthetic system message renders the same clean way. For a manual /compact the paired
+  // `/compact` command envelope + "Compacted" stdout are suppressed so this single note stands.
+  | { kind: "system-note"; text: string }
   | { kind: "assistant-text"; text: string }
   | { kind: "tool-use"; id: string; name: string; input: unknown }
   | { kind: "tool-result"; toolUseId: string; content: unknown }
@@ -103,8 +105,11 @@ export interface SessionView {
    * chat can show the meter immediately even though the transcript carries no result frame.
    */
   usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
-  /** TRUE while a `/compact` the user sent is being processed — drives the telemetry "Compacting…" label
-   *  (the CLI emits no distinct compaction event, so this is set on send and cleared on the turn's result). */
+  /** TRUE while a `/compact` (manual OR auto) is being processed — drives the telemetry "Compacting…" label.
+   *  Set from the AUTHORITATIVE wire signal `system status:"compacting"` (which fires for ANY trigger origin —
+   *  the web composer OR a /compact typed in the terminal) and cleared when the compaction ends (its
+   *  `compact_result` status / `init` / the synthetic seed / the turn's `result`). The optimistic composer
+   *  send-flag is a supplementary instant-feedback path; the wire signal is what makes it always show. */
   compacting?: boolean;
   diagnostics: DiagnosticPayload[];
   wireState: LiveWireState;
@@ -188,9 +193,17 @@ interface UserMsg {
    * must NOT render as a "YOU" turn. `origin.kind` is set by the harness on messages IT injected (e.g. a
    * background `task-notification`); a human message has no `origin`. The LIVE wire ships the full raw
    * (so `origin` is present here); on reopen the server folds the same signal into `isMeta`.
-   * `isCompactSummary` flags the post-compaction seed (the "This session is being continued…" summary) —
-   * NOT isMeta — so the client can surface a clean "Context compacted" marker, not a giant "YOU" bubble. */
-  raw?: { uuid?: string; isMeta?: boolean; isCompactSummary?: boolean; origin?: { kind?: string } };
+   * The post-compaction seed (the "This session is being continued…" summary) is a SYNTHETIC system-injected
+   * message — NOT isMeta. The CLI marks it `isSynthetic` on the LIVE stream and `isCompactSummary` in the
+   * REOPEN transcript (two different flags for the same thing) — either one surfaces a clean system note,
+   * not a giant "YOU" bubble. */
+  raw?: {
+    uuid?: string;
+    isMeta?: boolean;
+    isCompactSummary?: boolean;
+    isSynthetic?: boolean;
+    origin?: { kind?: string };
+  };
 }
 /** The typed subagent lifecycle fields surfaced by parseLine on a `system` `task_*` event. */
 interface TaskInfo {
@@ -208,6 +221,10 @@ interface TaskInfo {
 interface SystemMsg {
   subtype?: string;
   task?: TaskInfo;
+  /** subtype "status": the process status — "compacting" marks a /compact in progress (raises Compacting…). */
+  status?: string;
+  /** subtype "status": present on the event that ENDS a compaction ("success"|"failed") — clears Compacting…. */
+  compactResult?: string;
 }
 
 const AGENT_TOOLS = new Set(["Agent", "Task"]);
@@ -695,9 +712,11 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     // `origin.kind` catches the harness-injected ones live, where the full raw is on the wire. Its
     // tool_result blocks, if any, are still processed below.
     const isMeta = userEv.raw?.isMeta === true || isInjectedOrigin(userEv.raw?.origin);
-    // The post-compaction seed (manual /compact OR auto-compaction): a user-role line flagged
-    // isCompactSummary, NOT isMeta. The summary is the model's continuation context, not a human message.
-    const isCompactSummary = userEv.raw?.isCompactSummary === true;
+    // A SYNTHETIC system-injected user message (the post-compaction continuation seed is the dominant case),
+    // NOT something the human typed. The CLI flags it `isSynthetic` on the LIVE stream and `isCompactSummary`
+    // in the REOPEN transcript — two flags for the same thing — so accept either. It must never render as a
+    // "YOU" bubble; it becomes a clean, generic system note instead.
+    const isSynthetic = userEv.raw?.isSynthetic === true || userEv.raw?.isCompactSummary === true;
 
     // A subagent's OWN inline message (its prompt turn, its tool_use's result) → route into its thread.
     // A tool_result whose tool_use_id is a known subagent id is THAT subagent's final result (captured
@@ -731,15 +750,25 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       return next;
     }
 
-    // A context COMPACTION seed (manual /compact OR auto-compaction). Render ONE clean "Context compacted"
-    // marker — the fact stays visible — instead of dumping the whole continuation summary as a giant "YOU"
-    // bubble. Works for auto-compaction too (which has no /compact command envelope at all).
-    if (isCompactSummary) {
+    // A synthetic system-injected message → ONE clean, collapsible "system note" carrying its text, instead
+    // of dumping the whole continuation summary as a giant "YOU" bubble. The post-compaction seed (manual
+    // /compact OR auto-compaction, which has no /compact command envelope at all) is the dominant case; any
+    // other synthetic system message renders the same generic way.
+    if (isSynthetic) {
       const uuid = userEv.uuid ?? userEv.raw?.uuid;
       if (uuid !== undefined && view.seenUserUuids.has(uuid)) return next; // dedupe re-delivery
-      next.turns = [...view.turns, { kind: "compaction" }];
+      const text =
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? content
+                .filter((b) => b.type === "text" && typeof b.text === "string")
+                .map((b) => (b as { text: string }).text)
+                .join("\n")
+            : "";
+      next.turns = [...view.turns, { kind: "system-note", text }];
       if (uuid !== undefined) next.seenUserUuids = new Set(view.seenUserUuids).add(uuid);
-      next.compacting = false; // the summary IS the result → drop any in-flight "Compacting…" indicator
+      next.compacting = false; // the seed IS the result → drop any in-flight "Compacting…" indicator
       return next;
     }
 
@@ -753,12 +782,12 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
         const uuid = userEv.uuid ?? userEv.raw?.uuid;
         if (uuid !== undefined && view.seenUserUuids.has(uuid)) return next; // dedupe re-delivery
         const last = view.turns[view.turns.length - 1];
-        // A manual /compact's envelope is REDUNDANT with the "Context compacted" marker the preceding
-        // isCompactSummary already produced — suppress both its command row and its "Compacted" stdout so
-        // one clean marker stands. (If /compact did nothing — no summary — `last` isn't compaction, so it
-        // falls through to a normal command marker.)
+        // A manual /compact's envelope is REDUNDANT with the system note the preceding synthetic seed
+        // already produced — suppress both its command row and its "Compacted" stdout so one clean note
+        // stands. (If /compact did nothing — no seed — `last` isn't a system-note, so it falls through to a
+        // normal command marker.)
         if (cmd.kind === "name") {
-          if (!(cmd.command === "/compact" && last?.kind === "compaction")) {
+          if (!(cmd.command === "/compact" && last?.kind === "system-note")) {
             next.turns = [...view.turns, { kind: "command", command: cmd.command }];
           }
         } else if (cmd.kind === "stdout") {
@@ -766,8 +795,8 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
           if (last?.kind === "command" && last.output === undefined) {
             turns[turns.length - 1] = { ...last, output: cmd.output };
             next.turns = turns;
-          } else if (last?.kind === "compaction") {
-            // orphan "Compacted" from the suppressed /compact envelope → the marker covers it; drop.
+          } else if (last?.kind === "system-note") {
+            // orphan "Compacted" from the suppressed /compact envelope → the note covers it; drop.
           } else if (cmd.output.length > 0) {
             next.turns = [...turns, { kind: "command", output: cmd.output }];
           }
@@ -910,6 +939,15 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
           }));
         }
       }
+      return next;
+    }
+    // The AUTHORITATIVE "Compacting…" signal. The CLI emits `system status:"compacting"` the moment a
+    // /compact STARTS (then nothing for the seconds it summarizes), and a `status` carrying `compact_result`
+    // when it ENDS. This fires for ANY trigger origin — a /compact from the web composer OR one typed in the
+    // terminal — unlike the composer's optimistic flag (which only catches composer sends).
+    if (ev.subtype === "status") {
+      if (ev.status === "compacting") next.compacting = true;
+      else if (ev.compactResult !== undefined) next.compacting = false;
       return next;
     }
     // A process (re)start (`system init`) carries NO active turn — the agent is idle, waiting for input.
