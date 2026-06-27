@@ -79,10 +79,21 @@ export interface LiveState {
   pendingQuestion?: QuestionPayload;
 }
 
+/** One selectable model the account offers (mirror of the server's ModelOption, from the init handshake). */
+export interface ModelOption {
+  value: string;
+  displayName: string;
+  description?: string;
+  supportedEffortLevels?: string[];
+}
+
 export interface SessionMeta {
   id: string;
   cwd: string;
   model?: string;
+  /** The account's available models (from the live session's init handshake) — drives a real model picker
+   *  instead of free-text. Absent on cold/old sessions; the client falls back to a curated static list. */
+  availableModels?: ModelOption[];
   effort?: string;
   dangerouslySkip: boolean;
   status: "running" | "dormant" | "errored" | "stopped";

@@ -54,6 +54,14 @@ export interface ClaudeProcessOptions {
   attach?: AttachSpawnOptions;
 }
 
+/** One selectable model the account offers, from the init control_response `models` list. */
+export interface ModelOption {
+  value: string;
+  displayName: string;
+  description?: string;
+  supportedEffortLevels?: string[];
+}
+
 export interface PermissionEvent {
   requestId: string;
   kind: "hook_callback" | "can_use_tool";
@@ -104,6 +112,10 @@ export class ClaudeProcess extends EventEmitter {
   /** Per-requestId kind + toolInput for an OUTSTANDING permission, so a MANUAL answer uses the right wire
    *  shape — a `can_use_tool` request must get a CanUseToolResult, not a PreToolUse-hook response. */
   private readonly pendingPermissions = new Map<string, { kind: PermissionEvent["kind"]; toolInput: unknown }>();
+  /** The account's available models, captured from the init control_response (the CLI's authoritative list,
+   *  with displayName/description/effort levels). Empty until the handshake completes. Account-static, so a
+   *  fresh capture per spawn is fine; the client uses it to render a real model picker (not free-text). */
+  availableModels: ModelOption[] = [];
 
   constructor(opts: ClaudeProcessOptions) {
     super();
@@ -187,6 +199,23 @@ export class ClaudeProcess extends EventEmitter {
 
       const onEvent = (ev: InboundEvent) => {
         if (ev.type === "control_response" && ev.requestId === this.initRequestId) {
+          // The init reply carries the account's model list (nested response.response.models). Capture it
+          // so the client can offer a real model picker; the CLI discards-on-parse otherwise.
+          const models = (ev.raw as { response?: { response?: { models?: unknown } } } | undefined)?.response?.response
+            ?.models;
+          if (Array.isArray(models)) {
+            this.availableModels = models
+              .filter((m): m is Record<string, unknown> => !!m && typeof m === "object")
+              .map((m) => ({
+                value: String(m.value ?? ""),
+                displayName: String(m.displayName ?? m.value ?? ""),
+                ...(typeof m.description === "string" ? { description: m.description } : {}),
+                ...(Array.isArray(m.supportedEffortLevels)
+                  ? { supportedEffortLevels: m.supportedEffortLevels.map(String) }
+                  : {}),
+              }))
+              .filter((m) => m.value.length > 0);
+          }
           cleanup();
           resolve();
         }

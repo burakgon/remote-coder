@@ -3,6 +3,7 @@ import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { EFFORTS, PERMISSION_MODES } from "./defaults";
+import { modelOptions } from "../session/models";
 import type { SessionDefaults } from "./defaults";
 import type { SessionMeta } from "../types/server";
 
@@ -61,6 +62,13 @@ export function SettingsPanel({
     danger: session?.dangerouslySkip ?? false,
   }).current;
   const [liveModel, setLiveModel] = useState(seeded.model);
+  // Model picker options from the account's real list (carried on the active session's meta); fallback
+  // otherwise. Keep the CURRENT model selectable even if it's not in the list (a custom/older value).
+  const baseModels = modelOptions(session ? [session] : []);
+  const liveModels =
+    liveModel && !baseModels.some((m) => m.value === liveModel)
+      ? [{ value: liveModel, displayName: liveModel }, ...baseModels]
+      : baseModels;
   const [liveEffort, setLiveEffort] = useState(seeded.effort);
   const [livePermissionMode, setLivePermissionMode] = useState(seeded.permissionMode);
   const [liveDanger, setLiveDanger] = useState(seeded.danger);
@@ -149,16 +157,18 @@ export function SettingsPanel({
                 <div className="rc-settings__fields">
                   <label className="rc-settings__field">
                     <span className="rc-settings__field-label">Active session model</span>
-                    <input
+                    <select
                       aria-label="active session model"
                       value={liveModel}
                       onChange={(e) => setLiveModel(e.target.value)}
-                      placeholder="default"
-                      autoCapitalize="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      className="rc-settings__control rc-settings__control--mono"
-                    />
+                      className="rc-settings__control"
+                    >
+                      {liveModels.map((m) => (
+                        <option key={m.value} value={m.value} title={m.description}>
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="rc-settings__field">
                     <span className="rc-settings__field-label">Active session effort</span>

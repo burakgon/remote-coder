@@ -5,6 +5,20 @@ import { join, dirname } from "node:path";
 import { encodeProjectDir, parseTranscript } from "@remote-coder/protocol";
 import type { TranscriptTurn } from "@remote-coder/protocol";
 
+/** The Agent/Task tool_use ids in a transcript message's content (the spawn points for subagents). */
+function agentToolUseIds(message: unknown): string[] {
+  const content = (message as { content?: unknown } | null | undefined)?.content;
+  if (!Array.isArray(content)) return [];
+  const ids: string[] = [];
+  for (const block of content) {
+    const b = block as { type?: string; name?: string; id?: string };
+    if (b?.type === "tool_use" && (b.name === "Agent" || b.name === "Task") && typeof b.id === "string") {
+      ids.push(b.id);
+    }
+  }
+  return ids;
+}
+
 export interface HistoryServiceOptions {
   /** Root that contains `.claude/projects/...`. Default the OS home dir. */
   claudeHome?: string;
@@ -81,10 +95,15 @@ export class HistoryService {
    * The .meta.json carries `toolUseId` (the spawning Agent tool_use id = the reducer's subagent-thread
    * key) and `spawnDepth`. The on-disk lines carry `agentId` (the FILE id, NOT the tool_use id), so we
    * FORCE each turn's `parentToolUseId` to the meta's `toolUseId` and sort depth-ascending so a nested
-   * (depth-2) subagent folds AFTER its parent (whose turns create the nested thread). Returns [] when the
-   * session has no subagents dir. Sync (mirrors resolveTranscriptPath); tolerant of missing/bad files.
+   * (depth-2) subagent folds AFTER its parent (whose turns create the nested thread).
+   *
+   * `anchored` = the Agent/Task tool_use ids present in the loaded main WINDOW. We ONLY restore a subagent
+   * whose `toolUseId` is anchored — otherwise (its spawn scrolled out of the window) folding its file would
+   * create an ORPHAN thread that's never seeded/completed, leaving it stuck "running" in the tray. Nested
+   * subagents are anchored transitively: a restored parent's turns reveal the child's spawning tool_use id.
+   * Returns [] when the session has no subagents dir. Sync; tolerant of missing/bad files.
    */
-  readSubagents(cwd: string, sessionId: string): TranscriptTurn[] {
+  readSubagents(cwd: string, sessionId: string, anchored: Set<string>): TranscriptTurn[] {
     const mainPath = this.resolveTranscriptPath(cwd, sessionId);
     if (!mainPath) return [];
     const subDir = join(dirname(mainPath), sessionId, "subagents");
@@ -116,9 +135,15 @@ export class HistoryService {
       }
     }
     agents.sort((a, b) => a.depth - b.depth);
+    const anchorSet = new Set(anchored);
     const turns: TranscriptTurn[] = [];
     for (const a of agents) {
-      for (const t of parseTranscript(a.text)) turns.push({ ...t, parentToolUseId: a.toolUseId });
+      if (!anchorSet.has(a.toolUseId)) continue; // spawn not in the loaded window → skip (no orphan thread)
+      for (const t of parseTranscript(a.text)) {
+        turns.push({ ...t, parentToolUseId: a.toolUseId });
+        // A nested Agent/Task tool_use inside this restored parent anchors its child file (depth-ordered).
+        for (const id of agentToolUseIds(t.message)) anchorSet.add(id);
+      }
     }
     return turns;
   }

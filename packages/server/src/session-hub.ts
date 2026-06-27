@@ -9,6 +9,7 @@ import type {
   QuestionEvent,
   DiagnosticEvent,
   RewindFilesResult,
+  ModelOption,
 } from "./claude-process.js";
 import type { AttachmentPayload } from "./fs-service.js";
 import type {
@@ -138,6 +139,9 @@ export interface SessionMeta {
    * buffer and the model name can't reveal it (e.g. opus-4-8 running a 1M window with no "1m" marker).
    */
   contextWindow?: number;
+  /** The account's available models (from the live process's init handshake) so the client can render a
+   *  real model picker instead of a free-text box. Transient (re-captured per spawn; not persisted). */
+  availableModels?: ModelOption[];
 }
 
 export interface LiveSettings {
@@ -495,6 +499,9 @@ export class SessionHub {
   }
 
   private attach(proc: ClaudeProcess, record: SessionRecord): void {
+    // Capture the account's model list (from this process's init handshake) onto the meta so GET /sessions
+    // (+ :id) hands it to the client for a real model picker. Set per spawn (attach runs for every spawn).
+    if (proc.availableModels && proc.availableModels.length > 0) record.meta.availableModels = proc.availableModels;
     // This attach's generation. A respawn bumps record.generation BEFORE killing the old process, so a
     // superseded ClaudeProcess (which still fires its late events/exit) is `stale()` here and no-ops —
     // no spurious `exit` frame, no flipping the freshly-resumed session to dormant.
@@ -710,8 +717,21 @@ export class SessionHub {
         const windowed = limit !== undefined && turns.length > limit ? turns.slice(-limit) : turns;
         // Also restore each subagent's INNER turns (stored out of the main transcript by this CLI), tagged
         // with the spawning Agent tool_use id so the reducer routes them into the right subagent thread.
-        // Appended AFTER the main window so the Agent tool_use that seeds the thread is folded first.
-        const subagentTurns = this.history.readSubagents?.(record.meta.cwd, id) ?? [];
+        // Appended AFTER the main window so the Agent tool_use that seeds the thread is folded first. ONLY
+        // restore subagents whose spawn (Agent/Task tool_use) is IN the loaded window — else a scrolled-out
+        // subagent's file would create an orphan thread stuck "running" forever in the tray.
+        const anchored = new Set<string>();
+        for (const t of windowed) {
+          const content = (t.message as { content?: unknown } | null)?.content;
+          if (Array.isArray(content)) {
+            for (const b of content as Array<{ type?: string; name?: string; id?: string }>) {
+              if (b?.type === "tool_use" && (b.name === "Agent" || b.name === "Task") && typeof b.id === "string") {
+                anchored.add(b.id);
+              }
+            }
+          }
+        }
+        const subagentTurns = this.history.readSubagents?.(record.meta.cwd, id, anchored) ?? [];
         const allTurns = [...windowed, ...subagentTurns];
         const history = await Promise.all(
           allTurns.map<Promise<ServerFrame>>(async (t, i) => ({

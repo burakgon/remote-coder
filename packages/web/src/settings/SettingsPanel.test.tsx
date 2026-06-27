@@ -126,13 +126,12 @@ describe("SettingsPanel", () => {
         onClose={vi.fn()}
       />,
     );
-    const modelInput = screen.getByLabelText(/active session model/i);
-    await userEvent.clear(modelInput);
-    await userEvent.type(modelInput, "claude-opus-4-8");
+    // The model is now a dropdown of the account's models (fallback list here: Default/Opus/Sonnet/Haiku).
+    await userEvent.selectOptions(screen.getByLabelText(/active session model/i), "sonnet");
     await userEvent.click(screen.getByRole("button", { name: /apply to session/i }));
     expect(onApply).toHaveBeenCalledTimes(1);
     const sent = onApply.mock.calls[0]![0] as Record<string, unknown>;
-    expect(sent).toEqual({ model: "claude-opus-4-8" });
+    expect(sent).toEqual({ model: "sonnet" });
     expect(sent).not.toHaveProperty("permissionMode");
     expect(sent).not.toHaveProperty("effort");
   });

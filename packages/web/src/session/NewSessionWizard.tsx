@@ -8,6 +8,8 @@ import { DirectoryPicker } from "../picker/DirectoryPicker";
 import { ResumePicker } from "./ResumePicker";
 import { pushRecentDir } from "../picker/recents";
 import { loadDefaults, EFFORTS } from "../settings/defaults";
+import { useStore } from "../store/store";
+import { modelOptions } from "./models";
 import type { ApiClient } from "../api/client";
 import type { SessionMeta } from "../types/server";
 
@@ -39,6 +41,9 @@ export function NewSessionWizard({
   const [cwd, setCwd] = useState<string | undefined>();
   const [effort, setEffort] = useState<string>(seeded.effort);
   const [model, setModel] = useState(seeded.model ?? "");
+  // The account's real model list (from any live session's init) drives the picker; static fallback before
+  // any session has reported it.
+  const models = modelOptions(useStore((s) => s.sessions));
   const [dangerouslySkip, setDangerouslySkip] = useState(seeded.dangerouslySkip);
   // RESUME has its OWN skip toggle, default OFF — NOT seeded from the global new-session default. Inheriting
   // the default meant a safe past session could come back with --dangerously-skip-permissions just because
@@ -207,16 +212,14 @@ export function NewSessionWizard({
           </label>
 
           <label className="rc-wizard__field">
-            <span className="rc-wizard__field-label">Model (optional)</span>
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="default"
-              className="rc-wizard__control rc-wizard__control--mono"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-            />
+            <span className="rc-wizard__field-label">Model</span>
+            <select value={model} onChange={(e) => setModel(e.target.value)} className="rc-wizard__control">
+              {models.map((m) => (
+                <option key={m.value} value={m.value} title={m.description}>
+                  {m.displayName}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={`rc-wizard__danger${dangerouslySkip ? " rc-wizard__danger--on" : ""}`}>

@@ -87,23 +87,54 @@ test("readSubagents restores subagent transcripts tagged with the spawning toolU
     }),
   );
   await writeFile(join(subDir, "agent-aaa.meta.json"), JSON.stringify({ toolUseId: "toolu_parent", spawnDepth: 1 }));
+  // The parent's turn SPAWNS the child (an Agent tool_use with id=toolu_child) → anchors the child transitively.
   await writeFile(
     join(subDir, "agent-aaa.jsonl"),
     JSON.stringify({
       type: "assistant",
       isSidechain: true,
       agentId: "aaa",
-      message: { role: "assistant", content: [{ type: "text", text: "outer" }] },
+      message: { role: "assistant", content: [{ type: "tool_use", name: "Task", id: "toolu_child", input: {} }] },
     }),
   );
 
   const svc = new HistoryService({ claudeHome });
-  const turns = svc.readSubagents(cwd, "sid-sa");
+  // Only toolu_parent is anchored by the main window; the child is anchored transitively via the parent.
+  const turns = svc.readSubagents(cwd, "sid-sa", new Set(["toolu_parent"]));
   // depth-1 (parent) before depth-2 (nested); each tagged with its meta toolUseId — NOT the on-disk agentId.
   expect(turns.map((t) => t.parentToolUseId)).toEqual(["toolu_parent", "toolu_child"]);
 });
 
+test("readSubagents SKIPS a subagent whose spawn is not anchored in the window (no orphan stuck-running)", async () => {
+  const cwd = "/work/orphan";
+  const dir = join(claudeHome, ".claude", "projects", encodeProjectDir(cwd));
+  const subDir = join(dir, "sid-orphan", "subagents");
+  await mkdir(subDir, { recursive: true });
+  await writeFile(
+    join(dir, "sid-orphan.jsonl"),
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "go" }] } }),
+  );
+  await writeFile(join(subDir, "agent-old.meta.json"), JSON.stringify({ toolUseId: "toolu_old", spawnDepth: 1 }));
+  await writeFile(
+    join(subDir, "agent-old.jsonl"),
+    JSON.stringify({
+      type: "assistant",
+      isSidechain: true,
+      agentId: "old",
+      message: { role: "assistant", content: [{ type: "text", text: "old subagent" }] },
+    }),
+  );
+
+  const svc = new HistoryService({ claudeHome });
+  // The spawning Agent tool_use scrolled out of the window → not anchored → not restored (no stuck thread).
+  expect(svc.readSubagents(cwd, "sid-orphan", new Set())).toEqual([]);
+  // But when anchored, it IS restored.
+  expect(svc.readSubagents(cwd, "sid-orphan", new Set(["toolu_old"])).map((t) => t.parentToolUseId)).toEqual([
+    "toolu_old",
+  ]);
+});
+
 test("readSubagents returns [] when the session has no subagents dir", () => {
   const svc = new HistoryService({ claudeHome });
-  expect(svc.readSubagents("/nope", "missing")).toEqual([]);
+  expect(svc.readSubagents("/nope", "missing", new Set())).toEqual([]);
 });
