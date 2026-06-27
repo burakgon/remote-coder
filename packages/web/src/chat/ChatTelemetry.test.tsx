@@ -28,8 +28,16 @@ describe("ChatTelemetry", () => {
   });
 
   it("caps the meter at 100% even past the window", () => {
-    render(<ChatTelemetry wireState="idle" contextTokens={250000} />);
+    // Genuinely over a known 1M window → capped at 100%.
+    render(<ChatTelemetry wireState="idle" contextTokens={1_200_000} contextWindow={1_000_000} />);
     expect(screen.getByText(/^100% ·/)).toBeInTheDocument();
+  });
+
+  it("snaps a too-small name-based window up to 1M when occupancy exceeds it (no false 100%)", () => {
+    // 651k tokens can't fit a 200k window, so the name-based guess is wrong — treat it as the 1M tier.
+    // (Real case: opus-4-8 running a 1M window, model string with no "1m" marker, no result in buffer.)
+    render(<ChatTelemetry wireState="idle" contextTokens={651000} model="claude-opus-4-8" />);
+    expect(screen.getByText(/^65% ·/)).toBeInTheDocument();
   });
 
   it("uses the authoritative contextWindow as the denominator (a 1M session is NOT a false 'full')", () => {

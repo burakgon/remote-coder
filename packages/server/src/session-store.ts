@@ -14,6 +14,10 @@ export interface StoredSession {
   createdAt: number;
   lastActivityAt: number;
   permissionMode?: string;
+  /** The model's authoritative context window (from a result's modelUsage). Persisted so the context
+   *  meter knows the right denominator on reopen/after a restart, when no result is in the buffer and the
+   *  model name (often absent / lacking a "1m" marker) can't reveal it. */
+  contextWindow?: number;
 }
 
 export interface SessionStore {
@@ -43,6 +47,7 @@ interface Row {
   created_at: number;
   last_activity_at: number;
   permission_mode: string | null;
+  context_window: number | null;
 }
 
 function rowToSession(r: Row): StoredSession {
@@ -58,6 +63,7 @@ function rowToSession(r: Row): StoredSession {
   if (r.effort !== null) s.effort = r.effort;
   if (r.display_name !== null) s.displayName = r.display_name;
   if (r.permission_mode !== null) s.permissionMode = r.permission_mode;
+  if (r.context_window !== null) s.contextWindow = r.context_window;
   return s;
 }
 
@@ -112,7 +118,8 @@ export function openSessionStore(opts: OpenSessionStoreOptions): SessionStore {
       display_name TEXT,
       status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
-      last_activity_at INTEGER NOT NULL
+      last_activity_at INTEGER NOT NULL,
+      context_window INTEGER
     )
   `);
 
@@ -125,15 +132,22 @@ export function openSessionStore(opts: OpenSessionStoreOptions): SessionStore {
   } catch {
     // column already exists — nothing to do
   }
+  // Same backward-compatible migration for context_window (added later): nullable, swallow "duplicate".
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN context_window INTEGER");
+  } catch {
+    // column already exists — nothing to do
+  }
 
   const upsertStmt = db.prepare(`
-    INSERT INTO sessions (id, cwd, model, effort, permission_mode, dangerously_skip, display_name, status, created_at, last_activity_at)
-    VALUES (@id, @cwd, @model, @effort, @permission_mode, @dangerously_skip, @display_name, @status, @created_at, @last_activity_at)
+    INSERT INTO sessions (id, cwd, model, effort, permission_mode, dangerously_skip, display_name, status, created_at, last_activity_at, context_window)
+    VALUES (@id, @cwd, @model, @effort, @permission_mode, @dangerously_skip, @display_name, @status, @created_at, @last_activity_at, @context_window)
     ON CONFLICT(id) DO UPDATE SET
       cwd=excluded.cwd, model=excluded.model, effort=excluded.effort,
       permission_mode=excluded.permission_mode,
       dangerously_skip=excluded.dangerously_skip, display_name=excluded.display_name,
-      status=excluded.status, created_at=excluded.created_at, last_activity_at=excluded.last_activity_at
+      status=excluded.status, created_at=excluded.created_at, last_activity_at=excluded.last_activity_at,
+      context_window=excluded.context_window
   `);
   const getStmt = db.prepare("SELECT * FROM sessions WHERE id = ?");
   const listStmt = db.prepare("SELECT * FROM sessions ORDER BY created_at ASC");
@@ -154,6 +168,7 @@ export function openSessionStore(opts: OpenSessionStoreOptions): SessionStore {
         status: s.status,
         created_at: s.createdAt,
         last_activity_at: s.lastActivityAt,
+        context_window: s.contextWindow ?? null,
       }),
     get: (id) => {
       const row = getStmt.get(id) as Row | undefined;

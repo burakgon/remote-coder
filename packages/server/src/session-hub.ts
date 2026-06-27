@@ -128,6 +128,12 @@ export interface SessionMeta {
    * across a session's life.
    */
   lastActivityAt: number;
+  /**
+   * The model's authoritative context window (tokens), captured from a result's modelUsage and PERSISTED.
+   * It's the context meter's denominator on reopen/after a restart — when no result is in the replay
+   * buffer and the model name can't reveal it (e.g. opus-4-8 running a 1M window with no "1m" marker).
+   */
+  contextWindow?: number;
 }
 
 export interface LiveSettings {
@@ -514,6 +520,14 @@ export class SessionHub {
       // dropped), and this is real conversation activity.
       this.clearAllAwaiting(record);
       this.markActivity(record);
+      // Remember + PERSIST the authoritative context window (from the result's modelUsage) so the context
+      // meter has the right denominator on a later reopen / after a restart, when no result is in the
+      // buffer and the model name can't reveal it. Only persist when it actually changes (rare).
+      const window = (result as { usage?: { contextWindow?: number } }).usage?.contextWindow;
+      if (typeof window === "number" && window > 0 && window !== record.meta.contextWindow) {
+        record.meta.contextWindow = window;
+        this.persist(record.meta);
+      }
       emit("result", result);
     });
     proc.on("diagnostic", (diag: DiagnosticEvent) => {
@@ -660,6 +674,11 @@ export class SessionHub {
     // which is why a switched-to chat showed "idle" while Claude was still working and lost its context
     // meter. Derive both from the replay buffer (the authoritative live tail) so the client can seed them.
     const live = liveStateFromBuffer(record.buffer.snapshot());
+    // The buffer rarely has a result right after a (re)open/restart, so fall back to the PERSISTED context
+    // window (captured from an earlier result) — without it the meter divides by a wrong model-name guess.
+    if (record.meta.contextWindow !== undefined && live.usage?.contextWindow === undefined) {
+      live.usage = { ...live.usage, contextWindow: record.meta.contextWindow };
+    }
     if (this.history) {
       const turns = await this.history.read(record.meta.cwd, id);
       if (turns.length > 0) {
@@ -993,6 +1012,7 @@ export class SessionHub {
         createdAt: meta.createdAt,
         lastActivityAt: meta.lastActivityAt,
         permissionMode: meta.permissionMode,
+        contextWindow: meta.contextWindow,
       });
     } catch {
       // best-effort: an exit/error frame can land AFTER onClose closed the store; the in-memory meta
@@ -1029,6 +1049,8 @@ export class SessionHub {
         // A rehydrated session has no live process and no pending prompt: never awaiting on boot.
         awaiting: false,
         lastActivityAt: s.lastActivityAt,
+        // The persisted context window survives the restart, so the meter has its denominator immediately.
+        contextWindow: s.contextWindow,
       };
       this.records.set(s.id, {
         meta,

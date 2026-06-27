@@ -83,8 +83,12 @@ export function ChatTelemetry({ wireState, contextTokens, contextWindow, model, 
   const label = compacting ? "Compacting…" : STATUS_LABEL[wireState];
 
   // Prefer the CLI's authoritative window; the name heuristic is a fallback for the pre-result frames.
-  const windowTokens = contextWindow && contextWindow > 0 ? contextWindow : contextWindowFor(model);
+  let windowTokens = contextWindow && contextWindow > 0 ? contextWindow : contextWindowFor(model);
   const hasContext = typeof contextTokens === "number" && contextTokens > 0;
+  // Safety net: occupancy can NEVER exceed the window, so if it does our window value is a wrong
+  // (name-based) guess — a 1M-context session whose model string lacks a "1m" marker (e.g. opus-4-8 on a
+  // 1M window). Snap up to the 1M tier so the meter shows a real % instead of pinning to a false 100%.
+  if (hasContext && contextTokens! > windowTokens) windowTokens = Math.max(windowTokens, 1_000_000);
   const percent = hasContext ? Math.min(100, Math.round((contextTokens! / windowTokens) * 100)) : 0;
   const fill = contextFillColor(percent);
   const tight = percent > 80;

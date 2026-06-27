@@ -36,6 +36,17 @@ test("upsert + get round-trips every durable field", () => {
   expect(store.get("a")).toEqual(sample("a"));
 });
 
+test("contextWindow persists (the meter's denominator survives a restart)", () => {
+  store.upsert({ ...sample("a"), contextWindow: 1_000_000 });
+  expect(store.get("a")?.contextWindow).toBe(1_000_000);
+  // survives reopening the same db file
+  store.close();
+  const reopened = openSessionStore({ dbPath: join(dir, "sessions.db") });
+  expect(reopened.get("a")?.contextWindow).toBe(1_000_000);
+  reopened.close();
+  store = openSessionStore({ dbPath: join(dir, "sessions.db") }); // so afterEach close() is valid
+});
+
 test("upsert is idempotent on the primary key (id) and overwrites", () => {
   store.upsert(sample("a"));
   store.upsert({ ...sample("a"), model: "claude-sonnet", status: "dormant" });
