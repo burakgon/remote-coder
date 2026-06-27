@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ContentBlock, ServerFrame, SessionMeta, UsageInfo, VersionInfo } from "../types/server";
+import type { ContentBlock, LiveState, ServerFrame, SessionMeta, UsageInfo, VersionInfo } from "../types/server";
 import { emptyView, reduceFrame } from "./frame-reducer";
 import type { SessionView } from "./frame-reducer";
 
@@ -83,7 +83,7 @@ interface StoreState {
    * frames (seq > sinceSeq) append cleanly — so a reopen shows the full transcript with no double
    * display and no dropped live updates. Does NOT reorder the rail (replaying history isn't activity).
    */
-  loadHistory: (id: string, frames: ServerFrame[], sinceSeq: number) => void;
+  loadHistory: (id: string, frames: ServerFrame[], sinceSeq: number, live?: LiveState) => void;
   /** Optimistically append the user's own message to the view on send (claude does not echo the
    * typed user text back as a render-able turn, so without this the sender never sees their message). */
   appendUserMessage: (id: string, blocks: ContentBlock[], queued?: boolean) => void;
@@ -148,7 +148,7 @@ export const useStore = create<StoreState>((set, get) => ({
       for (const frame of frames) view = reduceFrame(view, frame);
       return { views: { ...state.views, [id]: view } };
     }),
-  loadHistory: (id, frames, sinceSeq) =>
+  loadHistory: (id, frames, sinceSeq, live) =>
     set((state) => {
       // Fold the transcript frames into a FRESH view so the reopen is authoritative for the history —
       // it replaces anything the WS may have replayed (e.g. an incomplete buffer snapshot). The
@@ -156,13 +156,21 @@ export const useStore = create<StoreState>((set, get) => ({
       // are deduped against the WS seq space, not the display one.
       let view = emptyView();
       for (const frame of frames) view = reduceFrame(view, frame);
-      // A replayed transcript is PAST history: the `result` frame that returns the wire to idle is NOT
-      // persisted (parseTranscript keeps only user/assistant lines), so the last assistant `tool_use`
-      // would otherwise leave the wire stuck on "running-tool" forever after a reopen (a phantom "Running
-      // tool" + Stop button with nothing actually running). Reset it to idle — if the session is genuinely
-      // mid-turn the resumed live WS frames (seq > sinceSeq) set it back, and the race guard below carries
-      // that live wireState forward. Also clear the live streaming buffers, which history never owns.
-      view = { ...view, lastSeq: sinceSeq, wireState: "idle", liveText: "", thinkingText: "" };
+      // A replayed transcript is PAST history with no `result`/stream frames (parseTranscript keeps only
+      // user/assistant lines). So SEED the transient state from the server's authoritative live tail
+      // (`live`, from the replay buffer) instead of guessing: `turnActive` → a "working" wire so a
+      // switched-to chat doesn't show a wrong "idle" while Claude works between frames; no turn → idle, so
+      // a dormant reopen has no phantom "Running tool". `usage` seeds the context meter, which the
+      // transcript can't (it has no result). Granular live WS frames (seq > sinceSeq) refine the wire from
+      // here, and the race guard below carries any already-arrived live state forward.
+      view = {
+        ...view,
+        lastSeq: sinceSeq,
+        wireState: live?.turnActive ? "running-tool" : "idle",
+        usage: live?.usage,
+        liveText: "",
+        thinkingText: "",
+      };
 
       // Race guard: if live frames (seq > sinceSeq) already arrived for this session BEFORE the history
       // resolved (e.g. an early WS frame, or a poll seeding a live delta), DON'T clobber that live
@@ -179,6 +187,8 @@ export const useStore = create<StoreState>((set, get) => ({
           pendingPermission: current.pendingPermission,
           pendingQuestion: current.pendingQuestion,
           lastResult: current.lastResult,
+          // A live result that landed before history resolved owns the freshest usage; else keep the seed.
+          usage: current.usage ?? view.usage,
           wireState: current.wireState,
           // Carry any live subagent state forward so a race (a subagent frame arriving before history
           // resolved) doesn't drop the registry. Current (live) wins per key; order is unioned.

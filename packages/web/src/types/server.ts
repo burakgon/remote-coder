@@ -61,6 +61,17 @@ export interface EventPayload {
   task?: SystemTaskInfo;
 }
 
+/**
+ * Server-derived live tail for a session (mirror of session-hub `LiveState`), returned by GET
+ * /sessions/:id. `turnActive` says a turn is mid-flight (so a switched-to chat shows "working" instead
+ * of a wrong "idle"); `usage` is the last result's token usage (so the context meter shows immediately on
+ * switch). Neither survives in the transcript or a `?since=` WS resume, hence the explicit seed.
+ */
+export interface LiveState {
+  turnActive: boolean;
+  usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
+}
+
 export interface SessionMeta {
   id: string;
   cwd: string;

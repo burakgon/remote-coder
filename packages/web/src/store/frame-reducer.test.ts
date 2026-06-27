@@ -159,6 +159,19 @@ describe("reduceFrame", () => {
     expect(v.turns.at(-1)).toEqual({ kind: "tool-result", toolUseId: "tu1", content: "done" });
   });
 
+  it("a result frame updates view.usage (drives the context meter); a result without usage keeps the last", () => {
+    let v = emptyView();
+    v = reduceFrame(v, {
+      seq: 1,
+      kind: "result",
+      payload: { type: "result", usage: { contextTokens: 1234, contextWindow: 200000 }, raw: {} },
+    });
+    expect(v.usage).toEqual({ contextTokens: 1234, contextWindow: 200000 });
+    // A later result with no usage must not wipe the meter — keep the last known value.
+    v = reduceFrame(v, { seq: 2, kind: "result", payload: { type: "result", raw: {} } });
+    expect(v.usage).toEqual({ contextTokens: 1234, contextWindow: 200000 });
+  });
+
   it("renders a user TEXT event (string content) as a user turn — needed for resume replay", () => {
     let v = emptyView();
     v = reduceFrame(v, ev(1, { type: "user", message: { content: "fix the bug" }, uuid: "u1" }));

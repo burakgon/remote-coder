@@ -79,9 +79,11 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
     resetSession(session.id);
     api
       .getSession(session.id)
-      .then(({ history, sinceSeq, truncated: more }) => {
+      .then(({ history, sinceSeq, truncated: more, live }) => {
         if (cancelled) return;
-        loadHistory(session.id, history, sinceSeq);
+        // Seed wire state + context meter from the server's live tail so a switched-to chat shows the
+        // real "working"/usage immediately instead of a wrong "idle" + a blank meter.
+        loadHistory(session.id, history, sinceSeq, live);
         setTruncated(more);
       })
       .catch(() => {
@@ -103,8 +105,8 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
     const id = session.id;
     api
       .getSession(id, { full: true })
-      .then(({ history, sinceSeq, truncated: more }) => {
-        loadHistory(id, history, sinceSeq);
+      .then(({ history, sinceSeq, truncated: more, live }) => {
+        loadHistory(id, history, sinceSeq, live);
         setTruncated(more);
       })
       .catch(() => {
@@ -365,8 +367,11 @@ export function ChatView({ session, api, token, onSlashCommand, onClose, onShowS
           a sent message visibly gets a reaction without looking up to the header. */}
       <ChatTelemetry
         wireState={wireState}
-        contextTokens={safeView.lastResult?.usage?.contextTokens}
-        contextWindow={safeView.lastResult?.usage?.contextWindow}
+        // `view.usage` is the durable meter source: seeded from the server's live tail on switch AND
+        // updated by each live `result`, so the meter shows immediately on switch (the transcript has no
+        // result frame). Fall back to the last result for older paths.
+        contextTokens={safeView.usage?.contextTokens ?? safeView.lastResult?.usage?.contextTokens}
+        contextWindow={safeView.usage?.contextWindow ?? safeView.lastResult?.usage?.contextWindow}
         model={session.model}
       />
       <Composer

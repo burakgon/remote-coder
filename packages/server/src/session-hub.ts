@@ -26,6 +26,40 @@ import { slimImageBlocks } from "./transcript-images.js";
 
 export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
 
+/** The last result's token usage (for the context meter) + whether a turn is currently in flight. Derived
+ *  from the replay buffer so a (re)opened/switched chat can seed its wire state + meter immediately. */
+export interface LiveState {
+  /** True when a turn is mid-flight (assistant/stream/user activity after the last result/exit) — so a
+   *  switched-to chat shows "working" instead of a wrong "idle" while Claude is between visible frames. */
+  turnActive: boolean;
+  /** The most recent result's usage, for the context meter (absent if no result is still in the buffer). */
+  usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
+}
+
+/**
+ * Derive {@link LiveState} from a session's replay-buffer snapshot (newest→oldest). `turnActive` is true
+ * iff there is turn activity (assistant/stream/user event, or a pending permission/question) AFTER the
+ * most recent `result`/`exit` boundary. `usage` is that most-recent result's usage. Pure; never throws.
+ */
+export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
+  let turnActive = false;
+  let usage: LiveState["usage"];
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const f = frames[i]!;
+    if (f.kind === "result") {
+      usage = (f.payload as { usage?: LiveState["usage"] }).usage;
+      break; // the newest result bounds the current turn; activity after it (already scanned) set turnActive
+    }
+    if (f.kind === "exit") break; // process ended — turn not active (unless newer activity already set it)
+    if (f.kind === "permission" || f.kind === "question") turnActive = true;
+    if (f.kind === "event") {
+      const t = (f.payload as { type?: string }).type;
+      if (t === "assistant" || t === "stream_event" || t === "user") turnActive = true;
+    }
+  }
+  return { turnActive, ...(usage ? { usage } : {}) };
+}
+
 /**
  * Decide whether a claude process `exit` was clean (→ dormant, resumable) or a failure (→ errored),
  * from its `{ code, signal }`. Clean = a 0 exit code, OR a graceful kill signal (SIGTERM/SIGINT/
@@ -587,9 +621,14 @@ export class SessionHub {
   async getHistory(
     id: string,
     limit?: number,
-  ): Promise<{ history: ServerFrame[]; sinceSeq: number; truncated: boolean; total?: number }> {
+  ): Promise<{ history: ServerFrame[]; sinceSeq: number; truncated: boolean; total?: number; live: LiveState }> {
     const record = this.require(id);
     const sinceSeq = record.buffer.maxSeq();
+    // LIVE STATE: the transcript carries only user/assistant turns, and the WS resumes from `sinceSeq` —
+    // so neither the in-flight wire state nor the last result's usage reaches a (re)opened/switched chat,
+    // which is why a switched-to chat showed "idle" while Claude was still working and lost its context
+    // meter. Derive both from the replay buffer (the authoritative live tail) so the client can seed them.
+    const live = liveStateFromBuffer(record.buffer.snapshot());
     if (this.history) {
       const turns = await this.history.read(record.meta.cwd, id);
       if (turns.length > 0) {
@@ -617,12 +656,12 @@ export class SessionHub {
             },
           })),
         );
-        return { history, sinceSeq, truncated: windowed.length < turns.length, total: turns.length };
+        return { history, sinceSeq, truncated: windowed.length < turns.length, total: turns.length, live };
       }
     }
     // No transcript (brand-new session, or no HistoryService configured): the buffer is all we have.
     // Its frames already carry real WS seqs, so the client resumes the WS from the same `sinceSeq`.
-    return { history: record.buffer.snapshot(), sinceSeq, truncated: false };
+    return { history: record.buffer.snapshot(), sinceSeq, truncated: false, live };
   }
 
   /** Live subscriber count for a session (0 if unknown). Lets the WS layer assert no leak. */

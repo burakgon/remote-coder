@@ -328,8 +328,10 @@ export function createServer(
     // the client older turns exist); `?full=1` returns the entire transcript (the explicit "load earlier"
     // path). `sinceSeq` is the replay buffer's max seq — the client resumes the WS from it for new frames.
     const limit = request.query.full === "1" ? undefined : HISTORY_WINDOW;
-    const { history, sinceSeq, truncated, total } = await hub.getHistory(request.params.id, limit);
-    return { session: meta, history, sinceSeq, truncated, total };
+    const { history, sinceSeq, truncated, total, live } = await hub.getHistory(request.params.id, limit);
+    // `live` (turn-in-flight + last usage) lets a switched-to chat seed its wire state + context meter
+    // from the server's authoritative live tail instead of resetting to a wrong "idle" / a blank meter.
+    return { session: meta, history, sinceSeq, truncated, total, live };
   });
 
   // POST /images — upload an image (multipart, BINARY, no base64) into the content-addressed store and

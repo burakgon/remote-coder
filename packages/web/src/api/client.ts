@@ -1,5 +1,6 @@
 import type {
   DirListing,
+  LiveState,
   ResumableSession,
   ServerFrame,
   SessionMeta,
@@ -45,6 +46,9 @@ export interface ApiClient {
     sinceSeq: number;
     truncated: boolean;
     total?: number;
+    /** Server's live tail: whether a turn is in flight + the last result's usage — used to seed the
+     *  switched-to chat's wire state + context meter (neither survives in the transcript). */
+    live?: LiveState;
   }>;
   createSession(body: CreateSessionBody): Promise<SessionMeta>;
   /** Close a session: DELETE /sessions/:id → 204 (no body). Removes it from the list + store while
@@ -147,6 +151,7 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
         sinceSeq?: number;
         truncated?: boolean;
         total?: number;
+        live?: LiveState;
       }>(`/sessions/${id}${qs}`, { headers: headers() });
       // sinceSeq is the WS-resume seq; default to 0 (full replay) if an older server omits it.
       return {
@@ -155,6 +160,7 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
         sinceSeq: body.sinceSeq ?? 0,
         truncated: body.truncated ?? false,
         total: body.total,
+        live: body.live,
       };
     },
     async createSession(body) {

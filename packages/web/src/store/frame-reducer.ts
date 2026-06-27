@@ -86,6 +86,12 @@ export interface SessionView {
   pendingPermission?: PermissionPayload;
   pendingQuestion?: QuestionPayload;
   lastResult?: ResultPayload;
+  /**
+   * The latest token usage for the context meter (from the last `result`, or SEEDED on (re)open/switch
+   * from the server's live tail). Kept as its own field — separate from `lastResult` — so a switched-to
+   * chat can show the meter immediately even though the transcript carries no result frame.
+   */
+  usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
   diagnostics: DiagnosticPayload[];
   wireState: LiveWireState;
   lastSeq: number;
@@ -416,6 +422,8 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     // marker and return the wire to idle (so the user can type the next message), never the red error.
     const stopped = r.terminalReason === "aborted_streaming" || r.subtype === "error_during_execution";
     next.lastResult = r;
+    // Keep the meter fed: update usage when this result reports it, else retain the last known value.
+    if (r.usage) next.usage = r.usage;
     next.pendingPermission = undefined;
     next.pendingQuestion = undefined;
     next.liveText = "";

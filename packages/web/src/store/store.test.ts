@@ -236,6 +236,31 @@ describe("useStore", () => {
     expect(useStore.getState().viewFor("s1").wireState).toBe("running-tool");
   });
 
+  it("loadHistory SEEDS wire + meter from the server live tail (switch to a chat mid-turn)", () => {
+    // A switched-to chat whose turn is still in flight must show "working" (not a wrong idle) and its
+    // context meter immediately — the transcript has no result/stream frame, so the server's `live` seeds it.
+    const history: ServerFrame[] = [
+      ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "go" }] } }),
+    ];
+    useStore.getState().loadHistory("s1", history, 9, {
+      turnActive: true,
+      usage: { contextTokens: 42000, contextWindow: 200000 },
+    });
+    const v = useStore.getState().viewFor("s1");
+    expect(v.wireState).toBe("running-tool");
+    expect(v.usage).toEqual({ contextTokens: 42000, contextWindow: 200000 });
+  });
+
+  it("loadHistory seeds idle wire when the server says no turn is active (and still seeds usage)", () => {
+    const history: ServerFrame[] = [
+      ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "go" }] } }),
+    ];
+    useStore.getState().loadHistory("s1", history, 9, { turnActive: false, usage: { contextTokens: 5000 } });
+    const v = useStore.getState().viewFor("s1");
+    expect(v.wireState).toBe("idle");
+    expect(v.usage).toEqual({ contextTokens: 5000 });
+  });
+
   it("after loadHistory, a live frame (seq > sinceSeq) appends and a frame (seq <= sinceSeq) is a no-op", () => {
     const history: ServerFrame[] = [
       ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "hi" }] } }),

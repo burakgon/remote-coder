@@ -14,11 +14,12 @@ export { FsService, FsError } from "./fs-service.js";
 export type { DirEntry, DirListing, FsServiceOptions, FsErrorCode, AttachmentPayload } from "./fs-service.js";
 export { ReplayBuffer, isCriticalKind } from "./replay-buffer.js";
 export type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
-export { SessionHub, ASK_TIMEOUT_MS } from "./session-hub.js";
+export { SessionHub, ASK_TIMEOUT_MS, liveStateFromBuffer } from "./session-hub.js";
 export type {
   SessionHubOptions,
   SessionMeta,
   SessionStatus,
+  LiveState,
   FrameListener,
   Subscription,
   LiveSettings,
