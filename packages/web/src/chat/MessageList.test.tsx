@@ -27,6 +27,14 @@ describe("MessageList", () => {
     expect(screen.getByText(/0\.0123/)).toBeInTheDocument();
   });
 
+  it("renders a slash command as a clean command marker (the command + its output, never raw XML)", () => {
+    render(<MessageList view={viewWith({ turns: [{ kind: "command", command: "/compact", output: "Compacted" }] })} />);
+    expect(screen.getByText("/compact")).toBeInTheDocument();
+    expect(screen.getByText(/Compacted/)).toBeInTheDocument();
+    // The raw transcript XML must never leak into the chat.
+    expect(screen.queryByText(/command-name|local-command-stdout/)).not.toBeInTheDocument();
+  });
+
   it("renders an interrupted turn as a calm 'stopped' marker, not a red error", () => {
     render(
       <MessageList

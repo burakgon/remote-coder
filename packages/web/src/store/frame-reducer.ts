@@ -23,6 +23,11 @@ export type TurnItem =
   // the current turn): such bubbles render BELOW the live stream so the transcript stays in order, and the
   // flag clears once the echo reconciles (the CLI has started processing it).
   | { kind: "user"; blocks: ContentBlock[]; checkpointId?: string; queued?: boolean }
+  // A slash command the human ran (e.g. `/compact`, `/model opus`) and, when present, its output. Claude
+  // writes this to the transcript as a `<command-name>…` envelope + a `<local-command-stdout>` line —
+  // NEITHER flagged isMeta — so without this it renders as a raw-XML "YOU" bubble. Surfaced as a clean,
+  // centered command marker instead: the command stays visible (e.g. "the chat was compacted"), not hidden.
+  | { kind: "command"; command?: string; output?: string }
   | { kind: "assistant-text"; text: string }
   | { kind: "tool-use"; id: string; name: string; input: unknown }
   | { kind: "tool-result"; toolUseId: string; content: unknown }
@@ -266,6 +271,30 @@ function basename(p: string): string {
  *  same signal into `isMeta` (parseTranscript), so the slim payload is covered too. */
 function isInjectedOrigin(origin: unknown): boolean {
   return typeof (origin as { kind?: unknown } | null)?.kind === "string";
+}
+
+/** A slash command the human ran is written to the transcript as a `<command-name>/x</command-name>…
+ *  <command-args>…</command-args>` envelope, its output on a following `<local-command-stdout>` line, and
+ *  a `<local-command-caveat>` preamble. Claude flags neither the envelope nor the stdout as `isMeta`, so
+ *  they fall through to a raw-XML "YOU" bubble. Recognize each here so the reducer can render the command
+ *  cleanly (and drop the caveat boilerplate) instead of leaking tags into the chat. Returns undefined for
+ *  ordinary text, so a human message that merely starts with prose is never mistaken for a command. */
+function parseLocalCommand(
+  text: string,
+): { kind: "name"; command: string } | { kind: "stdout"; output: string } | { kind: "hidden" } | undefined {
+  const t = text.trimStart();
+  if (t.startsWith("<local-command-caveat>")) return { kind: "hidden" };
+  if (t.startsWith("<local-command-stdout>") || t.startsWith("<command-stdout>")) {
+    const m = /<(?:local-)?command-stdout>([\s\S]*?)<\/(?:local-)?command-stdout>/.exec(t);
+    return { kind: "stdout", output: (m?.[1] ?? "").trim() };
+  }
+  if (t.startsWith("<command-name>")) {
+    const name = /<command-name>([\s\S]*?)<\/command-name>/.exec(t)?.[1]?.trim() ?? "";
+    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(t)?.[1]?.trim() ?? "";
+    if (!name) return { kind: "hidden" }; // unparseable envelope → hide rather than show raw tags
+    return { kind: "name", command: args ? `${name} ${args}` : name };
+  }
+  return undefined;
 }
 
 /** Build an attachment TurnItem from a send_file/send_image tool_use (its input carries {path, caption}). */
@@ -689,6 +718,32 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       }
       if (add.length > 0) appendThreadTurns(parent, add);
       return next;
+    }
+
+    // A slash command the human ran (e.g. `/compact`). Its `<command-name>` envelope and
+    // `<local-command-stdout>` output are NOT flagged isMeta, so without this they render as raw-XML "YOU"
+    // bubbles. Surface them as one clean command marker (the command stays visible — never silently
+    // dropped); the `<local-command-caveat>` boilerplate is hidden. Skipped when isMeta already handles it.
+    if (!isMeta && typeof content === "string") {
+      const cmd = parseLocalCommand(content);
+      if (cmd) {
+        const uuid = userEv.uuid ?? userEv.raw?.uuid;
+        if (uuid !== undefined && view.seenUserUuids.has(uuid)) return next; // dedupe re-delivery
+        if (cmd.kind === "name") {
+          next.turns = [...view.turns, { kind: "command", command: cmd.command }];
+        } else if (cmd.kind === "stdout") {
+          const turns = [...view.turns];
+          const last = turns[turns.length - 1];
+          if (last?.kind === "command" && last.output === undefined) {
+            turns[turns.length - 1] = { ...last, output: cmd.output };
+            next.turns = turns;
+          } else if (cmd.output.length > 0) {
+            next.turns = [...turns, { kind: "command", output: cmd.output }];
+          }
+        }
+        if (uuid !== undefined) next.seenUserUuids = new Set(view.seenUserUuids).add(uuid);
+        return next;
+      }
     }
 
     const turns = [...view.turns];

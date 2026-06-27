@@ -289,6 +289,79 @@ describe("reduceFrame", () => {
     expect(v.turns.filter((t) => t.kind === "user")).toHaveLength(0);
   });
 
+  it("renders a slash command (<command-name> envelope) as a clean command marker, NOT a raw-XML YOU bubble", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "c1",
+        message: {
+          content:
+            "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>",
+        },
+      }),
+    );
+    expect(v.turns).toEqual([{ kind: "command", command: "/compact" }]);
+    expect(v.turns.some((t) => t.kind === "user")).toBe(false);
+  });
+
+  it("includes the args in the command label (/model opus)", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "c2",
+        message: { content: "<command-name>/model</command-name><command-args>opus</command-args>" },
+      }),
+    );
+    expect(v.turns).toEqual([{ kind: "command", command: "/model opus" }]);
+  });
+
+  it("folds a <local-command-stdout> into the preceding command marker (one combined row, no raw XML)", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "c3",
+        message: { content: "<command-name>/compact</command-name><command-args></command-args>" },
+      }),
+    );
+    v = reduceFrame(
+      v,
+      ev(2, {
+        type: "user",
+        uuid: "c4",
+        message: { content: "<local-command-stdout>Compacted </local-command-stdout>" },
+      }),
+    );
+    expect(v.turns).toEqual([{ kind: "command", command: "/compact", output: "Compacted" }]);
+    expect(v.turns.some((t) => t.kind === "user")).toBe(false);
+  });
+
+  it("does NOT render a <local-command-caveat> as a YOU bubble even when it is NOT flagged isMeta", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "user",
+        uuid: "c5",
+        message: { content: "<local-command-caveat>Caveat: ... DO NOT respond ...</local-command-caveat>" },
+      }),
+    );
+    expect(v.turns).toHaveLength(0);
+  });
+
+  it("a real user message that merely STARTS like prose is unaffected (only true command envelopes match)", () => {
+    let v = emptyView();
+    v = reduceFrame(v, ev(1, { type: "user", uuid: "c6", message: { content: "compact the context please" } }));
+    expect(v.turns).toEqual([
+      { kind: "user", blocks: [{ type: "text", text: "compact the context please" }], checkpointId: "c6" },
+    ]);
+  });
+
   it("dedupes a user text event by uuid — a duplicate delivery does NOT draw a second bubble", () => {
     let v = emptyView();
     // First delivery (e.g. transcript replay) → one user turn.

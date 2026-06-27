@@ -135,6 +135,41 @@ function RewoundMarker({ item }: { item: Extract<TurnItem, { kind: "rewound" }> 
   );
 }
 
+/** A slash command the human ran (e.g. `/compact`), rendered as a quiet centered divider — the same
+ *  hairline-rule treatment as the rewind marker. The command (and its short output, e.g. "Compacted")
+ *  stays visible so events like a context compaction are never lost; the raw `<command-name>` XML never
+ *  reaches the chat. */
+function CommandMarker({ item }: { item: Extract<TurnItem, { kind: "command" }> }) {
+  const label = item.command ?? "command";
+  return (
+    <div
+      role="status"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--sp-2)",
+        color: "var(--text-faint)",
+        fontSize: "var(--fs-xs)",
+        fontFamily: "var(--font-mono)",
+      }}
+    >
+      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+      <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+        <Icon name="terminal" size={13} />
+        <span>{label}</span>
+        {item.output ? (
+          <span
+            style={{ color: "var(--text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            · {item.output}
+          </span>
+        ) : null}
+      </span>
+      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+    </div>
+  );
+}
+
 /** Assistant prose — the visual focus: clean, generous, real markdown. File/image paths the model merely
  *  MENTIONS are NOT auto-extracted into chips or inline previews (too noisy / produced bogus chips); a
  *  file or image is shown only when the model DELIBERATELY sends it (send_file/send_image → AttachmentCard). */
@@ -577,6 +612,8 @@ function Turn({
       return <AssistantTurn item={item} />;
     case "user":
       return <UserTurn item={item} onRewind={onRewind} imageUrl={imageUrl} />;
+    case "command":
+      return <CommandMarker item={item} />;
     case "result":
       return <ResultMarker item={item} />;
     case "rewound":
