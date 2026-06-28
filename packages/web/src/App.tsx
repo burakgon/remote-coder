@@ -21,6 +21,7 @@ import { UpdatePanel } from "./update/UpdatePanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { BUILD_SHA } from "./build-info";
 import { claimAutoRefresh, hardRefresh, isClientStale } from "./update/stale-client";
+import { anyTurnInFlight } from "./update/turn-in-flight";
 import { useOnline } from "./pwa/online-status";
 import { Icon } from "./ui/Icon";
 import { MobileMenuButton } from "./ui/MobileMenuButton";
@@ -101,6 +102,10 @@ export function App() {
       setUsage: s.setUsage,
     })),
   );
+  // OTA DRAIN WARNING: true when ANY session has a turn actively in flight — gates the update confirm so
+  // we don't restart the server (and interrupt a live turn) without warning. Selected as a boolean so it
+  // only re-renders App when the in-flight state actually flips.
+  const turnInProgress = useStore((s) => anyTurnInFlight(s.views));
   const [wizardOpen, setWizardOpen] = useState(false);
   // A small, dismissible error surfaced when a close actually FAILS (so we don't silently pretend a
   // session is gone). Cleared on the next close attempt or when the user dismisses it.
@@ -850,6 +855,7 @@ export function App() {
           status={updateStatus}
           onUpdate={applyUpdate}
           onClose={() => setUpdatePanelOpen(false)}
+          turnInProgress={turnInProgress}
         />
       )}
     </>

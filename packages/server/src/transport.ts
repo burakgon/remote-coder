@@ -23,6 +23,9 @@ import type { ServerRuntimeConfig } from "./server-config.js";
 import type { SessionStore, StoreMode } from "./session-store.js";
 import type { HistoryService } from "./history-service.js";
 import type { IdempotencyStore } from "./idempotency.js";
+import type { FrameSpool } from "./frame-spool.js";
+import { createSendDedup } from "./send-dedup.js";
+import type { SendDedup } from "./send-dedup.js";
 import type { SessionMeta } from "./session-hub.js";
 import type { PushStore } from "./push-store.js";
 import type { ServerFrame } from "./replay-buffer.js";
@@ -42,6 +45,12 @@ export interface CreateServerDeps {
   store?: SessionStore;
   history?: HistoryService;
   idempotency?: IdempotencyStore;
+  /**
+   * Append-only per-session critical-frame spool (durability). Threaded into the hub so an in-flight
+   * turn the transcript hadn't fsynced before a crash/OTA-restart can be recovered on reopen. When
+   * omitted the hub doesn't spool (current behavior). start.ts opens a file-backed one under the data dir.
+   */
+  spool?: FrameSpool;
   /** Absolute path to the built PWA (packages/web/dist). When set, the server also serves the UI. */
   webDir?: string;
   pushStore?: PushStore;
@@ -125,12 +134,18 @@ export function createServer(
     store: deps.store,
     history: deps.history,
     imageStore,
+    spool: deps.spool,
     onFrame: deps.onFrame,
   });
   hub.loadFromStore();
   const projectsDir = deps.projectsDir ?? defaultProjectsDir();
   // Per-idempotency-key in-flight lock: two simultaneous same-key POSTs must yield ONE session.
   const inFlight = new Map<string, Promise<SessionMeta>>();
+  // SEND IDEMPOTENCY (#9): a per-session recent-msgId set so a re-delivered WS `user` frame (the client's
+  // reconnect queue can re-send a buffered message carrying the SAME msgId) reaches Claude at most once —
+  // a duplicate "force push"/"delete" prompt running twice is dangerous. Frames with no msgId (older
+  // clients) are never deduped (current behavior preserved).
+  const sendDedup = createSendDedup();
   const authGate = new AuthGate({ token: config.accessToken });
   const fsService = new FsService({ root: config.fsRoot });
   // OTA self-update. A real Updater reads/writes its status file in the data dir and runs git there;
@@ -245,7 +260,7 @@ export function createServer(
           } catch {
             return; // ignore malformed client frames
           }
-          handleClientFrame(hub, id, msg, imageStore);
+          handleClientFrame(hub, id, msg, imageStore, sendDedup);
         });
 
         socket.on("close", () => subscription.unsubscribe());
@@ -435,6 +450,7 @@ export function createServer(
   // 204 no-op, not a 404 — so a double-close / a stale client both succeed.
   app.delete<{ Params: { id: string } }>("/sessions/:id", async (request, reply) => {
     hub.deleteSession(request.params.id);
+    sendDedup.forget(request.params.id); // reclaim the closed session's recent-msgId memory
     reply.code(204).send();
   });
 
@@ -448,6 +464,7 @@ export function createServer(
       return;
     }
     hub.deleteSession(request.params.id);
+    sendDedup.forget(request.params.id); // reclaim the closed session's recent-msgId memory
     return { ok: true };
   });
 
@@ -765,6 +782,7 @@ export function createServer(
     deps.store?.close();
     deps.idempotency?.close();
     deps.pushStore?.close();
+    deps.spool?.close();
   });
 
   return { app, hub, authGate };
@@ -783,10 +801,22 @@ function contentDisposition(filename: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-function handleClientFrame(hub: SessionHub, id: string, msg: Record<string, unknown>, imageStore: ImageStore): void {
+function handleClientFrame(
+  hub: SessionHub,
+  id: string,
+  msg: Record<string, unknown>,
+  imageStore: ImageStore,
+  sendDedup: SendDedup,
+): void {
   // The hub methods are async (a dormant session may resume first). They are fire-and-forget here:
   // a rejected resume must never throw into the WS message handler, so each is `.catch`-guarded.
   if (msg.type === "user") {
+    // SEND IDEMPOTENCY (#9): a client mints one `msgId` per distinct user action and REUSES it on a
+    // reconnect-queue re-send, so a requeued frame carries the same id. Dedup by it: the SAME msgId within
+    // the TTL is ACKNOWLEDGED but NOT re-sent to the CLI (a duplicate "force push"/"delete" running twice
+    // is dangerous). A blank/absent msgId (older clients) is never deduped — firstSeen returns true.
+    const msgId = typeof msg.msgId === "string" && msg.msgId.length > 0 ? msg.msgId : undefined;
+    if (!sendDedup.firstSeen(id, msgId)) return; // known duplicate → drop (already delivered once)
     // Resolving image refs reads files from the store (async), so build the blocks then send — still
     // fire-and-forget + `.catch`-guarded so nothing throws into the WS handler.
     void buildUserBlocks(msg, imageStore)

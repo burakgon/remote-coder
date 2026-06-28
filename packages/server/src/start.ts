@@ -7,6 +7,7 @@ import { loadServerConfig, assertConfigAllowsStart, isLoopbackAddress } from "./
 import { ensureDataDir, resolveAccessToken } from "./data-dir.js";
 import { openSessionStore } from "./session-store.js";
 import { openIdempotencyStore } from "./idempotency.js";
+import { openFrameSpool } from "./frame-spool.js";
 import { HistoryService } from "./history-service.js";
 import { resolveVapidKeys } from "./vapid.js";
 import { openPushStore } from "./push-store.js";
@@ -60,6 +61,10 @@ export async function startServer(
     );
   }
   const history = new HistoryService();
+  // DURABILITY: a file-backed append-only spool of each session's CRITICAL frames, under the data dir. It
+  // lets a reopen after a crash / OTA restart recover the in-flight turn the transcript hadn't fsynced.
+  // Cheap (a few fs appends per turn, never per stream token), bounded, and cleared on each result.
+  const spool = openFrameSpool({ dir: join(config.dataDir, "spool") });
 
   const manager = new SessionManager(config.claude);
 
@@ -90,6 +95,7 @@ export async function startServer(
     store,
     history,
     idempotency,
+    spool,
     pushStore,
     webDir,
     vapidPublicKey: vapid.publicKey,

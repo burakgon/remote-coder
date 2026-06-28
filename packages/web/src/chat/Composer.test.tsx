@@ -20,8 +20,22 @@ describe("Composer", () => {
     render(<Composer onSend={onSend} onUploadFile={vi.fn()} />);
     const box = screen.getByLabelText(/message claude/i);
     await userEvent.type(box, "hello there{Enter}");
-    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "hello there" });
+    // SEND IDEMPOTENCY (#9): every user frame carries a minted msgId (a uuid) for server-side dedup.
+    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "hello there", msgId: expect.any(String) });
     expect(box.textContent).toBe("");
+  });
+
+  it("mints a UNIQUE msgId per submission (send idempotency #9)", async () => {
+    const onSend = vi.fn();
+    render(<Composer onSend={onSend} onUploadFile={vi.fn()} />);
+    const box = screen.getByLabelText(/message claude/i);
+    await userEvent.type(box, "first{Enter}");
+    await userEvent.type(box, "second{Enter}");
+    const first = onSend.mock.calls[0]![0] as { msgId?: string };
+    const second = onSend.mock.calls[1]![0] as { msgId?: string };
+    expect(typeof first.msgId).toBe("string");
+    expect(typeof second.msgId).toBe("string");
+    expect(first.msgId).not.toBe(second.msgId); // each distinct user action gets its own id
   });
 
   it("does not send on Shift+Enter (newline)", async () => {
@@ -61,7 +75,7 @@ describe("Composer", () => {
     expect(screen.getByLabelText(/^stop$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^send$/i)).toBeInTheDocument();
     await userEvent.click(screen.getByLabelText(/^send$/i));
-    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "do this next" });
+    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "do this next", msgId: expect.any(String) });
   });
 
   it("shows only Stop (no Send) while running with an empty field", () => {
@@ -86,7 +100,12 @@ describe("Composer", () => {
     await userEvent.click(screen.getByLabelText(/^send$/i));
 
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "look at this", imageRefs: ["deadbeef.png"] });
+    expect(onSend).toHaveBeenCalledWith({
+      type: "user",
+      text: "look at this",
+      imageRefs: ["deadbeef.png"],
+      msgId: expect.any(String),
+    });
   });
 
   it("surfaces an error and stays usable when the image upload fails", async () => {
@@ -105,7 +124,7 @@ describe("Composer", () => {
     const box = screen.getByLabelText(/message claude/i);
     await userEvent.type(box, "still works");
     await userEvent.click(screen.getByLabelText(/^send$/i));
-    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "still works" });
+    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "still works", msgId: expect.any(String) });
   });
 
   it("rejects an unsupported image type and does not attach it", async () => {

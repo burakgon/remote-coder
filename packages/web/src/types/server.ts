@@ -347,6 +347,14 @@ export type OutboundFrame =
       imageRefs?: string[];
       /** Legacy inline base64 images (kept for back-compat; the composer now sends `imageRefs`). */
       images?: { mediaType: string; dataBase64: string }[];
+      /**
+       * SEND IDEMPOTENCY (#9): a uuid the composer mints ONCE per distinct user submission. It rides the
+       * frame through the reconnect queue UNCHANGED, so a frame buffered during a blip and re-sent on the
+       * next open carries the SAME id — the server then delivers it to Claude at most once (a duplicate
+       * "force push"/"delete" prompt running twice is dangerous). Older clients omit it (server falls back
+       * to no-dedup).
+       */
+      msgId?: string;
     }
   | { type: "permission"; requestId: string; decision: "allow" | "deny"; reason?: string }
   // ask_user path: { askId, answers } resolves the held POST /ask (the server routes by askId). Legacy

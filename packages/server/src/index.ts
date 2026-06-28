@@ -14,7 +14,13 @@ export { FsService, FsError } from "./fs-service.js";
 export type { DirEntry, DirListing, FsServiceOptions, FsErrorCode, AttachmentPayload } from "./fs-service.js";
 export { ReplayBuffer, isCriticalKind } from "./replay-buffer.js";
 export type { ServerFrame, ServerFrameKind } from "./replay-buffer.js";
-export { SessionHub, ASK_TIMEOUT_MS, liveStateFromBuffer, accumulateLiveTokens } from "./session-hub.js";
+export {
+  SessionHub,
+  ASK_TIMEOUT_MS,
+  SPOOL_RECOVERY_TTL_MS,
+  liveStateFromBuffer,
+  accumulateLiveTokens,
+} from "./session-hub.js";
 export type {
   SessionHubOptions,
   SessionMeta,
@@ -59,6 +65,10 @@ export {
 export type { TranscriptMessage, ParsedTranscript, ResumableSession, ListResumableOptions } from "./transcript.js";
 export { openIdempotencyStore } from "./idempotency.js";
 export type { IdempotencyStore, OpenIdempotencyStoreOptions } from "./idempotency.js";
+export { openFrameSpool, inMemoryFrameSpool, isSpoolable, spoolFrameIdentity, SPOOL_CAP } from "./frame-spool.js";
+export type { FrameSpool, OpenFrameSpoolOptions } from "./frame-spool.js";
+export { createSendDedup } from "./send-dedup.js";
+export type { SendDedup, CreateSendDedupOptions } from "./send-dedup.js";
 export { openPushStore } from "./push-store.js";
 export type { PushStore, PushSubscriptionRecord, OpenPushStoreOptions } from "./push-store.js";
 export { PushDispatcher } from "./push-dispatcher.js";

@@ -140,6 +140,30 @@ describe("SessionSocket", () => {
     vi.useRealTimers();
   });
 
+  it("a requeued send keeps its ORIGINAL msgId (send idempotency #9)", () => {
+    vi.useFakeTimers();
+    FakeWS.instances = [];
+    const sock = createSessionSocket({
+      url: "ws://x/sessions/a/ws",
+      onFrame: () => {},
+      onStatus: () => {},
+      getSince: () => undefined,
+      WebSocketImpl: FakeWS as unknown as typeof WebSocket,
+    });
+    const ws1 = FakeWS.instances[0]!;
+    ws1._open();
+    ws1.close(); // unexpected close → the socket is no longer OPEN
+    // The user sent while the link was down — buffered with a minted msgId. On reconnect the SAME frame
+    // (same msgId) flushes, so the server dedups a re-delivery to a single send to Claude.
+    sock.send({ type: "user", text: "force push?", msgId: "abc-123" });
+    vi.runOnlyPendingTimers();
+    const ws2 = FakeWS.instances[1]!;
+    ws2._open();
+    expect(JSON.parse(ws2.sent[0]!)).toEqual({ type: "user", text: "force push?", msgId: "abc-123" });
+    sock.close();
+    vi.useRealTimers();
+  });
+
   it("routes a resync control frame to onResync, never to onFrame", () => {
     FakeWS.instances = [];
     const frames: ServerFrame[] = [];

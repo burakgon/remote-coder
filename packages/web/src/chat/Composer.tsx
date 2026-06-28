@@ -5,6 +5,7 @@ import { Icon } from "../ui/Icon";
 import { validateImage } from "./image-util";
 import { matchSlash } from "./slash";
 import type { SlashCommand } from "./slash";
+import { mintMsgId } from "../ws/msg-id";
 import type { OutboundFrame } from "../types/server";
 
 export interface PendingImage {
@@ -235,10 +236,13 @@ export function Composer({
     const trimmed = readEditable(edRef.current).trim();
     // `stopping`: don't let Enter race an in-flight interrupt (the button is already disabled for this).
     if ((!trimmed && images.length === 0) || disabled || stopping) return;
+    // SEND IDEMPOTENCY (#9): one msgId per submission, carried on the frame so a reconnect-queue re-send
+    // keeps the SAME id and the server delivers it to Claude at most once.
+    const msgId = mintMsgId();
     const frame: OutboundFrame =
       images.length > 0
-        ? { type: "user", text: trimmed || undefined, imageRefs: images.map((i) => i.ref) }
-        : { type: "user", text: trimmed };
+        ? { type: "user", text: trimmed || undefined, imageRefs: images.map((i) => i.ref), msgId }
+        : { type: "user", text: trimmed, msgId };
     onSend(frame);
     // Record the sent text for ↑/↓ recall (skip a consecutive duplicate) and leave browsing mode.
     if (trimmed) {

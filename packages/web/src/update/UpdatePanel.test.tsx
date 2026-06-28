@@ -107,4 +107,34 @@ describe("UpdatePanel", () => {
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("with NO turn in flight, Update now applies immediately (no drain warning)", async () => {
+    const onUpdate = vi.fn();
+    render(
+      <UpdatePanel
+        info={info(sampleChangelog)}
+        state="idle"
+        onUpdate={onUpdate}
+        onClose={vi.fn()}
+        turnInProgress={false}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /update now/i }));
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("OTA drain warning: with a turn in flight, the first tap WARNS (no update); a second confirms", async () => {
+    const onUpdate = vi.fn();
+    render(
+      <UpdatePanel info={info(sampleChangelog)} state="idle" onUpdate={onUpdate} onClose={vi.fn()} turnInProgress />,
+    );
+    // First tap of "Update now": it does NOT apply — it surfaces the warning and re-labels the button.
+    await userEvent.click(screen.getByRole("button", { name: /update now/i }));
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/turn is in progress.*interrupt it.*update anyway/i);
+    // Second tap ("Update anyway") confirms.
+    await userEvent.click(screen.getByRole("button", { name: /update anyway/i }));
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
 });

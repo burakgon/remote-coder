@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Icon } from "../ui/Icon";
 import { useFocusTrap } from "../ui/useFocusTrap";
@@ -16,6 +16,12 @@ export interface UpdatePanelProps {
   onUpdate: () => void;
   /** Dismiss the panel (Later / Escape / backdrop). */
   onClose: () => void;
+  /**
+   * OTA DRAIN WARNING (durability): true when ANY session has a turn in flight. The update restarts the
+   * server and interrupts that turn, so "Update now" first shows an "A turn is in progress — update
+   * anyway?" confirm instead of applying immediately. Absent/false → apply straight away (current flow).
+   */
+  turnInProgress?: boolean;
 }
 
 const GROUP_LABELS: Record<ChangelogEntry["group"], string> = {
@@ -45,9 +51,21 @@ const PHASE_LABEL: Record<string, string> = {
  * Tokens only, no emoji (icons via <Icon>), focus-trapped + Escape-to-close, reduced-motion safe (the
  * entrance rise references a global keyframe neutralized under prefers-reduced-motion).
  */
-export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePanelProps) {
+export function UpdatePanel({ info, state, status, onUpdate, onClose, turnInProgress }: UpdatePanelProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef as React.RefObject<HTMLElement>, true);
+  // OTA DRAIN WARNING: when a turn is in flight, the first "Update now" tap arms a confirm ("update
+  // anyway?") instead of applying — so a live turn isn't silently interrupted by the restart. A second
+  // tap (now labelled "Update anyway") applies. With no turn in flight this stays false and "Update now"
+  // applies immediately (the unchanged flow).
+  const [confirmingDrain, setConfirmingDrain] = useState(false);
+  const handleUpdate = () => {
+    if (turnInProgress && !confirmingDrain) {
+      setConfirmingDrain(true);
+      return;
+    }
+    onUpdate();
+  };
 
   const grouped = GROUP_ORDER.map((g) => ({
     group: g,
@@ -165,6 +183,19 @@ export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePa
           </p>
         )}
 
+        {/* OTA DRAIN WARNING: a turn is in flight and the user armed the confirm — surface the explicit
+            "updating will interrupt it" warning before the second (applying) tap. */}
+        {!updating && !failed && turnInProgress && confirmingDrain && (
+          <div role="alert" style={DRAIN_WARNING}>
+            <span aria-hidden style={{ display: "inline-flex", color: "var(--coral)", flex: "none", marginTop: 2 }}>
+              <Icon name="alert" size={16} />
+            </span>
+            <span style={{ color: "var(--text)", lineHeight: 1.45 }}>
+              A turn is in progress — updating will restart the server and interrupt it. Update anyway?
+            </span>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
           {updating ? (
             // Updating keeps running server-side; "Hide" just dismisses the overlay so a hung update can't
@@ -177,8 +208,8 @@ export function UpdatePanel({ info, state, status, onUpdate, onClose }: UpdatePa
               <button type="button" onClick={onClose} style={LATER_BTN}>
                 Later
               </button>
-              <button type="button" onClick={onUpdate} style={UPDATE_BTN}>
-                {failed ? "Retry" : "Update now"}
+              <button type="button" onClick={handleUpdate} style={UPDATE_BTN}>
+                {failed ? "Retry" : confirmingDrain ? "Update anyway" : "Update now"}
               </button>
             </>
           )}
@@ -295,6 +326,17 @@ const CONFIRM_BLURB: CSSProperties = {
   color: "var(--text-muted)",
   fontSize: "var(--fs-sm)",
   lineHeight: 1.45,
+};
+
+const DRAIN_WARNING: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "var(--sp-2)",
+  padding: "var(--sp-3)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border-strong)",
+  background: "var(--surface-2, transparent)",
+  fontSize: "var(--fs-sm)",
 };
 
 const LATER_BTN: CSSProperties = {

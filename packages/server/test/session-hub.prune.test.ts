@@ -3,14 +3,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { SessionManager, SessionHub, openSessionStore } from "../src/index.js";
+import { SessionManager, SessionHub, openSessionStore, SPOOL_RECOVERY_TTL_MS } from "../src/index.js";
 import { HistoryService } from "../src/history-service.js";
 
-// loadFromStore() must PRUNE dead sessions at boot so the rail never shows a session that does nothing
-// when tapped — the bug a server restart (e.g. an OTA update) surfaced: every stored session was
-// rehydrated as "dormant", including ones whose turn never landed (no transcript → un-resumable).
-// "Dead" = NO resumable transcript on disk. Status is NOT the signal: an errored session that still has
-// a transcript is resumable and is kept.
+// DURABILITY contract (revised): a turn's content lives only in the in-memory buffer until Claude
+// transcribes it to disk, so a crash/OTA-restart caught mid-turn can leave a session with NO transcript
+// even though it had real activity. loadFromStore must therefore NOT hard-delete a transcript-less
+// session that had ANY activity (lastActivityAt > createdAt) — the user must still see it existed and a
+// later resume may revive it; the critical-frame spool recovers the in-flight content on reopen. The ONE
+// narrow drop that remains: a CREATED-BUT-NEVER-USED session (no transcript AND no recorded activity,
+// lastActivityAt <= createdAt) — a stray create whose turn was never sent has nothing to show/resume.
+// Status is NOT the signal: an errored session with a transcript is still resumable and rehydrates as
+// dormant.
 
 const MOCK = fileURLToPath(new URL("./helpers/mock-claude-interactive.mjs", import.meta.url));
 function managerFor(mode: string): SessionManager {
@@ -36,9 +40,12 @@ async function writeTranscript(history: HistoryService, cwd: string, id: string)
   await writeFile(p, '{"type":"user","message":{"content":[{"type":"text","text":"hi"}]}}\n');
 }
 
-test("loadFromStore prunes sessions with no transcript and keeps resumable ones (incl. resumable errored)", async () => {
+test("loadFromStore keeps resumable sessions + RECENT transcript-less sessions that HAD activity; drops never-used + STALE", async () => {
   const store = openSessionStore({ dbPath: ":memory:" });
   const history = new HistoryService({ claudeHome: dir });
+  // Fixed clock so the recovery-window retention math is deterministic.
+  const NOW = 10_000_000_000;
+  const recent = NOW - 60_000; // 1 min ago → within SPOOL_RECOVERY_TTL_MS
 
   await writeTranscript(history, "/work/live", "live-1"); // dormant + transcript → resumable
   await writeTranscript(history, "/work/err", "err-1"); // errored + transcript → still resumable
@@ -48,51 +55,76 @@ test("loadFromStore prunes sessions with no transcript and keeps resumable ones 
     cwd: "/work/live",
     dangerouslySkip: false,
     status: "dormant",
-    createdAt: 1,
-    lastActivityAt: 2,
+    createdAt: recent - 1,
+    lastActivityAt: recent,
   });
   store.upsert({
     id: "err-1",
     cwd: "/work/err",
     dangerouslySkip: false,
     status: "errored",
-    createdAt: 1,
-    lastActivityAt: 2,
+    createdAt: recent - 1,
+    lastActivityAt: recent,
   });
-  // dead-1 / dead-2: NO transcript on disk → can't resume → dead, whatever the stored status.
+  // lost-1 / lost-2: NO transcript on disk, but they HAD activity recently (a crash/OTA-restart ate the
+  // turn before Claude transcribed it). DURABILITY: keep them — the user must see the session existed; a
+  // later resume / the spool recovers content. Status is not the signal.
   store.upsert({
-    id: "dead-1",
-    cwd: "/work/dead1",
+    id: "lost-1",
+    cwd: "/work/lost1",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: recent - 1,
+    lastActivityAt: recent,
+  });
+  store.upsert({
+    id: "lost-2",
+    cwd: "/work/lost2",
+    dangerouslySkip: false,
+    status: "errored",
+    createdAt: recent - 1,
+    lastActivityAt: recent,
+  });
+  // never-1: created but NEVER used (no transcript AND lastActivityAt <= createdAt) → a true dead row.
+  store.upsert({
+    id: "never-1",
+    cwd: "/work/never1",
+    dangerouslySkip: false,
+    status: "dormant",
+    createdAt: recent,
+    lastActivityAt: recent,
+  });
+  // stale-1: had activity, but LONG ago (past the recovery window) and still no transcript → a zombie;
+  // drop it so a crashed-then-abandoned session doesn't accumulate a rail row forever.
+  store.upsert({
+    id: "stale-1",
+    cwd: "/work/stale1",
     dangerouslySkip: false,
     status: "dormant",
     createdAt: 1,
-    lastActivityAt: 2,
-  });
-  store.upsert({
-    id: "dead-2",
-    cwd: "/work/dead2",
-    dangerouslySkip: false,
-    status: "errored",
-    createdAt: 1,
-    lastActivityAt: 2,
+    lastActivityAt: NOW - SPOOL_RECOVERY_TTL_MS - 1,
   });
 
-  const hub = new SessionHub(managerFor("simple"), { store, history });
+  const hub = new SessionHub(managerFor("simple"), { store, history, now: () => NOW });
   hub.loadFromStore();
 
-  // Both resumable sessions rehydrate (errored → dormant: a transient crash gets another chance).
+  // Resumable AND RECENT activity-bearing-but-transcript-less sessions all rehydrate (errored → dormant:
+  // a transient crash gets another chance). The never-used create and the STALE zombie are gone.
   expect(
     hub
       .listSessions()
       .map((s) => s.id)
       .sort(),
-  ).toEqual(["err-1", "live-1"]);
+  ).toEqual(["err-1", "live-1", "lost-1", "lost-2"]);
   expect(hub.getSession("err-1")?.status).toBe("dormant");
-  // The un-resumable rows are pruned from the durable store (gone for good, not just hidden).
+  expect(hub.getSession("lost-2")?.status).toBe("dormant");
+  // The kept rows stay in the store; the never-used create AND the stale zombie are pruned for good.
   expect(store.get("live-1")).toBeDefined();
   expect(store.get("err-1")).toBeDefined();
-  expect(store.get("dead-1")).toBeUndefined();
-  expect(store.get("dead-2")).toBeUndefined();
+  expect(store.get("lost-1")).toBeDefined();
+  expect(store.get("lost-2")).toBeDefined();
+  expect(store.get("never-1")).toBeUndefined();
+  expect(store.get("stale-1")).toBeUndefined();
   store.close();
 });
 

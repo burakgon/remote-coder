@@ -22,9 +22,20 @@ import type {
 import type { SessionStore } from "./session-store.js";
 import type { HistoryService } from "./history-service.js";
 import type { ImageStore } from "./image-store.js";
+import type { FrameSpool } from "./frame-spool.js";
+import { spoolFrameIdentity } from "./frame-spool.js";
 import { slimImageBlocks } from "./transcript-images.js";
 
 export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
+
+/**
+ * How long a transcript-LESS session whose only content is its recovery spool is kept around. A crashed,
+ * never-resumed session's spool clears only on a `result` (which never comes), so without a retention
+ * bound each crash would leave a permanent rail row + spool file, accumulating unboundedly over months.
+ * Past this window the session is dropped and its spool cleared on the next boot / GET /sessions prune;
+ * recent ones are kept so a reopen still recovers the lost in-flight turn. 7 days.
+ */
+export const SPOOL_RECOVERY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Token usage for the context meter + whether a turn is currently in flight. Derived from the replay
  *  buffer so a (re)opened/switched chat can seed its wire state + meter immediately. */
@@ -315,6 +326,14 @@ export interface SessionHubOptions {
    *  into it and ships a `/images/<ref>` url ref instead (small payload, file-served, lazy). */
   imageStore?: ImageStore;
   /**
+   * Append-only per-session critical-frame spool (durability seam). When set, the hub spools a session's
+   * content-bearing frames so a restart can recover content the transcript hadn't yet captured; on boot /
+   * getHistory the spool is MERGED in when the transcript is missing/short. Cleared on each turn `result`
+   * (it only holds the in-flight tail). Injectable so it's unit-testable with an in-memory double; the
+   * default is files under the data dir (see openFrameSpool). Absent → no spooling (current behavior).
+   */
+  spool?: FrameSpool;
+  /**
    * Observe every emitted frame (push-trigger seam). Invoked AFTER the WS listener fan-out so a push
    * dispatcher sees result/permission/question frames without coupling to the WS layer. Must never
    * throw (it is wrapped in a try/catch here so a push failure can't unwind the claude emit).
@@ -329,6 +348,7 @@ export class SessionHub {
   private readonly store?: SessionStore;
   private readonly history?: HistoryService;
   private readonly imageStore?: ImageStore;
+  private readonly spool?: FrameSpool;
   private readonly onFrame?: (sessionId: string, frame: ServerFrame) => void;
   private readonly records = new Map<string, SessionRecord>();
   /**
@@ -348,6 +368,7 @@ export class SessionHub {
     this.store = opts.store;
     this.history = opts.history;
     this.imageStore = opts.imageStore;
+    this.spool = opts.spool;
     this.onFrame = opts.onFrame;
   }
 
@@ -499,6 +520,10 @@ export class SessionHub {
    */
   private emitFrame(record: SessionRecord, kind: ServerFrameKind, payload: unknown): ServerFrame {
     const frame = record.buffer.push(kind, payload);
+    // DURABILITY: append content-bearing frames to the on-disk spool so a crash/restart can recover the
+    // in-flight turn the transcript hasn't fsynced yet. `append` self-filters to spoolable frames and is
+    // best-effort (never throws), so this can't unwind the claude emit. Cleared on each `result`.
+    this.spool?.append(record.meta.id, frame);
     for (const listener of record.listeners) listener(frame);
     if (this.onFrame) {
       try {
@@ -645,6 +670,11 @@ export class SessionHub {
         this.persist(record.meta);
       }
       emit("result", result);
+      // The turn COMPLETED — its content is now in the buffer (live) and Claude is transcribing it to its
+      // durable `.jsonl`. Clear the spool so it only ever holds the IN-FLIGHT tail; the result is a clean
+      // recovery boundary (a crash after this point recovers from the transcript, not the spool). Done
+      // AFTER emit so the result is appended-then-dropped atomically from the consumer's view.
+      this.spool?.clear(record.meta.id);
     });
     proc.on("diagnostic", (diag: DiagnosticEvent) => {
       if (stale()) return;
@@ -744,15 +774,29 @@ export class SessionHub {
    * transcript removed) disappears within one ~6s poll. Conservative by construction: only `dormant`/
    * `errored` records are even considered — a `running`/fresh session (a live process, or one just
    * created before its first turn) is never touched, and a dormant session WITH a transcript is kept
-   * (it's resumable). Reuses deleteSession so the record + the durable store row are both dropped.
+   * (it's resumable). A session with no transcript but RECOVERABLE spooled content (an in-flight turn the
+   * transcript hadn't fsynced before a crash) is ALSO kept — its reopen still shows the recovered content,
+   * so evicting it would silently lose that turn. Reuses deleteSession so the record + the durable store
+   * row are both dropped.
    */
   pruneDeadSessions(): void {
     for (const [id, record] of [...this.records]) {
-      const { status, cwd } = record.meta;
+      const { status, cwd, createdAt, lastActivityAt } = record.meta;
       if (status !== "dormant" && status !== "errored") continue; // never touch running/fresh sessions
       if (this.manager.getSession(id)) continue; // a live process → not dead
       if (this.hasResumableTranscript(cwd, id)) continue; // resumable → keep
-      this.deleteSession(id); // dead: no live process + no transcript → drop from the rail + the store
+      // RETENTION (zombie bound): a transcript-less session aged past the recovery window — or never used —
+      // is dropped even if its spool still has content (the window to recover the lost turn has expired).
+      // deleteSession also clears its spool, so the file stops accumulating.
+      if (this.isStaleTranscriptless(createdAt, lastActivityAt)) {
+        this.deleteSession(id);
+        continue;
+      }
+      // DURABILITY: a RECENT session with no transcript but RECOVERABLE spooled content (an in-flight turn
+      // the transcript hadn't fsynced before a crash) is kept — its reopen still shows that turn, so
+      // evicting it would silently lose content.
+      if (this.hasRecoverableContent(id)) continue;
+      this.deleteSession(id); // dead: no live process + no transcript + nothing spooled → drop everywhere
     }
   }
 
@@ -869,12 +913,19 @@ export class SessionHub {
             },
           })),
         );
-        return { history, sinceSeq, truncated: windowed.length < turns.length, total: turns.length, live };
+        // DURABILITY: merge any spooled in-flight frames the transcript hasn't captured (a crash before
+        // Claude fsynced the turn). Reconciled by identity, so a frame already in the transcript is not
+        // duplicated; `sinceSeq` bounds it to frames the WS replay WON'T re-deliver (no double-count).
+        const merged = this.mergeSpool(id, history, sinceSeq);
+        return { history: merged, sinceSeq, truncated: windowed.length < turns.length, total: turns.length, live };
       }
     }
     // No transcript (brand-new session, or no HistoryService configured): the buffer is all we have.
-    // Its frames already carry real WS seqs, so the client resumes the WS from the same `sinceSeq`.
-    return { history: record.buffer.snapshot(), sinceSeq, truncated: false, live };
+    // Its frames already carry real WS seqs, so the client resumes the WS from the same `sinceSeq`. After
+    // a restart the buffer is empty but the spool may hold the lost in-flight turn — merge it so a reopen
+    // shows the recovered content (deduped by identity against whatever the buffer already has).
+    const fallback = this.mergeSpool(id, record.buffer.snapshot(), sinceSeq);
+    return { history: fallback, sinceSeq, truncated: false, live };
   }
 
   /** Live subscriber count for a session (0 if unknown). Lets the WS layer assert no leak. */
@@ -1074,6 +1125,10 @@ export class SessionHub {
 
     // conversation / both: STOP the live turn/process, then RESUME truncated at the checkpoint. The CLI
     // rejects --resume together with a live process for the same id, so we kill the current one first.
+    // DURABILITY: a conversation rewind DROPS every turn after the checkpoint — so the spool's in-flight
+    // tail (post-checkpoint by construction) is now stale. Clear it BEFORE the respawn so a reopen before
+    // the next `result` can't resurrect pre-rewind content the conversation no longer has.
+    this.spool?.clear(id);
     // The respawn is registered in resumeInFlight so a concurrent ensureLive awaits it (no double-spawn).
     const respawn = (async () => {
       if (this.manager.getSession(id)) {
@@ -1136,6 +1191,8 @@ export class SessionHub {
     record.questionToolInputs.clear();
     record.pending.clear();
     this.store?.delete(id);
+    // The session is closed for good — drop its recovery spool too (nothing left to recover into).
+    this.spool?.clear(id);
   }
 
   /**
@@ -1197,20 +1254,41 @@ export class SessionHub {
   }
 
   /**
-   * Rehydrate session metas from the store at boot (no live process is spawned) — but PRUNE the dead
-   * ones so the rail never shows a session that does nothing when tapped. A stored session is DEAD when
-   * it has NO resumable transcript on disk: it was created but its turn never landed (commonly a restart
-   * — e.g. an OTA update — caught the turn mid-flight), so `claude --resume` can't revive it. Such
-   * sessions are deleted from the durable store and skipped. Status is NOT the signal: an `errored`
-   * session that still has a transcript is resumable, so it's kept and rehydrated as dormant (a
-   * transient crash gets another chance) — only the truly un-resumable are dropped.
+   * Rehydrate session metas from the store at boot (no live process is spawned).
+   *
+   * DURABILITY (never silently lose a session): a turn's streamed content lives only in the in-memory
+   * ReplayBuffer until Claude transcribes it to its own `.jsonl` (whose fsync timing we don't control).
+   * If the process dies before that — a crash / OTA restart / sleep-kill caught the turn mid-flight — the
+   * transcript can be empty/missing even though the user definitely had a session with activity. The old
+   * code HARD-DELETED any stored session without a transcript at boot, so that session vanished from the
+   * rail entirely: the user lost not just the in-flight content but the very fact the session existed.
+   *
+   * So we keep a transcript-less session that had ANY activity as `dormant` (visible + resumable —
+   * `claude --resume` may still revive it, and even if it can't the user must SEE it existed). The
+   * critical-frame spool (see {@link mergeSpool}) then recovers the in-flight content on getHistory. The
+   * ONE narrow case we still drop: a session CREATED-BUT-NEVER-USED (no transcript AND no recorded
+   * activity, i.e. `lastActivityAt <= createdAt`) — a stray create whose turn was never sent has nothing
+   * to show and nothing to resume, so it's pruned to avoid cluttering the rail with dead rows.
+   *
+   * Status is NOT the signal: an `errored` session is rehydrated as `dormant` (a transient crash gets
+   * another chance). pruneDeadSessions still LIVE-evicts a transcript-less session later, but only when
+   * its spool is also empty (so recoverable content is never thrown away) — see pruneDeadSessions.
+   *
+   * RETENTION (zombie bound): a transcript-less session is dropped (and its spool cleared) once it is
+   * STALE — never used, or its last activity is older than {@link SPOOL_RECOVERY_TTL_MS}. Without this a
+   * crashed-then-never-resumed session would linger forever (its spool only clears on a `result` that
+   * never comes), accumulating a rail row + spool file per crash over months.
    */
   loadFromStore(): void {
     if (!this.store) return;
     for (const s of this.store.list()) {
       if (this.records.has(s.id)) continue;
-      if (!this.hasResumableTranscript(s.cwd, s.id)) {
-        this.store.delete(s.id); // drop the dead session so it stops cluttering the rail
+      if (!this.hasResumableTranscript(s.cwd, s.id) && this.isStaleTranscriptless(s.createdAt, s.lastActivityAt)) {
+        // No transcript AND stale (never used, or aged past the recovery window): a true dead row. Drop it
+        // from the store AND clear any leftover spool so it stops accumulating. A transcript-less session
+        // that is RECENT keeps its spool and rehydrates below (durability — the reopen recovers its tail).
+        this.store.delete(s.id);
+        this.spool?.clear(s.id);
         continue;
       }
       const meta: SessionMeta = {
@@ -1255,6 +1333,67 @@ export class SessionHub {
     // Tolerant of encodeProjectDir lossiness: resolveTranscriptPath falls back to a scan, so a genuinely
     // resumable session is never deleted at boot / on prune just because its encoded path didn't match.
     return this.history.resolveTranscriptPath(cwd, id) !== undefined;
+  }
+
+  /**
+   * True when a session has spooled in-flight content we could recover (crash-safe survival). A
+   * transcript-less session with a non-empty spool MUST NOT be pruned at boot / on the live prune — that
+   * spool holds the very turn the transcript hadn't fsynced before the crash. Prefers the in-memory
+   * record's buffer when present (already loaded), else asks the on-disk spool. With no spool configured
+   * there is nothing to recover.
+   */
+  private hasRecoverableContent(id: string): boolean {
+    if (this.records.get(id)?.buffer.snapshot().length) return true;
+    return (this.spool?.read(id).length ?? 0) > 0;
+  }
+
+  /**
+   * RETENTION bound for a transcript-LESS session (its only content is a recovery spool that clears only
+   * on a `result` that may never come). True — drop it — when it was NEVER used (no recorded activity,
+   * `lastActivityAt <= createdAt`) OR its last activity is older than {@link SPOOL_RECOVERY_TTL_MS}. A
+   * recent, used-but-transcript-less session is NOT stale: its reopen still recovers the lost in-flight
+   * turn from the spool, so it's kept.
+   */
+  private isStaleTranscriptless(createdAt: number, lastActivityAt: number): boolean {
+    if (lastActivityAt <= createdAt) return true; // created-but-never-used → a dead row
+    return this.now() - lastActivityAt > SPOOL_RECOVERY_TTL_MS; // aged past the recovery window
+  }
+
+  /**
+   * Merge a session's spooled critical frames into the history we're about to return, so a reopen after a
+   * crash/restart shows the IN-FLIGHT content the transcript hadn't yet captured. Reconciles by IDENTITY
+   * (uuid for events, requestId/id/checkpointId for prompt/attachment/rewound frames — see
+   * spoolFrameIdentity) so a spooled frame the transcript ALREADY has is dropped (no double-count). The
+   * surviving spool frames are appended AFTER `history` (they are the newest tail by construction) with
+   * continued 1-based display seqs. A spool frame with no stable identity is kept (we prefer recovering
+   * content over dropping it). Returns `history` unchanged when no spool is configured / it's empty.
+   *
+   * RACE GUARD (`sinceSeq`): getHistory captures `sinceSeq = buffer.maxSeq()` and then AWAITS the
+   * transcript read / image slimming. A LIVE process can emit frames during those awaits — those carry
+   * seq > sinceSeq, get spooled, and ALSO arrive via the `?since=sinceSeq` WS replay the client connects
+   * with. Merging them too would double-deliver (the assistant path has no client-side uuid dedup). So we
+   * contribute ONLY spooled frames with `seq <= sinceSeq`: a frame seq > sinceSeq is recovered by the WS
+   * replay, and a spooled seq <= sinceSeq frame the transcript lacks is the genuine lost tail.
+   */
+  private mergeSpool(id: string, history: ServerFrame[], sinceSeq: number): ServerFrame[] {
+    const spooled = (this.spool?.read(id) ?? []).filter((f) => f.seq <= sinceSeq);
+    if (spooled.length === 0) return history;
+    // Identities the returned history already covers — both its event uuids and prompt/etc ids — so a
+    // spooled frame already represented by the transcript is not appended a second time.
+    const seen = new Set<string>();
+    for (const f of history) {
+      const ident = spoolFrameIdentity(f);
+      if (ident) seen.add(ident);
+    }
+    let seq = history.length;
+    const extra: ServerFrame[] = [];
+    for (const f of spooled) {
+      const ident = spoolFrameIdentity(f);
+      if (ident && seen.has(ident)) continue; // transcript already has it → don't duplicate
+      if (ident) seen.add(ident);
+      extra.push({ seq: ++seq, kind: f.kind, payload: f.payload });
+    }
+    return extra.length > 0 ? [...history, ...extra] : history;
   }
 
   /** Ensure a record has a LIVE process; resume a dormant/dead one in its stored cwd. */
