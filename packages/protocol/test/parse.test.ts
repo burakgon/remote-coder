@@ -104,6 +104,16 @@ test("result usage: contextTokens sums input + cache-read + cache-creation + out
   });
 });
 
+test("result carries the turn duration (duration_ms → durationMs) for the turn-end marker", () => {
+  const line = JSON.stringify({ type: "result", subtype: "success", session_id: "s1", duration_ms: 4123 });
+  expect(parseLine(line)).toMatchObject({ type: "result", durationMs: 4123 });
+  // Absent → omitted (not 0).
+  expect(parseLine(JSON.stringify({ type: "result", subtype: "success" })).type).toBe("result");
+  expect(
+    (parseLine(JSON.stringify({ type: "result", subtype: "success" })) as { durationMs?: number }).durationMs,
+  ).toBeUndefined();
+});
+
 test("result usage: contextWindow is taken from modelUsage (authoritative 1M window)", () => {
   const line = JSON.stringify({
     type: "result",

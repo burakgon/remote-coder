@@ -201,6 +201,8 @@ export interface ResultPayload {
   result?: string;
   sessionId?: string;
   totalCostUsd?: number;
+  /** Wall-clock duration of the turn in ms (the CLI's `duration_ms`) — shown on the turn-end marker. */
+  durationMs?: number;
   /**
    * Token usage for the turn. `contextTokens` = how full the model's context window now is (the whole
    * prompt sent + this turn's output), which drives the chat's context meter / "time to /compact" hint.

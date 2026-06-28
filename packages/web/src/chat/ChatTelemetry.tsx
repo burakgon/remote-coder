@@ -74,6 +74,9 @@ export interface ChatTelemetryProps {
   /** TRUE while the live WS link is down after having been up — the label reads "Reconnecting…" so a
    *  dropped stream is visible rather than looking like Claude just went quiet. Outranks the wire label. */
   reconnecting?: boolean;
+  /** Cumulative session cost (USD) from the latest result — always-visible "/cost" parity, since the
+   *  per-turn marker showing it may be scrolled off. Omitted/0 → hidden. */
+  cost?: number;
 }
 
 export function ChatTelemetry({
@@ -83,6 +86,7 @@ export function ChatTelemetry({
   model,
   compacting,
   reconnecting,
+  cost,
 }: ChatTelemetryProps) {
   // Compaction counts as a working state for ALL the visuals: a /compact emits no streaming/tool frames,
   // so the wire stays idle — but the indicator must still look alive (coral dot, ping, typing ellipsis).
@@ -125,6 +129,12 @@ export function ChatTelemetry({
         )}
       </span>
 
+      {typeof cost === "number" && cost > 0 && (
+        <span className="rc-tele__cost" aria-label={`Session cost ${cost.toFixed(4)} dollars`}>
+          ${cost < 1 ? cost.toFixed(4) : cost.toFixed(2)}
+        </span>
+      )}
+
       {hasContext && (
         <span
           className="rc-tele__ctx"
@@ -155,7 +165,9 @@ const telemetryCss = `
   background: var(--surface);
   font-family: var(--font-mono); font-size: var(--fs-xs);
 }
-.rc-tele__status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+/* margin-right:auto pins the status left and packs the cost + context meter together on the right. */
+.rc-tele__status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; margin-right: auto; }
+.rc-tele__cost { flex: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 /* The live-wire dot. While the agent works it emits a single expanding radar ring (the ::ping sibling)
    — calmer + more "alive" than a blunt opacity blink. */
 .rc-tele__dot { position: relative; width: 8px; height: 8px; border-radius: 50%; flex: none; }

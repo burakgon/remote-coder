@@ -164,6 +164,7 @@ export function parseLine(line: string): InboundEvent | null {
         result: str(obj.result),
         sessionId: str(obj.session_id),
         totalCostUsd: typeof obj.total_cost_usd === "number" ? obj.total_cost_usd : undefined,
+        durationMs: typeof obj.duration_ms === "number" ? obj.duration_ms : undefined,
         ...(contextTokens > 0
           ? {
               usage: {

@@ -27,6 +27,48 @@ describe("MessageList", () => {
     expect(screen.getByText(/0\.0123/)).toBeInTheDocument();
   });
 
+  it("shows the failure reason + turn duration on an errored result (not just 'error')", () => {
+    render(
+      <MessageList
+        view={viewWith({
+          turns: [
+            {
+              kind: "result",
+              result: "API Error: 529 overloaded",
+              isError: true,
+              totalCostUsd: 0.02,
+              durationMs: 4100,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("error")).toBeInTheDocument();
+    expect(screen.getByText(/API Error: 529 overloaded/)).toBeInTheDocument();
+    expect(screen.getByText(/4\.1s/)).toBeInTheDocument();
+  });
+
+  it("does NOT echo a SUCCESS result string (it duplicates the assistant message) but shows duration", () => {
+    render(
+      <MessageList
+        view={viewWith({
+          turns: [{ kind: "result", result: "the full answer again", isError: false, durationMs: 320 }],
+        })}
+      />,
+    );
+    expect(screen.getByText("done")).toBeInTheDocument();
+    expect(screen.queryByText("the full answer again")).not.toBeInTheDocument();
+    expect(screen.getByText(/320ms/)).toBeInTheDocument();
+  });
+
+  it("a user STOP stays calm — 'stopped', no red error reason — even with a result string", () => {
+    render(
+      <MessageList view={viewWith({ turns: [{ kind: "result", result: "aborted", isError: true, stopped: true }] })} />,
+    );
+    expect(screen.getByText("stopped")).toBeInTheDocument();
+    expect(screen.queryByText("aborted")).not.toBeInTheDocument();
+  });
+
   it("renders a slash command as a clean command marker (the command + its output, never raw XML)", () => {
     render(<MessageList view={viewWith({ turns: [{ kind: "command", command: "/compact", output: "Compacted" }] })} />);
     expect(screen.getByText("/compact")).toBeInTheDocument();

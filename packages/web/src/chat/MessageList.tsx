@@ -611,34 +611,70 @@ function ToolCluster({ steps, running }: { steps: ToolStep[]; running?: boolean 
  * user-initiated STOP (`item.stopped`) renders as a CALM neutral "stopped" — a stop glyph in muted
  * text, never the red error tint — because aborting a turn is intentional, not a failure.
  */
+/** A turn's wall-clock duration, compactly: 320 → "320ms", 4100 → "4.1s", 65000 → "1m 5s". */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${Math.round(s % 60)}s`;
+}
+
 function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> }) {
   // "stopped" wins over isError: an aborted turn carries the protocol error flags but is calm, not red.
   const tone = item.stopped ? "stopped" : item.isError ? "error" : "done";
   const color = tone === "stopped" ? "var(--text-muted)" : tone === "error" ? "var(--err)" : "var(--ok)";
   const icon: IconName = tone === "stopped" ? "stop" : tone === "error" ? "alert" : "check";
+  // On a genuine error (NOT a user stop) the result string IS the failure reason (e.g. an API error), not
+  // a copy of the assistant message — so surface it. The terminal shows the error; we showed only "error".
+  const errorText = tone === "error" && item.result && item.result.trim().length > 0 ? item.result.trim() : undefined;
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--sp-2)",
-        color: "var(--text-faint)",
-        fontSize: "var(--fs-xs)",
-        fontFamily: "var(--font-mono)",
-      }}
-    >
-      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
-      <span style={{ color, display: "inline-flex", alignItems: "center", gap: 4 }}>
-        <Icon name={icon} size={13} />
-        {tone}
-      </span>
-      {/* We deliberately DON'T echo `item.result` — the CLI's result text is a copy of the assistant
-          message already shown above, so printing it here duplicated every turn. The marker stays a
-          quiet "done · $cost" (a stopped turn's result is just the internal "aborted" string anyway). */}
-      {item.totalCostUsd !== undefined && item.totalCostUsd > 0 && (
-        <span style={{ color: "var(--text-muted)" }}>· ${item.totalCostUsd.toFixed(4)}</span>
+    <div style={{ display: "grid", gap: "var(--sp-1)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--sp-2)",
+          color: "var(--text-faint)",
+          fontSize: "var(--fs-xs)",
+          fontFamily: "var(--font-mono)",
+        }}
+      >
+        <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+        <span style={{ color, display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <Icon name={icon} size={13} />
+          {tone}
+        </span>
+        {/* duration + cost (cumulative session cost from the CLI). We don't echo a SUCCESS result string —
+            it duplicates the assistant message already shown above. */}
+        {item.durationMs !== undefined && item.durationMs > 0 && (
+          <span style={{ color: "var(--text-muted)" }}>· {formatDuration(item.durationMs)}</span>
+        )}
+        {item.totalCostUsd !== undefined && item.totalCostUsd > 0 && (
+          <span style={{ color: "var(--text-muted)" }}>· ${item.totalCostUsd.toFixed(4)}</span>
+        )}
+        <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
+      </div>
+      {errorText && (
+        <div
+          role="alert"
+          style={{
+            color: "var(--err)",
+            background: "var(--err-bg)",
+            border: "1px solid var(--err-border)",
+            borderRadius: "var(--radius-sm)",
+            padding: "var(--sp-2) var(--sp-3)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--fs-xs)",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+            maxHeight: 160,
+            overflowY: "auto",
+          }}
+        >
+          {errorText}
+        </div>
       )}
-      <span aria-hidden style={{ height: 1, flex: 1, background: "var(--border)" }} />
     </div>
   );
 }

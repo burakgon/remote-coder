@@ -39,6 +39,13 @@ describe("ChatTelemetry", () => {
     expect(screen.queryByText("ctx")).not.toBeInTheDocument();
   });
 
+  it("shows the cumulative session cost when provided, hidden at zero/absent", () => {
+    const { rerender } = render(<ChatTelemetry wireState="idle" cost={0.1234} />);
+    expect(screen.getByText("$0.1234")).toBeInTheDocument();
+    rerender(<ChatTelemetry wireState="idle" />);
+    expect(screen.queryByText(/^\$/)).not.toBeInTheDocument();
+  });
+
   it("idle reads as 'Ready' (the composer is open for input)", () => {
     render(<ChatTelemetry wireState="idle" />);
     expect(screen.getByText("Ready")).toBeInTheDocument();

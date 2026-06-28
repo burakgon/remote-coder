@@ -86,6 +86,8 @@ export interface ResultEvent {
   result?: string;
   sessionId?: string;
   totalCostUsd?: number;
+  /** Wall-clock duration of the turn in ms (the CLI's `duration_ms`) — shown on the turn-end marker. */
+  durationMs?: number;
   /**
    * Token usage for the turn, normalized for the UI's context meter. `contextTokens` is how full the
    * model's context window now is — the whole prompt that was sent (input + cache-read + cache-creation)

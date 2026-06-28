@@ -409,6 +409,8 @@ export function ChatView({
         // "Reconnecting…" while the live link is down (after having been up) — the session keeps running
         // on the host; this just tells the user the phone is re-establishing the stream.
         reconnecting={reconnecting}
+        // Cumulative session cost (always-visible /cost parity), from the latest result.
+        cost={safeView.lastResult?.totalCostUsd}
       />
       <Composer
         commands={safeView.commands}

@@ -58,7 +58,14 @@ export type TurnItem =
   // the transcript, the question frame isn't) so a reopened chat shows a clean Q&A instead of raw MCP tool
   // plumbing. `answer` is filled from the paired tool_result; the card renders only once it has one.
   | { kind: "asked-question"; id: string; questions: AskedQuestion[]; answer?: string }
-  | { kind: "result"; result?: string; isError?: boolean; totalCostUsd?: number; stopped?: boolean }
+  | {
+      kind: "result";
+      result?: string;
+      isError?: boolean;
+      totalCostUsd?: number;
+      stopped?: boolean;
+      durationMs?: number;
+    }
   | { kind: "attachment"; id: string; path: string; name: string; caption?: string; isImage: boolean }
   // The "↩ Rewound to here" marker appended after a rewind. For conversation/both the thread above is
   // truncated to the checkpoint before this marker is added.
@@ -551,7 +558,14 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     next.wireState = stopped ? "idle" : r.isError ? "error" : "success";
     next.turns = [
       ...view.turns,
-      { kind: "result", result: r.result, isError: r.isError, totalCostUsd: r.totalCostUsd, stopped },
+      {
+        kind: "result",
+        result: r.result,
+        isError: r.isError,
+        totalCostUsd: r.totalCostUsd,
+        stopped,
+        durationMs: r.durationMs,
+      },
     ];
     return next;
   }
