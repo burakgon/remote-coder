@@ -18,6 +18,7 @@ import { enablePush, disablePush, currentPushState } from "./pwa/push";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
 import { UpdateBanner } from "./pwa/UpdateBanner";
 import { UpdatePanel } from "./update/UpdatePanel";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { BUILD_SHA } from "./build-info";
 import { claimAutoRefresh, hardRefresh, isClientStale } from "./update/stale-client";
 import { useOnline } from "./pwa/online-status";
@@ -679,17 +680,21 @@ export function App() {
               // set live in ChatView's component state; a stable element position would reuse the
               // same instance across sessions and leak an "Always allow <tool>" rule from one
               // session into another — a cross-session bypass of the permission gate.
-              <ChatView
-                key={active.id}
-                session={active}
-                api={api}
-                token={token}
-                onSlashCommand={onSlashCommand}
-                onClose={closeSession}
-                onShowSessions={() => setSessionsOpen(true)}
-                needsYou={awaitingCount(sessions)}
-                models={models}
-              />
+              // A chat-level boundary (keyed by session) so a render crash in ONE conversation shows a
+              // recoverable error in the chat pane instead of taking the whole app down to a gray screen —
+              // the rail stays usable, and switching sessions resets it.
+              <ErrorBoundary key={active.id} variant="compact" label="this conversation">
+                <ChatView
+                  session={active}
+                  api={api}
+                  token={token}
+                  onSlashCommand={onSlashCommand}
+                  onClose={closeSession}
+                  onShowSessions={() => setSessionsOpen(true)}
+                  needsYou={awaitingCount(sessions)}
+                  models={models}
+                />
+              </ErrorBoundary>
             ) : (
               // No matching session (e.g. a stale deep-link id). There's no ChatHeader here, so keep
               // the sessions sheet reachable on mobile via the same top-left, in-flow menu button.

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import "./styles/global.css";
 import { App } from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 // Auto-update the service worker (precached shell loads offline). With `registerType: "autoUpdate"`
 // the new SW activates in the background (skipWaiting), but the OPEN page keeps running the stale JS
@@ -24,6 +25,10 @@ registerSW({ immediate: true });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    {/* Last-resort boundary: a render crash anywhere shows a recoverable error (with Reload =
+        hardRefresh) instead of a silent gray screen. */}
+    <ErrorBoundary variant="full">
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
