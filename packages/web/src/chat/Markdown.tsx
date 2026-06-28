@@ -110,6 +110,13 @@ const components: Components = {
   // CodeBlock renders a <div>; without a passthrough `pre`, react-markdown wraps it in a <pre> (invalid
   // div-in-pre nesting + the default <pre>'s own margins boxing the card).
   pre: ({ children }) => <>{children}</>,
+  // GFM task lists ("- [ ] item") render a checkbox <input>. react-markdown emits it WITHOUT `disabled`,
+  // so it looks tappable but toggling does nothing (the markdown is immutable model output). Force it
+  // disabled (and keep it inert) so it reads as a status marker, not a broken interactive control.
+  input: ({ type, checked }) =>
+    type === "checkbox" ? (
+      <input type="checkbox" checked={!!checked} disabled readOnly style={{ marginRight: "var(--sp-2)" }} />
+    ) : null,
   // Markdown images scale to the column instead of overflowing at 390px; a broken src hides quietly.
   img: ({ src, alt }) => (
     <img

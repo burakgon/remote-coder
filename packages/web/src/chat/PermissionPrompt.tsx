@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
 import { IrisCard } from "./IrisCard";
+import { DiffView } from "./DiffView";
 import type { PermissionPayload } from "../types/server";
 
 export interface PermissionPromptProps {
@@ -12,9 +14,12 @@ export interface PermissionPromptProps {
    * we never ship a dead control.
    */
   onAlwaysAllow?: (toolName: string) => void;
+  /** The session's active permission mode (default | acceptEdits | plan | bypassPermissions) — shown as
+   *  a small chip so the user knows the standing posture under which they're being asked. */
+  permissionMode?: string;
 }
 
-/** Pull a short human-readable detail from the tool input for display (path/command/question). */
+/** Pull a short one-line detail from the tool input for the simple case (path/url/question). */
 function summarizeInput(input: unknown): string | undefined {
   if (input && typeof input === "object") {
     const obj = input as Record<string, unknown>;
@@ -24,6 +29,20 @@ function summarizeInput(input: unknown): string | undefined {
   }
   return undefined;
 }
+
+const monoPanel: CSSProperties = {
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--fs-sm)",
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-sm)",
+  padding: "var(--sp-2) var(--sp-3)",
+  whiteSpace: "pre-wrap",
+  overflowWrap: "anywhere",
+  maxHeight: 220,
+  overflowY: "auto",
+  margin: 0,
+};
 
 /**
  * Heuristic flag for a visibly destructive shell command so the mono panel is tinted with --err (the
@@ -37,10 +56,87 @@ function isDangerousCommand(detail: string | undefined): boolean {
   );
 }
 
-export function PermissionPrompt({ permission, onAnswer, onAlwaysAllow }: PermissionPromptProps) {
-  const detail = summarizeInput(permission.toolInput);
+/** What's being approved, rendered RICHLY so the user knows exactly what they're allowing: a Bash command
+ *  (newlines preserved, danger-tinted), an Edit/MultiEdit as a ±diff, a Write's content preview, else the
+ *  one-line path/url/question. The terminal shows the diff/command; a bare "Allow Edit" hid the change. */
+function PermissionDetail({ toolName, input }: { toolName: string; input: unknown }) {
+  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+
+  if (toolName === "Bash" && typeof obj.command === "string") {
+    const dangerous = isDangerousCommand(obj.command);
+    return (
+      <pre
+        style={{
+          ...monoPanel,
+          color: dangerous ? "var(--err)" : "var(--text)",
+          background: dangerous ? "var(--err-bg)" : "var(--surface-2)",
+          border: `1px solid ${dangerous ? "var(--err-border)" : "var(--border)"}`,
+        }}
+      >
+        {obj.command}
+      </pre>
+    );
+  }
+
+  // Edit: show the file + the ±diff of what changes.
+  if (typeof obj.old_string === "string" && typeof obj.new_string === "string") {
+    return (
+      <>
+        {typeof obj.file_path === "string" && <PathLine path={obj.file_path} />}
+        <DiffView oldText={obj.old_string} newText={obj.new_string} />
+      </>
+    );
+  }
+  // MultiEdit: file + one diff per edit.
+  if (toolName === "MultiEdit" && Array.isArray(obj.edits)) {
+    return (
+      <>
+        {typeof obj.file_path === "string" && <PathLine path={obj.file_path} />}
+        {obj.edits.map((e, i) => {
+          const ed = (e ?? {}) as { old_string?: unknown; new_string?: unknown };
+          if (typeof ed.old_string !== "string" || typeof ed.new_string !== "string") return null;
+          return <DiffView key={i} oldText={ed.old_string} newText={ed.new_string} />;
+        })}
+      </>
+    );
+  }
+  // Write: file + a preview of the content being written.
+  if (typeof obj.content === "string" && (typeof obj.file_path === "string" || typeof obj.path === "string")) {
+    const path = typeof obj.file_path === "string" ? obj.file_path : (obj.path as string);
+    return (
+      <>
+        <PathLine path={path} />
+        <pre style={monoPanel}>{obj.content}</pre>
+      </>
+    );
+  }
+
+  const detail = summarizeInput(input);
+  if (!detail) return null;
+  return <pre style={{ ...monoPanel, wordBreak: "break-all" }}>{detail}</pre>;
+}
+
+function PathLine({ path }: { path: string }) {
+  return (
+    <div
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: "var(--fs-xs)",
+        color: "var(--text-muted)",
+        marginBottom: 4,
+        overflowWrap: "anywhere",
+      }}
+    >
+      {path}
+    </div>
+  );
+}
+
+export function PermissionPrompt({ permission, onAnswer, onAlwaysAllow, permissionMode }: PermissionPromptProps) {
   const toolName = permission.toolName ?? "tool";
-  const dangerous = isDangerousCommand(detail);
+  // The mode chip is shown only for a NON-default standing posture (default is implicit; bypass never asks).
+  const showMode =
+    permissionMode !== undefined && permissionMode !== "default" && permissionMode !== "bypassPermissions";
 
   // a11y: when the prompt appears, move focus to it so a keyboard / screen-reader user lands on the
   // request immediately (Claude is waiting on the remote machine). The IrisCard region is the focus
@@ -52,26 +148,28 @@ export function PermissionPrompt({ permission, onAnswer, onAlwaysAllow }: Permis
 
   return (
     <IrisCard title="Awaiting you — permission" ariaLabel="Permission request" regionRef={regionRef}>
-      <div style={{ fontSize: "var(--fs-base)" }}>
-        Claude wants to run{" "}
-        <strong style={{ color: "var(--text)", fontFamily: "var(--font-display)" }}>{toolName}</strong>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "var(--fs-base)" }}>
+          Claude wants to run{" "}
+          <strong style={{ color: "var(--text)", fontFamily: "var(--font-display)" }}>{toolName}</strong>
+        </span>
+        {showMode && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--fs-xs)",
+              color: "var(--text-muted)",
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-pill)",
+              padding: "1px var(--sp-2)",
+            }}
+          >
+            mode: {permissionMode}
+          </span>
+        )}
       </div>
-      {detail && (
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "var(--fs-sm)",
-            color: dangerous ? "var(--err)" : "var(--text)",
-            background: dangerous ? "var(--err-bg)" : "var(--surface-2)",
-            border: `1px solid ${dangerous ? "var(--err-border)" : "var(--border)"}`,
-            borderRadius: "var(--radius-sm)",
-            padding: "var(--sp-2) var(--sp-3)",
-            wordBreak: "break-all",
-          }}
-        >
-          {detail}
-        </div>
-      )}
+      <PermissionDetail toolName={toolName} input={permission.toolInput} />
       <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-2)" }}>
         <button
           type="button"

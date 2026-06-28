@@ -7,7 +7,7 @@ import { Markdown } from "./Markdown";
 import { CodeBlock } from "./CodeBlock";
 import { imageBlockSrc } from "./content-images";
 import { planRender, parseToolResult, summarizeToolInput, type ToolStep } from "./tool-cluster";
-import { lineDiff } from "./diff";
+import { DiffView } from "./DiffView";
 import { SubagentCard } from "./SubagentCard";
 import type { SessionView, SubagentThread, TurnItem } from "../store/frame-reducer";
 import type { ContentBlock } from "../types/server";
@@ -1143,34 +1143,6 @@ function TodoList({ todos }: { todos: unknown[] }) {
         );
       })}
     </div>
-  );
-}
-
-/** Render an Edit's old→new as a unified ±diff (LCS): removed lines in the error tint with a `-`, added
- *  lines in the ok tint with a `+`, unchanged lines as quiet context — the terminal's edit presentation. */
-function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
-  const lines = lineDiff(oldText, newText);
-  return (
-    <pre style={{ ...rawPanelStyle }}>
-      {lines.map((l, i) => {
-        const sign = l.type === "add" ? "+" : l.type === "remove" ? "-" : " ";
-        const color = l.type === "add" ? "var(--ok)" : l.type === "remove" ? "var(--err)" : "var(--code-text)";
-        const background =
-          l.type === "add"
-            ? "var(--ok-soft, rgba(126,176,108,0.10))"
-            : l.type === "remove"
-              ? "var(--err-soft, rgba(220,90,90,0.10))"
-              : "transparent";
-        return (
-          <div key={i} style={{ color, background, display: "flex", gap: "var(--sp-2)" }}>
-            <span aria-hidden style={{ flex: "none", opacity: 0.7, userSelect: "none" }}>
-              {sign}
-            </span>
-            <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{l.text}</span>
-          </div>
-        );
-      })}
-    </pre>
   );
 }
 

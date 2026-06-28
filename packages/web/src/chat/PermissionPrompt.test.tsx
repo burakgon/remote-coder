@@ -99,4 +99,24 @@ describe("PermissionPrompt", () => {
     expect(cmd.style.color).toContain("--err");
     expect(cmd.style.background).toContain("--err");
   });
+
+  it("shows an Edit as a ±diff so the user sees WHAT they're approving (not just 'Allow Edit')", () => {
+    const edit: PermissionPayload = {
+      requestId: "r5",
+      kind: "hook_callback",
+      toolName: "Edit",
+      toolInput: { file_path: "/x/a.ts", old_string: "const a = 1;", new_string: "const a = 2;" },
+    };
+    render(<PermissionPrompt permission={edit} onAnswer={vi.fn()} />);
+    expect(screen.getByText("/x/a.ts")).toBeInTheDocument();
+    expect(screen.getByText("const a = 1;")).toBeInTheDocument(); // removed line
+    expect(screen.getByText("const a = 2;")).toBeInTheDocument(); // added line
+  });
+
+  it("shows the active permission mode as a chip (not for default/bypass)", () => {
+    const { rerender } = render(<PermissionPrompt permission={perm} onAnswer={vi.fn()} permissionMode="acceptEdits" />);
+    expect(screen.getByText(/mode: acceptEdits/i)).toBeInTheDocument();
+    rerender(<PermissionPrompt permission={perm} onAnswer={vi.fn()} permissionMode="default" />);
+    expect(screen.queryByText(/mode:/i)).not.toBeInTheDocument();
+  });
 });

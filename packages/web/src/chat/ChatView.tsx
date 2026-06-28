@@ -352,6 +352,7 @@ export function ChatView({
           <div style={{ padding: "var(--sp-4)" }}>
             <PermissionPrompt
               permission={pending}
+              permissionMode={session.permissionMode}
               onAnswer={(decision) => answer(pending.requestId, decision)}
               onAlwaysAllow={(tool) => setAutoAllow((prev) => new Set(prev).add(tool))}
             />

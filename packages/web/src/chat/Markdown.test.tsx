@@ -25,4 +25,14 @@ describe("Markdown", () => {
     render(<Markdown>{"hello **world**"}</Markdown>);
     expect(screen.getByText("world").tagName.toLowerCase()).toBe("strong");
   });
+
+  it("renders GFM task-list checkboxes as DISABLED (inert status markers, not fake-interactive)", () => {
+    const md = ["- [x] done", "- [ ] todo"].join("\n");
+    const { container } = render(<Markdown>{md}</Markdown>);
+    const boxes = container.querySelectorAll('input[type="checkbox"]');
+    expect(boxes.length).toBe(2);
+    boxes.forEach((b) => expect((b as HTMLInputElement).disabled).toBe(true));
+    expect((boxes[0] as HTMLInputElement).checked).toBe(true);
+    expect((boxes[1] as HTMLInputElement).checked).toBe(false);
+  });
 });
