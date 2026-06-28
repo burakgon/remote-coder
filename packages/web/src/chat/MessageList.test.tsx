@@ -148,21 +148,23 @@ describe("MessageList", () => {
       ],
     });
 
-    it("renders the cluster collapsed: the 'Worked' header shows, but neither the input nor the raw JSON is in the default view", () => {
+    it("renders the cluster collapsed: header shows 'Worked' + the tool name, but NOT the input or raw JSON", () => {
       render(<MessageList view={cluster} />);
       // The collapsed cluster header is present.
       expect(screen.getByRole("button", { name: /expand worked steps/i })).toBeInTheDocument();
       expect(screen.getByText(/worked/i)).toBeInTheDocument();
-      // Collapsed: the step row, the tool input, and the RAW result JSON are NOT yet rendered.
-      expect(screen.queryByText("Bash")).not.toBeInTheDocument();
+      // The header now lists WHICH tools ran (at-a-glance) — "Bash" is shown collapsed…
+      expect(screen.getByText("Bash")).toBeInTheDocument();
+      // …but the tool input and the RAW result are still behind the expand.
       expect(screen.queryByText(/ls -la/)).not.toBeInTheDocument();
       expect(screen.queryByText(/Sent untitled\.wav/)).not.toBeInTheDocument();
     });
 
-    it("expands the cluster to reveal a quiet step row with the tool label", async () => {
+    it("expands the cluster to reveal a quiet step row with the tool label + arg", async () => {
       render(<MessageList view={cluster} />);
       await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
-      expect(screen.getByText("Bash")).toBeInTheDocument();
+      // "Bash" now appears both on the header summary AND the expanded step row.
+      expect(screen.getAllByText("Bash").length).toBeGreaterThanOrEqual(1);
       // The compact arg summary shows on the row.
       expect(screen.getByText(/ls -la/)).toBeInTheDocument();
       // ...but the RAW result JSON is still behind the step's own expand.
@@ -347,6 +349,47 @@ describe("MessageList", () => {
       expect(screen.getByText("const a = 2;")).toBeInTheDocument();
       expect(screen.queryByText("old")).not.toBeInTheDocument();
       expect(screen.queryByText("new")).not.toBeInTheDocument();
+    });
+
+    it("renders ExitPlanMode's plan as markdown (not escaped JSON)", async () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "tool-use",
+                id: "p1",
+                name: "ExitPlanMode",
+                input: { plan: "## Plan\n\n- step one\n- step two" },
+              },
+              { kind: "tool-result", toolUseId: "p1", content: "ok" },
+            ],
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
+      await userEvent.click(screen.getByRole("button", { name: /expand exitplanmode step/i }));
+      // The plan renders as a heading + list items (markdown), not a raw `{ "plan": ... }` blob.
+      expect(screen.getByRole("heading", { name: "Plan" })).toBeInTheDocument();
+      expect(screen.getByText("step one")).toBeInTheDocument();
+    });
+
+    it("surfaces failed tools + the tool names on the collapsed cluster header", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              { kind: "tool-use", id: "a", name: "Read", input: { file_path: "/a" } },
+              { kind: "tool-result", toolUseId: "a", content: "ok" },
+              { kind: "tool-use", id: "b", name: "Bash", input: { command: "false" } },
+              { kind: "tool-result", toolUseId: "b", content: "exit 1", isError: true },
+            ],
+          })}
+        />,
+      );
+      // The names + the failure are visible WITHOUT expanding the cluster.
+      expect(screen.getByText(/Read · Bash/)).toBeInTheDocument();
+      expect(screen.getByText(/1 failed/)).toBeInTheDocument();
     });
 
     it("shows a 'running' indicator on a live cluster whose tool has no result yet", () => {

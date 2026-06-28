@@ -530,6 +530,17 @@ function ToolCluster({ steps, running }: { steps: ToolStep[]; running?: boolean 
   // A live turn with a step still awaiting its result → the cluster has work in flight. Surface it on the
   // collapsed header (the cluster is collapsed by default) so the user sees Claude is mid-tool.
   const inFlight = running === true && steps.some((s) => !s.result);
+  // A failed tool would otherwise be buried in a collapsed cluster — surface the count on the header so a
+  // failure is never silently hidden (the terminal shows errors prominently).
+  const failed = steps.filter((s) => s.result?.isError === true).length;
+  // The distinct tool names (non-meta) for an at-a-glance "what ran" — the terminal lists each tool.
+  const toolNames = [...new Set(steps.filter((s) => !s.isMeta).map((s) => s.use.name))];
+  const namesLabel =
+    toolNames.length === 0
+      ? ""
+      : toolNames.length <= 4
+        ? toolNames.join(" · ")
+        : `${toolNames.slice(0, 4).join(" · ")} +${toolNames.length - 4}`;
   return (
     <div
       style={{
@@ -577,6 +588,38 @@ function ToolCluster({ steps, running }: { steps: ToolStep[]; running?: boolean 
         >
           {count} {count === 1 ? "step" : "steps"}
         </span>
+        {namesLabel && (
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--fs-xs)",
+              color: "var(--text-faint)",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {namesLabel}
+          </span>
+        )}
+        {failed > 0 && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              marginLeft: "var(--sp-1)",
+              color: "var(--err)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--fs-xs)",
+              flex: "none",
+            }}
+          >
+            <Icon name="x" size={12} />
+            {failed} failed
+          </span>
+        )}
         {inFlight && (
           <span
             style={{
@@ -1090,6 +1133,16 @@ function ToolInput({ name, input }: { name: string; input: unknown }) {
   // TodoWrite: render the task list as a real checklist (status icons + strikethrough), not raw JSON.
   if (name === "TodoWrite" && Array.isArray(obj.todos)) {
     return <TodoList todos={obj.todos} />;
+  }
+
+  // ExitPlanMode: the proposed PLAN is the payload — render it as markdown (the terminal shows the plan),
+  // not escaped JSON. (When plan mode gates this behind approval, the permission prompt shows it too.)
+  if (name === "ExitPlanMode" && typeof obj.plan === "string") {
+    return (
+      <div style={{ color: "var(--text)" }}>
+        <Markdown>{obj.plan}</Markdown>
+      </div>
+    );
   }
 
   // Edit: path + a unified ±diff (old→new) — the terminal shows edits as a diff; two separate code blocks

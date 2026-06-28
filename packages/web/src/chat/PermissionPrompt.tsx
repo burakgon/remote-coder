@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { IrisCard } from "./IrisCard";
 import { DiffView } from "./DiffView";
+import { Markdown } from "./Markdown";
 import type { PermissionPayload } from "../types/server";
 
 export interface PermissionPromptProps {
@@ -98,6 +99,24 @@ function PermissionDetail({ toolName, input }: { toolName: string; input: unknow
           return <DiffView key={i} oldText={ed.old_string} newText={ed.new_string} />;
         })}
       </>
+    );
+  }
+  // ExitPlanMode: show the PROPOSED PLAN (markdown) being approved, not "Allow ExitPlanMode".
+  if (toolName === "ExitPlanMode" && typeof obj.plan === "string") {
+    return (
+      <div
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-sm)",
+          padding: "var(--sp-2) var(--sp-3)",
+          maxHeight: 280,
+          overflowY: "auto",
+          color: "var(--text)",
+        }}
+      >
+        <Markdown>{obj.plan}</Markdown>
+      </div>
     );
   }
   // Write: file + a preview of the content being written.

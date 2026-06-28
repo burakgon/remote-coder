@@ -8,6 +8,7 @@ import type { RewindMode } from "./RewindSheet";
 import { PermissionPrompt } from "./PermissionPrompt";
 import { QuestionPrompt } from "./QuestionPrompt";
 import { AutoAllowChip } from "./AutoAllowChip";
+import { Icon } from "../ui/Icon";
 import { SubagentTray } from "./SubagentTray";
 import { SubagentView } from "./SubagentView";
 import { isSlashCommand } from "./slash";
@@ -259,12 +260,26 @@ export function ChatView({
   // sub-pixel jitter at the bottom counting as "scrolled up".
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
+  // Mirror the pinned state into render state so a "jump to latest" affordance can appear when the user
+  // has scrolled up (and disappear once they're back at the bottom). Only flips on a real change so an
+  // ordinary scroll doesn't churn renders.
+  const [atBottom, setAtBottom] = useState(true);
 
   function onScroll() {
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    pinnedToBottom.current = distanceFromBottom < 64;
+    const next = distanceFromBottom < 64;
+    pinnedToBottom.current = next;
+    setAtBottom((prev) => (prev === next ? prev : next));
+  }
+
+  function jumpToLatest() {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    pinnedToBottom.current = true;
+    setAtBottom(true);
   }
 
   useEffect(() => {
@@ -288,89 +303,123 @@ export function ChatView({
         onShowSessions={onShowSessions}
         needsYou={needsYou}
       />
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        aria-live="polite"
-        // "additions" only (not "text"): a completed turn announces ONCE as it's added; without this,
-        // every stream delta re-announced the whole growing message token-by-token. The telemetry strip
-        // (role=status) carries the live Thinking/Streaming state.
-        aria-relevant="additions"
-        style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}
-      >
-        {/* While the (windowed) history loads, show a quiet placeholder instead of a blank panel. */}
-        {!historyLoaded && (
-          <div
-            role="status"
-            style={{
-              display: "grid",
-              placeItems: "center",
-              minHeight: 120,
-              padding: "var(--sp-6) var(--sp-4)",
-              color: "var(--text-faint)",
-              fontSize: "var(--fs-sm)",
-            }}
-          >
-            Loading conversation…
-          </div>
-        )}
-        {/* Older turns were trimmed for a fast open — one tap pulls the full transcript. */}
-        {historyLoaded && truncated && (
-          <div style={{ display: "grid", placeItems: "center", padding: "var(--sp-3) var(--sp-4)" }}>
-            <button
-              type="button"
-              onClick={loadEarlier}
-              disabled={loadingEarlier}
+      <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          aria-live="polite"
+          // "additions" only (not "text"): a completed turn announces ONCE as it's added; without this,
+          // every stream delta re-announced the whole growing message token-by-token. The telemetry strip
+          // (role=status) carries the live Thinking/Streaming state.
+          aria-relevant="additions"
+          style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}
+        >
+          {/* While the (windowed) history loads, show a quiet placeholder instead of a blank panel. */}
+          {!historyLoaded && (
+            <div
+              role="status"
               style={{
-                minHeight: "var(--tap-min)",
-                padding: "0 var(--sp-4)",
-                borderRadius: "var(--radius-pill)",
-                border: "1px solid var(--border)",
-                background: "var(--surface-2)",
-                color: "var(--text-muted)",
-                font: "inherit",
+                display: "grid",
+                placeItems: "center",
+                minHeight: 120,
+                padding: "var(--sp-6) var(--sp-4)",
+                color: "var(--text-faint)",
                 fontSize: "var(--fs-sm)",
-                cursor: loadingEarlier ? "default" : "pointer",
-                opacity: loadingEarlier ? 0.6 : 1,
               }}
             >
-              {loadingEarlier ? "Loading earlier messages…" : "Load earlier messages"}
-            </button>
-          </div>
-        )}
-        <MessageList
-          view={safeView}
-          downloadUrl={(path) => api.downloadUrl(path)}
-          imageUrl={(url) => api.mediaUrl(url)}
-          onRewind={(checkpointId) => setRewindTarget(checkpointId)}
-          onOpenSubagent={(id) => setSubagentStack([id])}
-        />
+              Loading conversation…
+            </div>
+          )}
+          {/* Older turns were trimmed for a fast open — one tap pulls the full transcript. */}
+          {historyLoaded && truncated && (
+            <div style={{ display: "grid", placeItems: "center", padding: "var(--sp-3) var(--sp-4)" }}>
+              <button
+                type="button"
+                onClick={loadEarlier}
+                disabled={loadingEarlier}
+                style={{
+                  minHeight: "var(--tap-min)",
+                  padding: "0 var(--sp-4)",
+                  borderRadius: "var(--radius-pill)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text-muted)",
+                  font: "inherit",
+                  fontSize: "var(--fs-sm)",
+                  cursor: loadingEarlier ? "default" : "pointer",
+                  opacity: loadingEarlier ? 0.6 : 1,
+                }}
+              >
+                {loadingEarlier ? "Loading earlier messages…" : "Load earlier messages"}
+              </button>
+            </div>
+          )}
+          <MessageList
+            view={safeView}
+            downloadUrl={(path) => api.downloadUrl(path)}
+            imageUrl={(url) => api.mediaUrl(url)}
+            onRewind={(checkpointId) => setRewindTarget(checkpointId)}
+            onOpenSubagent={(id) => setSubagentStack([id])}
+          />
 
-        {/* The pending permission gate. Hidden once answered (optimistic) or while it is being
+          {/* The pending permission gate. Hidden once answered (optimistic) or while it is being
             auto-allowed (a rule already covers it). */}
-        {pending && !isAutoAllowed && !pendingAnswered && (
-          <div style={{ padding: "var(--sp-4)" }}>
-            <PermissionPrompt
-              permission={pending}
-              permissionMode={session.permissionMode}
-              onAnswer={(decision) => answer(pending.requestId, decision)}
-              onAlwaysAllow={(tool) => setAutoAllow((prev) => new Set(prev).add(tool))}
-            />
-          </div>
-        )}
+          {pending && !isAutoAllowed && !pendingAnswered && (
+            <div style={{ padding: "var(--sp-4)" }}>
+              <PermissionPrompt
+                permission={pending}
+                permissionMode={session.permissionMode}
+                onAnswer={(decision) => answer(pending.requestId, decision)}
+                onAlwaysAllow={(tool) => setAutoAllow((prev) => new Set(prev).add(tool))}
+              />
+            </div>
+          )}
 
-        {/* The pending AskUserQuestion. Hidden once answered (optimistic). Submitting sends an
+          {/* The pending AskUserQuestion. Hidden once answered (optimistic). Submitting sends an
             `answer` frame; Skip denies the tool so the model proceeds with the denial. */}
-        {pendingQuestion && !questionAnswered && (
-          <div style={{ padding: "var(--sp-4)" }}>
-            <QuestionPrompt
-              key={pendingQuestion.requestId}
-              question={pendingQuestion}
-              onAnswer={(answers) => answerQuestion(pendingQuestion, answers)}
-              onCancel={() => cancelQuestion(pendingQuestion)}
-            />
-          </div>
-        )}
+          {pendingQuestion && !questionAnswered && (
+            <div style={{ padding: "var(--sp-4)" }}>
+              <QuestionPrompt
+                key={pendingQuestion.requestId}
+                question={pendingQuestion}
+                onAnswer={(answers) => answerQuestion(pendingQuestion, answers)}
+                onCancel={() => cancelQuestion(pendingQuestion)}
+              />
+            </div>
+          )}
+          {/* Jump to latest: when the user has scrolled up to read history, a floating pill returns them to
+            the live tail (the terminal always shows the newest). Hidden while pinned to the bottom. */}
+          {!atBottom && (
+            <button
+              type="button"
+              onClick={jumpToLatest}
+              aria-label="Jump to latest"
+              style={{
+                position: "absolute",
+                bottom: "var(--sp-3)",
+                left: "50%",
+                transform: "translateX(-50%)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--sp-1)",
+                minHeight: "36px",
+                padding: "0 var(--sp-3)",
+                borderRadius: "var(--radius-pill)",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border-strong)",
+                color: "var(--text)",
+                fontSize: "var(--fs-sm)",
+                fontFamily: "var(--font-display)",
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "var(--shadow-card)",
+              }}
+            >
+              <Icon name="arrow-up" size={14} style={{ transform: "rotate(180deg)" }} />
+              Latest
+            </button>
+          )}
+        </div>
       </div>
       {/* SUBAGENT TRAY — a slim strip directly above the composer (renders nothing when there are no
           subagents). Tap a chip to open that subagent's drill-in view. */}

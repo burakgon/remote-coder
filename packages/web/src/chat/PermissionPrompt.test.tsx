@@ -113,6 +113,18 @@ describe("PermissionPrompt", () => {
     expect(screen.getByText("const a = 2;")).toBeInTheDocument(); // added line
   });
 
+  it("shows ExitPlanMode's proposed plan (markdown) so the user approves the actual plan", () => {
+    const plan: PermissionPayload = {
+      requestId: "r6",
+      kind: "hook_callback",
+      toolName: "ExitPlanMode",
+      toolInput: { plan: "## Plan\n\n- do the thing" },
+    };
+    render(<PermissionPrompt permission={plan} onAnswer={vi.fn()} />);
+    expect(screen.getByRole("heading", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByText("do the thing")).toBeInTheDocument();
+  });
+
   it("shows the active permission mode as a chip (not for default/bypass)", () => {
     const { rerender } = render(<PermissionPrompt permission={perm} onAnswer={vi.fn()} permissionMode="acceptEdits" />);
     expect(screen.getByText(/mode: acceptEdits/i)).toBeInTheDocument();
