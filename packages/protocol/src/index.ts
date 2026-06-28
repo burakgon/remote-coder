@@ -18,5 +18,5 @@ export {
 } from "./serialize.js";
 export type { QuestionSpec, QuestionOption } from "./serialize.js";
 export { replayFixture, type ReplayOptions } from "./mock-claude.js";
-export { encodeProjectDir, parseTranscript } from "./transcript.js";
-export type { TranscriptTurn } from "./transcript.js";
+export { encodeProjectDir, parseTranscript, activeBranchIndices } from "./transcript.js";
+export type { TranscriptTurn, BranchNode } from "./transcript.js";

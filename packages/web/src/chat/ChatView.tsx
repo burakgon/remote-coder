@@ -75,6 +75,15 @@ export function ChatView({
   // set, the confirm sheet is open for that checkpoint; confirming sends a `rewind` frame and the
   // server-emitted `rewound` frame drives the marker + (for conversation/both) the display truncation.
   const [rewindTarget, setRewindTarget] = useState<string | undefined>(undefined);
+  // EDIT & RESEND: confirming a conversation/both rewind on message M brings M's text BACK to the composer
+  // to edit and re-send. We can't inject it on confirm (the server still has to drop M + resume), so we
+  // STASH the captured text keyed by M's checkpointId in `pendingEditRef`, then an effect (below) injects
+  // it the moment the matching `rewound` ok frame lands in the thread. `composerDraft` is the imperative
+  // payload handed to the Composer; `draftNonceRef` mints a monotonic, NON-timestamp nonce so each
+  // injection (even of identical text) is a distinct trigger the Composer reacts to exactly once.
+  const [composerDraft, setComposerDraft] = useState<{ text: string; nonce: number } | undefined>(undefined);
+  const draftNonceRef = useRef(0);
+  const pendingEditRef = useRef<{ checkpointId: string; text: string } | undefined>(undefined);
   // SUBAGENTS: the drill-in target (the Agent tool_use id == SubagentThread key). When set, the
   // SubagentView sheet navigation STACK (its live chat, task, and result). Opening a NESTED subagent
   // pushes; Back pops to the parent subagent (or closes when empty) instead of jumping straight to chat.
@@ -311,6 +320,21 @@ export function ChatView({
     safeView.pendingQuestion,
   ]);
 
+  // EDIT & RESEND completion: a conversation/both rewind drops message M server-side; once the resulting
+  // `rewound` ok marker (carrying M's checkpointId) lands in the thread, drop M's stashed text into the
+  // composer for editing. Watching the turns (rather than the WS frame directly) keeps this purely a
+  // function of the reduced view, so it's robust to the reducer's truncation/marker ordering. The ref is
+  // cleared on injection so it fires exactly once. Driven off the turns array identity.
+  useEffect(() => {
+    const pending = pendingEditRef.current;
+    if (!pending) return;
+    const arrived = safeView.turns.some((t) => t.kind === "rewound" && t.ok && t.checkpointId === pending.checkpointId);
+    if (!arrived) return;
+    pendingEditRef.current = undefined;
+    draftNonceRef.current += 1;
+    setComposerDraft({ text: pending.text, nonce: draftNonceRef.current });
+  }, [safeView.turns]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <ChatHeader
@@ -498,6 +522,8 @@ export function ChatView({
       />
       <Composer
         commands={safeView.commands}
+        // EDIT & RESEND: a confirmed conversation/both rewind drops the rewound message back here for editing.
+        draft={composerDraft}
         // @-file mentions: list directories on the host (anchored at the session cwd) so the composer can
         // autocomplete `@path` references the same way the terminal does.
         listDir={(path) => api.listDir(path)}
@@ -614,6 +640,23 @@ export function ChatView({
           checkpointId={rewindTarget}
           onCancel={() => setRewindTarget(undefined)}
           onConfirm={(mode: RewindMode) => {
+            // EDIT & RESEND: for conversation/both, capture message M's text BEFORE sending so we can drop
+            // it back into the composer when the rewind completes (M is dropped from the chat server-side).
+            // `code` leaves the conversation intact → no prefill. M's text = its user turn's text blocks
+            // joined by newline (images are ignored — they aren't re-attachable from the bubble; an
+            // image-only message prefills empty, the composer still focuses). The wire frame is UNCHANGED.
+            if (mode === "conversation" || mode === "both") {
+              const target = rewindTarget;
+              const m = safeView.turns.find((t) => t.kind === "user" && t.checkpointId === target);
+              const text =
+                m && m.kind === "user"
+                  ? m.blocks
+                      .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
+                      .map((b) => b.text)
+                      .join("\n")
+                  : "";
+              pendingEditRef.current = { checkpointId: target, text };
+            }
             send({ type: "rewind", checkpointId: rewindTarget, mode });
             setRewindTarget(undefined);
           }}

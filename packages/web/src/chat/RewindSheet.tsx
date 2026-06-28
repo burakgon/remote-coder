@@ -20,11 +20,20 @@ interface ModeDef {
   blurb: string;
 }
 
-// The three rewind modes, each with a one-line explanation. Mirrors Claude Code's ESC-ESC choices.
+// The three rewind modes, each with a one-line explanation, framed as EDIT & RESEND: rewinding a message
+// brings it back to the composer to edit and re-send. Mirrors Claude Code's ESC-ESC choices.
 const MODES: ModeDef[] = [
   { mode: "code", label: "Code", blurb: "Revert files changed since here. The conversation stays." },
-  { mode: "conversation", label: "Conversation", blurb: "Drop the chat after here. Files stay as they are." },
-  { mode: "both", label: "Both", blurb: "Drop the chat after here AND revert the files to match." },
+  {
+    mode: "conversation",
+    label: "Conversation",
+    blurb: "Bring this message back to the composer and drop the chat from here. Files stay.",
+  },
+  {
+    mode: "both",
+    label: "Both",
+    blurb: "Bring it back to the composer, drop the chat from here, AND revert files to match.",
+  },
 ];
 
 /**

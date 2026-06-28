@@ -1202,9 +1202,35 @@ export class SessionHub {
       }
     }
 
-    // conversation / both: STOP the live turn/process, then RESUME truncated at the checkpoint. The CLI
-    // rejects --resume together with a live process for the same id, so we kill the current one first.
-    // DURABILITY: a conversation rewind DROPS every turn after the checkpoint — so the spool's in-flight
+    // conversation / both: STOP the live turn/process, then RESUME truncated to BEFORE the checkpoint. The
+    // CLI rejects --resume together with a live process for the same id, so we kill the current one first.
+    //
+    // EDIT & RESEND: to truly DROP the rewound message M (so it can return to the composer for editing), we
+    // resume at M's PARENT uuid (the line right before M) — `--resume-session-at <parent>` keeps that line
+    // and drops M + everything after (verified against real claude 2.1.187). Resolve the parent from the
+    // transcript; if it can't be resolved yet (the --replay echo not fsynced, no HistoryService, an old
+    // format), FALL BACK to resuming at M itself (the prior behavior — keeps M) so a rewind never hard-fails.
+    // The emitted `rewound` frame ALWAYS carries the ORIGINAL checkpointId (M) so the client reducer
+    // truncates the displayed thread to BEFORE M regardless of which uuid we resumed at.
+    const resumeAt =
+      (this.history
+        ? await this.history.parentUuidOf(record.meta.cwd, id, checkpointId).catch(() => undefined)
+        : undefined) ?? checkpointId;
+    // BOTH = conversation rewind + file revert. We do the file revert as a LIVE `rewind_files(M)` on the
+    // CURRENT process FIRST — that's the verified code-mode mechanism, and it needs M's live checkpoint
+    // (which exists now, before we stop the process). The resume-time `--rewind-files` flag can't be used
+    // here: it requires a file checkpoint consistent with the resume point, and we resume at M's PARENT
+    // (to drop M) — neither M nor the parent is valid there, so claude exits before the init handshake.
+    // Sequencing it before the respawn reverts the files, then the conversation resume drops M.
+    if (mode === "both") {
+      try {
+        await this.ensureLive(id);
+        await this.manager.rewindFiles(id, checkpointId);
+      } catch {
+        // file revert is best-effort — still perform the conversation rewind below.
+      }
+    }
+    // DURABILITY: a conversation rewind DROPS every turn from the checkpoint on — so the spool's in-flight
     // tail (post-checkpoint by construction) is now stale. Clear it BEFORE the respawn so a reopen before
     // the next `result` can't resurrect pre-rewind content the conversation no longer has.
     this.spool?.clear(id);
@@ -1223,8 +1249,7 @@ export class SessionHub {
         effort: record.meta.effort,
         dangerouslySkip: record.meta.dangerouslySkip,
         permissionMode: record.meta.permissionMode,
-        resumeSessionAt: checkpointId,
-        ...(mode === "both" ? { rewindFilesAt: checkpointId } : {}),
+        resumeSessionAt: resumeAt,
       });
       record.meta.status = "running";
       record.intentionalStop = false;

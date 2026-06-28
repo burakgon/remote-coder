@@ -33,6 +33,37 @@ test("read() returns [] when the transcript file is missing (no throw)", async (
   expect(await svc.read("/nope", "missing")).toEqual([]);
 });
 
+test("parentUuidOf() resolves the line-before a checkpoint (REWIND edit-and-resend resume target)", async () => {
+  const cwd = "/work/proj";
+  const dir = join(claudeHome, ".claude", "projects", encodeProjectDir(cwd));
+  await mkdir(dir, { recursive: true });
+  const lines = [
+    JSON.stringify({ type: "user", uuid: "u1", parentUuid: "boot-1", message: { role: "user", content: "M1" } }),
+    JSON.stringify({ type: "assistant", uuid: "a1", parentUuid: "u1", message: { role: "assistant", content: "R1" } }),
+    JSON.stringify({ type: "user", uuid: "u2", parentUuid: "a1", message: { role: "user", content: "M2" } }),
+  ].join("\n");
+  await writeFile(join(dir, "sid-p.jsonl"), lines);
+  const svc = new HistoryService({ claudeHome });
+  // Resuming at u2's parent (a1) keeps a1 and drops u2 + after — i.e. u2 (the rewound message) is dropped.
+  expect(await svc.parentUuidOf(cwd, "sid-p", "u2")).toBe("a1");
+  // The FIRST user message's parent is the bookkeeping/boot line — still resolves (resuming there empties).
+  expect(await svc.parentUuidOf(cwd, "sid-p", "u1")).toBe("boot-1");
+});
+
+test("parentUuidOf() returns undefined for an unknown uuid, a null parent, and a missing transcript", async () => {
+  const cwd = "/work/proj";
+  const dir = join(claudeHome, ".claude", "projects", encodeProjectDir(cwd));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    join(dir, "sid-n.jsonl"),
+    JSON.stringify({ type: "user", uuid: "root", parentUuid: null, message: { role: "user", content: "first" } }),
+  );
+  const svc = new HistoryService({ claudeHome });
+  expect(await svc.parentUuidOf(cwd, "sid-n", "does-not-exist")).toBeUndefined(); // uuid not present yet
+  expect(await svc.parentUuidOf(cwd, "sid-n", "root")).toBeUndefined(); // parentUuid null → undefined
+  expect(await svc.parentUuidOf("/nope", "missing", "x")).toBeUndefined(); // no transcript at all
+});
+
 test("the default claudeHome is the OS home dir", () => {
   const svc = new HistoryService();
   expect(svc.claudeHome).toBe(homedir());

@@ -1,4 +1,4 @@
-import { render, screen, act, cleanup } from "@testing-library/react";
+import { render, screen, act, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatView } from "./ChatView";
@@ -658,5 +658,49 @@ describe("ChatView — REWIND / CHECKPOINT", () => {
     await userEvent.click(await screen.findByRole("button", { name: /cancel/i }));
     expect(sentFrames.some((f) => f.type === "rewind")).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("EDIT & RESEND: a confirmed conversation rewind drops the message text back into the composer", async () => {
+    await mount(apiStub());
+    seedRewindableTurn("cp-7"); // the user turn carries text "make the change"
+    await userEvent.click(await screen.findByRole("button", { name: /rewind to here/i }));
+    await userEvent.click(await screen.findByRole("radio", { name: /conversation/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /confirm rewind/i }));
+    expect(sentFrames).toContainEqual({ type: "rewind", checkpointId: "cp-7", mode: "conversation" });
+
+    // The composer must NOT be prefilled until the rewind actually completes (the server still has to drop M).
+    const box = screen.getByLabelText(/message claude/i);
+    expect(box.textContent).toBe("");
+
+    // The server-emitted `rewound` ok frame arrives → the message returns to the composer for editing.
+    act(() => {
+      useStore.getState().applyFrame(session.id, {
+        seq: 60,
+        kind: "rewound",
+        payload: { checkpointId: "cp-7", mode: "conversation", ok: true },
+      });
+    });
+    await waitFor(() => expect(box.textContent).toBe("make the change"));
+  });
+
+  it("EDIT & RESEND: 'code' mode does NOT prefill the composer (the conversation is unchanged)", async () => {
+    await mount(apiStub());
+    seedRewindableTurn("cp-8");
+    await userEvent.click(await screen.findByRole("button", { name: /rewind to here/i }));
+    // Default mode is 'code' — confirm without changing it.
+    await userEvent.click(await screen.findByRole("button", { name: /confirm rewind/i }));
+    expect(sentFrames).toContainEqual({ type: "rewind", checkpointId: "cp-8", mode: "code" });
+    act(() => {
+      useStore.getState().applyFrame(session.id, {
+        seq: 61,
+        kind: "rewound",
+        payload: { checkpointId: "cp-8", mode: "code", ok: true },
+      });
+    });
+    // No prefill: the composer stays empty for a code-only revert.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText(/message claude/i).textContent).toBe("");
   });
 });

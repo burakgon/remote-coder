@@ -84,6 +84,64 @@ test("parseTranscript drops the synthetic --resume warm-up pair", () => {
   expect(parsed.summary).toBe("real question");
 });
 
+// --- active-branch reconstruction (append-only rewind tree) ----------------
+
+/** Build a transcript line with explicit uuid/parentUuid (and optional sidechain anchor). */
+function line(uuid: string, parentUuid: string | null, text: string, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    type: extra.type ?? "user",
+    uuid,
+    parentUuid,
+    message: { role: "user", content: [{ type: "text", text }] },
+    ...extra,
+  });
+}
+
+test("parseTranscript: a LINEAR transcript is byte-identical (no pruning — parity invariant)", () => {
+  const jsonl = [line("A", null, "A"), line("B", "A", "B"), line("C", "B", "C")].join("\n");
+  const parsed = parseTranscript(jsonl);
+  expect(parsed.messages.map((m) => m.uuid)).toEqual(["A", "B", "C"]);
+  expect(parsed.messageCount).toBe(3);
+  expect(parsed.summary).toBe("A"); // first main user message
+});
+
+test("parseTranscript: a FORKED transcript excludes the rewound-away branch (C) and renders A,B,D,E in order", () => {
+  // A→B→C is the original; a rewind to B forks a new D (parent B, skipping C) then E. C is dead.
+  const jsonl = [
+    line("A", null, "A"),
+    line("B", "A", "B"),
+    line("C", "B", "C-dead"),
+    line("D", "B", "D"),
+    line("E", "D", "E"),
+  ].join("\n");
+  const parsed = parseTranscript(jsonl);
+  expect(parsed.messages.map((m) => m.uuid)).toEqual(["A", "B", "D", "E"]); // C excluded, file order kept
+  expect(parsed.messageCount).toBe(4);
+  // The summary still reflects the active branch's first user message.
+  expect(parsed.summary).toBe("A");
+});
+
+test("parseTranscript: the fork is followed THROUGH intermediate (non-user/assistant) lines (real claude shape)", () => {
+  // Real claude chains a main line's parentUuid through INTERMEDIATE bookkeeping lines (file-history-
+  // snapshot / system), not directly to the previous main line — so the walk must use the full tree.
+  // A → x1(intermediate) → B → fork{ C-dead, Cr-dead } / { D → x3(intermediate) → E }. C,Cr must drop.
+  const jsonl = [
+    line("A", null, "A"),
+    JSON.stringify({ type: "file-history-snapshot", uuid: "x1", parentUuid: "A" }),
+    line("B", "x1", "B", { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "B" }] } }),
+    line("C", "B", "C-dead"),
+    line("Cr", "C", "Cr-dead", {
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "Cr-dead" }] },
+    }),
+    line("D", "B", "D"),
+    JSON.stringify({ type: "system", uuid: "x3", parentUuid: "D" }),
+    line("E", "x3", "E", { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "E" }] } }),
+  ].join("\n");
+  const parsed = parseTranscript(jsonl);
+  expect(parsed.messages.map((m) => m.uuid)).toEqual(["A", "B", "D", "E"]); // dead branch (C, Cr) dropped
+});
+
 // --- transcriptToFrames ----------------------------------------------------
 
 test("transcriptToFrames produces contiguous event frames matching the live InboundEvent shape", () => {

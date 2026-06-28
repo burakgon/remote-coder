@@ -1060,19 +1060,48 @@ describe("reduceFrame", () => {
     expect(v.turns.at(-1)).toEqual({ kind: "rewound", checkpointId: "cp-1", mode: "code", ok: true });
   });
 
-  it("rewound (conversation): truncates the thread to the checkpoint, then appends the marker", () => {
+  it("rewound (conversation): drops the checkpoint message ITSELF and everything after, then the marker", () => {
+    // EDIT & RESEND: the checkpoint message M leaves the chat (it returns to the composer for editing), so
+    // the truncation EXCLUDES M — the displayed thread holds only what came strictly before M.
+    let v = emptyView();
+    v = reduceFrame(v, ev(1, { type: "user", message: { content: "earlier" }, uuid: "cp-0" }));
+    v = reduceFrame(v, ev(2, { type: "user", message: { content: "do A" }, uuid: "cp-1" }));
+    v = reduceFrame(v, ev(3, { type: "assistant", message: { content: [{ type: "text", text: "did A" }] } }));
+    v = reduceFrame(v, ev(4, { type: "user", message: { content: "do B" }, uuid: "cp-2" }));
+    v = reduceFrame(v, ev(5, { type: "assistant", message: { content: [{ type: "text", text: "did B" }] } }));
+    v = reduceFrame(v, { seq: 6, kind: "rewound", payload: { checkpointId: "cp-1", mode: "conversation", ok: true } });
+    // cp-1 (the rewound message) and everything after it is gone; only the earlier turn remains, + the marker.
+    expect(v.turns).toEqual([
+      { kind: "user", blocks: [{ type: "text", text: "earlier" }], checkpointId: "cp-0" },
+      { kind: "rewound", checkpointId: "cp-1", mode: "conversation", ok: true },
+    ]);
+    expect(v.wireState).toBe("idle");
+  });
+
+  it("rewound (both): also drops the checkpoint message ITSELF and everything after, then the marker", () => {
     let v = emptyView();
     v = reduceFrame(v, ev(1, { type: "user", message: { content: "do A" }, uuid: "cp-1" }));
     v = reduceFrame(v, ev(2, { type: "assistant", message: { content: [{ type: "text", text: "did A" }] } }));
     v = reduceFrame(v, ev(3, { type: "user", message: { content: "do B" }, uuid: "cp-2" }));
     v = reduceFrame(v, ev(4, { type: "assistant", message: { content: [{ type: "text", text: "did B" }] } }));
-    v = reduceFrame(v, { seq: 5, kind: "rewound", payload: { checkpointId: "cp-1", mode: "conversation", ok: true } });
-    // Everything AFTER the cp-1 user turn is dropped (keeping the checkpoint turn), then the marker.
+    v = reduceFrame(v, { seq: 5, kind: "rewound", payload: { checkpointId: "cp-2", mode: "both", ok: true } });
+    // cp-2 and everything after drop; the turns before cp-2 stay; the marker is appended.
     expect(v.turns).toEqual([
       { kind: "user", blocks: [{ type: "text", text: "do A" }], checkpointId: "cp-1" },
-      { kind: "rewound", checkpointId: "cp-1", mode: "conversation", ok: true },
+      { kind: "assistant-text", text: "did A" },
+      { kind: "rewound", checkpointId: "cp-2", mode: "both", ok: true },
     ]);
     expect(v.wireState).toBe("idle");
+  });
+
+  it("rewound (conversation) to the FIRST message clears the chat to empty (only the marker remains)", () => {
+    // Rewinding the first user message drops it + everything after → an empty conversation (the message is
+    // back in the composer). Verified against real claude: resuming at the first message's parentUuid empties.
+    let v = emptyView();
+    v = reduceFrame(v, ev(1, { type: "user", message: { content: "the only ask" }, uuid: "cp-1" }));
+    v = reduceFrame(v, ev(2, { type: "assistant", message: { content: [{ type: "text", text: "ok" }] } }));
+    v = reduceFrame(v, { seq: 3, kind: "rewound", payload: { checkpointId: "cp-1", mode: "conversation", ok: true } });
+    expect(v.turns).toEqual([{ kind: "rewound", checkpointId: "cp-1", mode: "conversation", ok: true }]);
   });
 
   it("rewound (failed): shows the marker with an error and never truncates", () => {

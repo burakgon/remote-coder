@@ -125,6 +125,190 @@ test("parseTranscript carries parent_tool_use_id (subagent linkage) with a sidec
   expect(turns[2]?.parentToolUseId).toBeUndefined();
 });
 
+// --- ACTIVE-BRANCH RECONSTRUCTION (append-only rewind tree) -----------------------------------------
+
+test("parseTranscript: a LINEAR transcript (A→B→C) is returned unchanged (identity invariant)", () => {
+  // The normal case: every parentUuid chains the previous line. Output MUST be byte-for-byte the same as
+  // before branch-following existed (this is what keeps live==reopen parity + all existing tests green).
+  const lines = [
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "A" }] },
+      uuid: "A",
+      parentUuid: null,
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "B" }] },
+      uuid: "B",
+      parentUuid: "A",
+    }),
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "C" }] },
+      uuid: "C",
+      parentUuid: "B",
+    }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns.map((t) => t.uuid)).toEqual(["A", "B", "C"]);
+});
+
+test("parseTranscript: a FORKED transcript drops the rewound-away branch and renders the active path in order", () => {
+  // A→B→C is the original conversation. A rewind to B forks: a new turn D's parentUuid is B (skipping C),
+  // then E follows D. C is the rewound-away (dead) branch and MUST be excluded; the active path is A,B,D,E.
+  const lines = [
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "A" }] },
+      uuid: "A",
+      parentUuid: null,
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "B" }] },
+      uuid: "B",
+      parentUuid: "A",
+    }),
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "C-dead" }] },
+      uuid: "C",
+      parentUuid: "B",
+    }),
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "D" }] },
+      uuid: "D",
+      parentUuid: "B",
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "E" }] },
+      uuid: "E",
+      parentUuid: "D",
+    }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns.map((t) => t.uuid)).toEqual(["A", "B", "D", "E"]); // C dropped, file order preserved
+});
+
+test("parseTranscript: a fork is followed THROUGH intermediate (non-user/assistant) lines (real claude shape)", () => {
+  // Real claude chains an assistant line's parentUuid through an INTERMEDIATE bookkeeping line (a
+  // file-history-snapshot / system entry), NOT directly to the previous main line. The active-branch walk
+  // must traverse those intermediates — walking main-only would stop at the leaf and prune NOTHING (the
+  // live-verified bug). Shape: A(user) → x1(intermediate) → B(assistant) → {C-dead(user)…} fork
+  // {D(user) → x3(intermediate) → E(assistant)}. The dead branch (C and its reply) MUST be dropped.
+  const lines = [
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "A" }] },
+      uuid: "A",
+      parentUuid: null,
+    }),
+    JSON.stringify({ type: "file-history-snapshot", uuid: "x1", parentUuid: "A" }), // intermediate (no type user/assistant)
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "B" }] },
+      uuid: "B",
+      parentUuid: "x1",
+    }),
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "C-dead" }] },
+      uuid: "C",
+      parentUuid: "B",
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "Cr-dead" }] },
+      uuid: "Cr",
+      parentUuid: "C",
+    }),
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "D" }] },
+      uuid: "D",
+      parentUuid: "B",
+    }), // fork at B
+    JSON.stringify({ type: "system", uuid: "x3", parentUuid: "D" }), // intermediate
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "E" }] },
+      uuid: "E",
+      parentUuid: "x3",
+    }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns.map((t) => t.uuid)).toEqual(["A", "B", "D", "E"]); // C + Cr (dead branch) dropped
+});
+
+test("parseTranscript: a fork KEEPS a sidechain anchored to a kept line but DROPS one anchored off-branch", () => {
+  // A→B is shared. C (dead) carried an Agent tool_use `tu-dead` with a subagent line; D (active) carried
+  // `tu-live` with its own subagent line. After pruning C, the off-branch subagent must go too, while the
+  // active subagent stays so subagent restore isn't broken.
+  const lines = [
+    JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "A" }] },
+      uuid: "A",
+      parentUuid: null,
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "B" }] },
+      uuid: "B",
+      parentUuid: "A",
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "tool_use", id: "tu-dead", name: "Agent", input: {} }] },
+      uuid: "C",
+      parentUuid: "B",
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "dead-sub" }] },
+      uuid: "Cs",
+      parentUuid: "C",
+      isSidechain: true,
+      parent_tool_use_id: "tu-dead",
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "tool_use", id: "tu-live", name: "Agent", input: {} }] },
+      uuid: "D",
+      parentUuid: "B",
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "live-sub" }] },
+      uuid: "Ds",
+      parentUuid: "D",
+      isSidechain: true,
+      parent_tool_use_id: "tu-live",
+    }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns.map((t) => t.uuid)).toEqual(["A", "B", "D", "Ds"]); // C + its off-branch subagent dropped
+});
+
+test("parseTranscript: parentUuid-less (old format) transcript is NOT pruned even with a later non-chaining line", () => {
+  // Every line lacks parentUuid (pre-tree format). Two distinct user lines exist, but neither forks off a
+  // shared path → no genuine fork → keep everything (the safety fallback that preserves old-format reads).
+  const lines = [
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "one" }] }, uuid: "u1" }),
+    JSON.stringify({
+      type: "assistant",
+      message: { role: "assistant", content: [{ type: "text", text: "r1" }] },
+      uuid: "a1",
+    }),
+    JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "two" }] }, uuid: "u2" }),
+  ].join("\n");
+  const turns = parseTranscript(lines);
+  expect(turns.map((t) => t.uuid)).toEqual(["u1", "a1", "u2"]);
+});
+
 test("parseTranscript drops the synthetic --resume warm-up pair", () => {
   const lines = [
     JSON.stringify({

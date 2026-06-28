@@ -661,16 +661,18 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     return next;
   }
   if (frame.kind === "rewound") {
-    // REWIND / CHECKPOINT outcome. For conversation/both, the conversation was truncated server-side at
-    // the checkpoint, so MIRROR that in the displayed thread: drop every turn AFTER the user turn whose
-    // checkpointId matches (keep the checkpoint turn itself). `code` leaves the thread intact (files only).
-    // Then append the "↩ Rewound to here" marker. A failed rewind (ok:false) still shows a marker (with
-    // its error) but never truncates.
+    // REWIND / CHECKPOINT outcome (EDIT & RESEND). For conversation/both, the server resumed the session
+    // truncated to BEFORE the checkpoint message M (it resumes at M's parentUuid so M itself is dropped),
+    // and the client hands M's text back to the composer for editing — so MIRROR that here: drop the
+    // checkpoint user turn M *and* everything after it (slice up to, but excluding, cpIdx). The edited
+    // message no longer lives in the chat; it's now in the composer. `code` leaves the thread intact
+    // (files only). Then append the "↩ Rewound to here" marker. A failed rewind (ok:false) still shows a
+    // marker (with its error) but never truncates.
     const r = frame.payload as RewoundPayload;
     let turns = [...view.turns];
     if (r.ok && (r.mode === "conversation" || r.mode === "both")) {
       const cpIdx = turns.findIndex((t) => t.kind === "user" && t.checkpointId === r.checkpointId);
-      if (cpIdx >= 0) turns = turns.slice(0, cpIdx + 1);
+      if (cpIdx >= 0) turns = turns.slice(0, cpIdx);
       next.liveText = "";
       next.thinkingText = "";
       next.pendingPermission = undefined;

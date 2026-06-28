@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { parseLine } from "@remote-coder/protocol";
+import { parseLine, activeBranchIndices } from "@remote-coder/protocol";
+import type { BranchNode } from "@remote-coder/protocol";
 import type { ServerFrame } from "./replay-buffer.js";
 
 /**
@@ -68,6 +69,18 @@ export function defaultProjectsDir(): string {
   return join(homedir(), ".claude", "projects");
 }
 
+/** The tool_use ids in a `message.content` array (anchors for sidechain lines). Tolerant of any shape. */
+function toolUseIds(message: unknown): string[] {
+  const content = (message as { content?: unknown } | null | undefined)?.content;
+  if (!Array.isArray(content)) return [];
+  const ids: string[] = [];
+  for (const block of content) {
+    const b = block as { type?: string; id?: string };
+    if (b?.type === "tool_use" && typeof b.id === "string") ids.push(b.id);
+  }
+  return ids;
+}
+
 /** The single text-block string of a `message.content` array, else undefined. Tolerant of any shape. */
 function soleText(message: unknown): string | undefined {
   const content = (message as { content?: unknown } | null | undefined)?.content;
@@ -120,6 +133,13 @@ export function parseTranscript(jsonl: string): ParsedTranscript {
   let gitBranch: string | undefined;
   let summary = "";
   let lastActivityTs: number | undefined;
+  // Parallel arrays (same index as `messages`) feeding the active-branch tree walk (see below).
+  const nodes: BranchNode[] = [];
+  const lineToolUseIds: string[][] = [];
+  const sidechainAnchors: (string | undefined)[] = [];
+  // The FULL tree (every line's uuid→parentUuid, incl. the intermediate tool/system lines a main line's
+  // parentUuid chains through) — needed so the active-branch walk reaches the real fork point.
+  const edges: { uuid?: string; parentUuid?: string | null }[] = [];
 
   for (const raw of jsonl.split("\n")) {
     if (!raw.trim()) continue;
@@ -132,6 +152,12 @@ export function parseTranscript(jsonl: string): ParsedTranscript {
     // cwd/gitBranch may live on bookkeeping lines too — harvest from EVERY line.
     if (cwd === undefined && typeof obj.cwd === "string") cwd = obj.cwd;
     if (gitBranch === undefined && typeof obj.gitBranch === "string") gitBranch = obj.gitBranch;
+
+    // Record EVERY line's tree edge (before the user/assistant filter) so the walk sees intermediates.
+    edges.push({
+      uuid: typeof obj.uuid === "string" ? obj.uuid : undefined,
+      parentUuid: typeof obj.parentUuid === "string" ? obj.parentUuid : obj.parentUuid === null ? null : undefined,
+    });
 
     if (obj.type !== "user" && obj.type !== "assistant") continue; // drop bookkeeping/noise lines
 
@@ -164,16 +190,63 @@ export function parseTranscript(jsonl: string): ParsedTranscript {
       summary = truncate(text);
     }
 
+    const uuid = typeof obj.uuid === "string" ? obj.uuid : undefined;
     messages.push({
       type: obj.type,
       message: obj.message,
-      uuid: typeof obj.uuid === "string" ? obj.uuid : undefined,
+      uuid,
       timestamp: ts,
       raw: obj,
     });
+    const parentUuid = typeof obj.parentUuid === "string" ? obj.parentUuid : obj.parentUuid === null ? null : undefined;
+    nodes.push({ uuid, parentUuid, sidechain });
+    lineToolUseIds.push(toolUseIds(obj.message));
+    // A sidechain line's anchor is its (now-ensured) parent_tool_use_id.
+    sidechainAnchors.push(sidechain && typeof obj.parent_tool_use_id === "string" ? obj.parent_tool_use_id : undefined);
   }
 
-  return { messages, cwd, gitBranch, summary, lastActivityTs, messageCount: messages.length };
+  // ACTIVE BRANCH ONLY: an append-only transcript keeps rewound-away turns; reconstruct the active branch
+  // via the lines' uuid/parentUuid tree so a reopen after a `--resume-session-at` rewind does NOT re-show
+  // the dead branch. `null` ⇒ no fork (or old/partial format) ⇒ keep everything (BYTE-IDENTICAL to before —
+  // this is what keeps the qa-replay live==reopen parity + the existing transcript tests green; pruning
+  // only ever happens when a genuine fork is present).
+  const keep = activeBranchIndices(
+    nodes,
+    edges,
+    (i) => lineToolUseIds[i]!,
+    (i) => sidechainAnchors[i],
+  );
+  if (keep === null) {
+    return { messages, cwd, gitBranch, summary, lastActivityTs, messageCount: messages.length };
+  }
+  // A fork was pruned: rebuild the kept message list, and recompute the summary + latest-activity from the
+  // ACTIVE branch only (the dead branch's first message / timestamps must not leak into the picker).
+  const kept = keep.map((i) => messages[i]!);
+  let prunedSummary = "";
+  let prunedLastTs: number | undefined;
+  for (const m of kept) {
+    if (m.timestamp !== undefined && (prunedLastTs === undefined || m.timestamp > prunedLastTs)) {
+      prunedLastTs = m.timestamp;
+    }
+    const t = soleText(m.message);
+    if (
+      prunedSummary === "" &&
+      (m.raw as { isSidechain?: boolean }).isSidechain !== true &&
+      m.type === "user" &&
+      t !== undefined &&
+      t.trim() !== ""
+    ) {
+      prunedSummary = truncate(t);
+    }
+  }
+  return {
+    messages: kept,
+    cwd,
+    gitBranch,
+    summary: prunedSummary,
+    lastActivityTs: prunedLastTs,
+    messageCount: kept.length,
+  };
 }
 
 /**

@@ -15,6 +15,19 @@ describe("RewindSheet", () => {
     expect(screen.getByRole("radio", { name: /both/i })).toBeInTheDocument();
   });
 
+  it("frames conversation/both as EDIT & RESEND (the message returns to the composer)", () => {
+    // The copy must make the edit-and-resend mental model explicit: rewinding brings the message back to
+    // the composer and drops the chat from here. Code stays a pure file-revert.
+    render(<RewindSheet checkpointId="cp-1" onConfirm={() => {}} onCancel={() => {}} />);
+    expect(
+      screen.getByText(/bring this message back to the composer and drop the chat from here\. files stay\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/bring it back to the composer, drop the chat from here, and revert files to match\./i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/revert files changed since here\. the conversation stays\./i)).toBeInTheDocument();
+  });
+
   it("warns that Bash-made changes are not tracked and this cannot be undone", () => {
     render(<RewindSheet checkpointId="cp-1" onConfirm={() => {}} onCancel={() => {}} />);
     const dialog = screen.getByRole("dialog");

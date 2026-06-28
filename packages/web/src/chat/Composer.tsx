@@ -52,6 +52,16 @@ export interface ComposerProps {
    */
   initialText?: string;
   initialImages?: PendingImage[];
+  /**
+   * EDIT & RESEND injection: a draft to drop into the composer on demand (the rewound message
+   * returning for editing). Distinct from `initialText` (mount-only): this fires on every NEW `nonce`,
+   * REPLACING the field's text with `draft.text`, focusing it, and putting the caret at the end. The
+   * `nonce` (a monotonic counter, NOT a timestamp) is the change trigger — re-passing the same nonce is
+   * a no-op, so a re-render never re-injects. An empty `text` clears the field (e.g. an image-only
+   * message returning) but still focuses. Leaves slash/@-mention detection, history recall, and image
+   * attachments untouched (it routes through the same `setContent` clear-and-mirror the clear path uses).
+   */
+  draft?: { text: string; nonce: number };
 }
 
 // The input is a contentEditable div, NOT a <textarea>: on iOS Safari a real form field shows the
@@ -217,6 +227,7 @@ export function Composer({
   disabled,
   initialText,
   initialImages,
+  draft,
 }: ComposerProps) {
   const [text, setText] = useState(initialText ?? "");
   const [images, setImages] = useState<PendingImage[]>(initialImages ?? []);
@@ -345,6 +356,25 @@ export function Composer({
     el.textContent = value;
     if (value) caretToEnd(el);
   }
+
+  // EDIT & RESEND injection: when a NEW `draft.nonce` arrives, drop `draft.text` into the field
+  // (REPLACING any current content), focus it, and put the caret at the end so the user can edit and
+  // re-send. Tracked by nonce (not value) so re-passing the same draft on a re-render is a no-op and
+  // never clobbers in-progress typing; an EMPTY text still applies (clears the field) + focuses. Routes
+  // through `setContent` (the same clear-and-mirror path the send/clear uses) so slash/@-mention state
+  // and history recall reset cleanly. We also leave history-recall browsing mode (this is a fresh draft).
+  const lastDraftNonceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!draft) return;
+    if (lastDraftNonceRef.current === draft.nonce) return;
+    lastDraftNonceRef.current = draft.nonce;
+    setHistIndex(null);
+    draftRef.current = "";
+    setContent(draft.text);
+    edRef.current?.focus();
+    // setContent is intentionally NOT in the deps — re-running on its (per-render) identity would
+    // re-inject on every render; the nonce gate is the sole, deliberate trigger.
+  }, [draft?.nonce, draft?.text]);
 
   // The filtered entries shown in the @-mention menu — the cached directory listing narrowed to the
   // token's basename prefix (re-derived per render; the cached list is re-fetched only on a dir change).

@@ -89,6 +89,43 @@ export class HistoryService {
   }
 
   /**
+   * Resolve the `parentUuid` of the transcript line whose `uuid` === `targetUuid` — the line right BEFORE
+   * it in the conversation tree. Used by REWIND's edit-and-resend: to truly DROP the rewound message M
+   * (not keep it), the session resumes at M's parentUuid (`--resume-session-at <parent>`), which keeps the
+   * line before M and drops M + everything after (verified against real claude 2.1.187). Reads the RAW
+   * lines (NOT the branch-pruned parse) so it finds M's exact recorded parent regardless of any fork, and
+   * tolerates the value being `null` (the FIRST user message's parent is a bookkeeping/summary line — its
+   * uuid still resolves; resuming there clears the conversation to empty, the verified behavior).
+   *
+   * Returns the parent uuid string, or `undefined` when: no transcript, the line isn't found yet (e.g. the
+   * --replay echo hasn't been fsynced), or its parentUuid is absent/null. The caller falls back to resuming
+   * at M itself so a rewind NEVER hard-fails on a resolution miss.
+   */
+  async parentUuidOf(cwd: string, sessionId: string, targetUuid: string): Promise<string | undefined> {
+    const path = this.resolveTranscriptPath(cwd, sessionId);
+    if (!path) return undefined;
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch {
+      return undefined;
+    }
+    for (const raw of text.split("\n")) {
+      if (!raw.trim()) continue;
+      let obj: { uuid?: unknown; parentUuid?: unknown };
+      try {
+        obj = JSON.parse(raw) as { uuid?: unknown; parentUuid?: unknown };
+      } catch {
+        continue; // malformed line: skip
+      }
+      if (obj.uuid === targetUuid) {
+        return typeof obj.parentUuid === "string" ? obj.parentUuid : undefined;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Read a session's SUBAGENT transcripts so a reopen restores each subagent's inner turns (this CLI
    * stores them OUT of the main transcript). Layout (claude 2.1.187):
    *   <projectDir>/<sessionId>/subagents/agent-<id>.jsonl  + agent-<id>.meta.json

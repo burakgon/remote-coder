@@ -276,6 +276,40 @@ describe("Composer", () => {
     expect(box.textContent).toBe("");
   });
 
+  it("a draft nonce drops text into the field and focuses it; a NEW nonce replaces it", async () => {
+    // EDIT & RESEND: the rewound message returns to the composer for editing. A fresh nonce injects the
+    // text (replacing whatever's there), focuses the field, and (verified via send) makes it the value.
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <Composer onSend={onSend} onUploadFile={vi.fn()} draft={{ text: "first draft", nonce: 1 }} />,
+    );
+    const box = screen.getByLabelText(/message claude/i);
+    await waitFor(() => expect(box.textContent).toBe("first draft"));
+    // The composer is focused so the user can edit immediately.
+    expect(box).toHaveFocus();
+
+    // Re-passing the SAME nonce is a no-op even if text differs (a re-render must not clobber edits).
+    rerender(<Composer onSend={onSend} onUploadFile={vi.fn()} draft={{ text: "ignored", nonce: 1 }} />);
+    expect(box.textContent).toBe("first draft");
+
+    // A NEW nonce REPLACES the field's contents.
+    rerender(<Composer onSend={onSend} onUploadFile={vi.fn()} draft={{ text: "second draft", nonce: 2 }} />);
+    await waitFor(() => expect(box.textContent).toBe("second draft"));
+    // The injected draft is the live value: pressing Enter sends exactly it.
+    await userEvent.type(box, "{Enter}");
+    expect(onSend).toHaveBeenCalledWith({ type: "user", text: "second draft", msgId: expect.any(String) });
+  });
+
+  it("an empty-text draft nonce clears the field and still focuses (image-only message returning)", async () => {
+    const { rerender } = render(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} />);
+    const box = screen.getByLabelText(/message claude/i);
+    await userEvent.type(box, "leftover text");
+    expect(box.textContent).toBe("leftover text");
+    rerender(<Composer onSend={vi.fn()} onUploadFile={vi.fn()} draft={{ text: "", nonce: 1 }} />);
+    await waitFor(() => expect(box.textContent).toBe(""));
+    expect(box).toHaveFocus();
+  });
+
   it("exposes the image / file / send controls as icon BUTTONS reachable by their aria-labels", () => {
     // Phase 2 replaced the text Image/File/Send buttons with icon buttons. They must stay real
     // <button>s named by aria-label (a11y + so screen readers and these tests can reach them).
