@@ -2,6 +2,11 @@ declare global {
   /** Git short sha injected by Vite `define` at build time (see vite.config.ts). Absent (→ undefined)
    *  in dev / test contexts where no `define` runs. */
   const __BUILD_SHA__: string | undefined;
+  interface Window {
+    /** Set by main.tsx once the bundle loaded + React started — read by the inline boot watchdog in
+     *  index.html so it never shows the gray-screen recovery for a healthy boot. */
+    __rcBooted?: boolean;
+  }
 }
 
 /**

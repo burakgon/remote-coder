@@ -32,3 +32,8 @@ createRoot(document.getElementById("root")!).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// Tell the inline boot watchdog (index.html) that the bundle loaded + React started, so it never shows
+// the gray-screen recovery for a healthy boot — and clear any overlay it raised during a slow load.
+window.__rcBooted = true;
+document.getElementById("rc-boot-recovery")?.remove();

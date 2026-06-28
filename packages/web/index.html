@@ -15,6 +15,119 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <title>Remote Coder</title>
+    <!-- BOOT WATCHDOG (inline so it survives a DEAD bundle). The React ErrorBoundary only catches crashes
+         AFTER the bundle loads + React mounts. If the bundle itself fails to load/evaluate — an iOS-evicted
+         precache chunk, a corrupt cached asset, a boot-time module throw — #root stays empty and the user
+         sees a GRAY SCREEN with no in-app escape; on iOS it persists across close+reopen (the same broken
+         cache is served), so historically only an OTA recovered it. This watches for that and offers a
+         self-heal (clear caches + unregister the SW + reload). Logic mirrors src/pwa/boot-watchdog.ts
+         (unit-tested shouldShowBootRecovery) — keep them in sync. -->
+    <script>
+      (function () {
+        var TIMEOUT_MS = 12000;
+        var shown = false;
+        function alive() {
+          var r = document.getElementById("root");
+          return !!window.__rcBooted || !!(r && r.childElementCount > 0);
+        }
+        function resetAndReload() {
+          var done = false;
+          function finish() {
+            if (done) return;
+            done = true;
+            location.reload();
+          }
+          setTimeout(finish, 4000); // never hang on a stuck unregister/delete
+          try {
+            var jobs = [];
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              jobs.push(
+                navigator.serviceWorker.getRegistrations().then(function (rs) {
+                  return Promise.all(
+                    rs.map(function (r) {
+                      return r.unregister();
+                    }),
+                  );
+                }),
+              );
+            }
+            if (window.caches && caches.keys) {
+              jobs.push(
+                caches.keys().then(function (ks) {
+                  return Promise.all(
+                    ks.map(function (k) {
+                      return caches.delete(k);
+                    }),
+                  );
+                }),
+              );
+            }
+            Promise.all(jobs).then(finish, finish);
+          } catch (e) {
+            finish();
+          }
+        }
+        function show() {
+          if (shown || alive()) return;
+          shown = true;
+          var o = document.createElement("div");
+          o.id = "rc-boot-recovery";
+          o.setAttribute(
+            "style",
+            "position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;background:#0a0a0b;color:#e7e7ea;font:15px/1.5 -apple-system,system-ui,sans-serif;text-align:center",
+          );
+          var t = document.createElement("div");
+          t.setAttribute("style", "font-weight:600;font-size:17px");
+          t.textContent = "Couldn’t load Remote Coder";
+          var p = document.createElement("div");
+          p.setAttribute("style", "color:#9a9aa2;max-width:30em");
+          p.textContent =
+            "The app failed to start — usually a stale or evicted cache. “Reset & reload” clears it and reloads.";
+          var row = document.createElement("div");
+          row.setAttribute("style", "display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px");
+          var b1 = document.createElement("button");
+          b1.textContent = "Reload";
+          b1.setAttribute(
+            "style",
+            "min-height:44px;padding:0 18px;border-radius:10px;border:1px solid #2a2a30;background:#17171a;color:#e7e7ea;font:inherit;cursor:pointer",
+          );
+          b1.onclick = function () {
+            location.reload();
+          };
+          var b2 = document.createElement("button");
+          b2.textContent = "Reset & reload";
+          b2.setAttribute(
+            "style",
+            "min-height:44px;padding:0 18px;border-radius:10px;border:0;background:#f77c44;color:#0a0a0b;font:inherit;font-weight:600;cursor:pointer",
+          );
+          b2.onclick = function () {
+            b2.textContent = "Resetting…";
+            b2.disabled = true;
+            resetAndReload();
+          };
+          row.appendChild(b1);
+          row.appendChild(b2);
+          o.appendChild(t);
+          o.appendChild(p);
+          o.appendChild(row);
+          document.body.appendChild(o);
+        }
+        // The module bundle (or any script resource) failing to load is a definite dead boot.
+        window.addEventListener(
+          "error",
+          function (e) {
+            if (e && e.target && e.target.tagName === "SCRIPT" && !alive()) setTimeout(show, 1200);
+          },
+          true,
+        );
+        // Catch-all: nothing mounted within the timeout → a silent gray screen.
+        setTimeout(show, TIMEOUT_MS);
+        // iOS may discard the page while backgrounded and restore a blank one — re-check when shown again.
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState === "visible" && !alive()) setTimeout(show, 2500);
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
