@@ -94,10 +94,16 @@ When a new version lands on GitHub, the app shows an **update notice** with the 
 
 ## Quickstart
 
-You need **Node ≥ 22**, [**pnpm**](https://pnpm.io/), and a machine **already logged into `claude`** (run `claude` once locally to authenticate — there's no remote login).
+You need:
+
+- **Node ≥ 22.** Check with `node --version`.
+- **[pnpm](https://pnpm.io/).** The easiest way is `corepack enable` (ships with Node) — then `pnpm` just works in the repo. Otherwise `npm i -g pnpm`.
+- **Claude Code installed and logged in *on this machine*.** Run `claude` once in a terminal here and complete the login — there is **no remote login**, and a missing/unauthenticated `claude` is the #1 first-run failure (the app will tell you which it is, and `/diag` shows `claude.available`).
+- A working **native build of `better-sqlite3`.** `pnpm install` builds it; if your toolchain can't, the server still boots but **falls back to a non-durable in-memory store** (sessions vanish on every restart). It now logs a loud warning and `/diag` reports `storeMode: "memory-fallback"` — see [Troubleshooting](docs/troubleshooting.md).
 
 ```bash
 git clone https://github.com/burakgon/remote-coder && cd remote-coder
+corepack enable                 # makes `pnpm` available (or: npm i -g pnpm)
 pnpm install && pnpm build
 node packages/cli/dist/index.js
 ```
@@ -125,6 +131,8 @@ cloudflared tunnel --url http://127.0.0.1:4280
 
 Open the printed `https://…` link on your phone, paste the token (or use the `?token=…` link), **Add to Home Screen**, and turn on notifications. *(Tailscale Serve works too: `tailscale serve --bg http://127.0.0.1:4280`.)*
 
+> ⚠️ **`cloudflared tunnel --url` gives you an *ephemeral* `trycloudflare.com` URL that changes every run.** That's fine for a quick try, but an **installed PWA is bound to the origin you installed it from** — when the URL changes, your home-screen app points at a dead origin and push deep-links break. For real day-to-day use, set up a **named/stable tunnel** (a fixed hostname) — Cloudflare Named Tunnel, or Tailscale Serve, whose `…ts.net` hostname is stable — and set `REMOTE_CODER_PUBLIC_URL` to that origin so push notifications click through to the right place.
+
 <details>
 <summary><b>Run it as a background service · flags · environment variables</b></summary>
 
@@ -136,13 +144,34 @@ Open the printed `https://…` link on your phone, paste the token (or use the `
 |---|---|---|
 | `PORT` | `4280` | Listen port (`0` = OS-chosen). |
 | `BIND_ADDRESS` | `127.0.0.1` | Keep loopback; use a tunnel for remote. |
-| `ACCESS_TOKEN` | _(generated)_ | Override the token (never written to disk). |
-| `FS_ROOT` | `$HOME` | Confine the file picker / fs endpoints to a subtree. |
+| `ACCESS_TOKEN` | _(generated)_ | Override the token (used verbatim, never written to disk). |
+| `NO_TOKEN` | _(unset)_ | `1` = tokenless dev mode. **Loopback binds only** — it refuses to start non-loopback. |
+| `FS_ROOT` | `$HOME` (then cwd) | Confine the file picker / fs endpoints to a subtree. **Does not sandbox the agent** (see Security). |
 | `MAX_UPLOAD_BYTES` | `26214400` | Upload size cap (25 MiB). |
-| `REMOTE_CODER_DATA_DIR` | `~/.config/remote-coder` | SQLite DBs, token, VAPID keys (mode 0700). |
-| `TRUST_PROXY` | `false` | Honor `X-Forwarded-For` behind a reverse proxy. |
+| `REMOTE_CODER_DATA_DIR` | `~/.config/remote-coder`¹ | SQLite DBs, token, VAPID keys, **logs** (mode 0700). |
+| `REMOTE_CODER_PUBLIC_URL` | _(bind URL)_ | Your user-facing origin (the tunnel URL). **Set this** behind a tunnel: it's the click-target for push notifications and an allowed Origin. |
+| `TRUST_PROXY` | `false` | `1`/`true` = honor `X-Forwarded-For` behind a reverse proxy, so the per-client lockout/rate-limit key on the real client IP (not the proxy's). |
+| `REMOTE_CODER_ALLOWED_ORIGINS` | _(empty)_ | Comma-separated extra Origins the CSWSH guard allows (beyond same-origin/loopback/`PUBLIC_URL`). |
+| `REMOTE_CODER_RATE_LIMIT_RPM` | `600` | Sustained requests/minute per client. `0` **disables** the limiter. |
+| `REMOTE_CODER_RATE_LIMIT_BURST` | `120` | Instantaneous burst allowance (token-bucket). |
+| `REMOTE_CODER_MAX_SESSIONS` | `25` | Max concurrent **live** `claude` processes; new spawns get `429` at the cap. `0` = unbounded. |
+| `CLAUDE_BIN` | `claude` | Path/name of the Claude Code CLI to spawn (must be on the service's PATH). |
+| `CLAUDE_DEFAULT_MODEL` | _(CLI default)_ | Default model for new sessions. |
+| `CLAUDE_DEFAULT_EFFORT` | _(CLI default)_ | Default effort/thinking level for new sessions. |
+| `VAPID_SUBJECT` | `mailto:remote-coder@localhost` | `mailto:`/URL contact in the Web Push VAPID claim. |
+| `WEB_DIR` | _(bundled)_ | Override the path to the built PWA (`packages/web/dist`). |
+| `XDG_CONFIG_HOME` | _(unset)_ | When `REMOTE_CODER_DATA_DIR` is unset, the data dir is `$XDG_CONFIG_HOME/remote-coder`. |
+| `REMOTE_CODER_SERVICE_MANAGER` / `_LABEL` | _(auto)_ | Override which service the OTA self-updater restarts (`launchd`/`systemd` + label). Normally read from `service.json`. |
 
-`--port <n>`, `--bind <addr>`, `--no-token` (loopback dev only) are also available; `--help` for the full list.
+¹ `REMOTE_CODER_DATA_DIR` → else `$XDG_CONFIG_HOME/remote-coder` → else `~/.config/remote-coder` → else `./.remote-coder`.
+
+The **access token never enters argv** (it lives in a `0600` file). `ANTHROPIC_API_KEY` is always stripped from the spawned `claude` (subscription auth only). The token-rotation grace window (old token honored briefly after `POST /token/rotate`) is a fixed **60s** and is not env-tunable. `--port <n>`, `--bind <addr>`, `--no-token` (loopback dev only) are also available; `--help` for the full list.
+
+### Logs & diagnostics
+
+- **macOS (LaunchAgent):** stdout → `<data-dir>/remote-coder.log`, stderr → `<data-dir>/remote-coder.err.log` (`<data-dir>` defaults to `~/.config/remote-coder`). These are **not rotated** — cap them with the OS log rotator (a `newsyslog.d` entry) or periodically truncate. `tail -f ~/.config/remote-coder/remote-coder.err.log`.
+- **Linux (`systemd --user`):** logs go to **journald** — `journalctl --user -u remote-coder -f` (journald already size-bounds itself; tune with `journalctl --user --vacuum-size=50M`).
+- **`GET /diag`** (token-gated, like every API route) returns a JSON health snapshot: running build sha + whether it drifted from the checkout, store mode (`sqlite` vs the non-durable `memory-fallback`), `claude` availability + version, Node version, and the last update state. Open `https://<host>/diag` with the token header, or `curl -H "Authorization: Bearer <token>" http://127.0.0.1:4280/diag`. `GET /health` is the only unauthenticated route (returns `{ ok: true }` only).
 
 </details>
 
@@ -150,10 +179,13 @@ Open the printed `https://…` link on your phone, paste the token (or use the `
 
 Remote Coder is, by design, **remote code execution on your own machine** — that's the whole point. Treat the token like an SSH key.
 
-- **Mandatory token** on every request and WebSocket — constant-time check, per-client lockout. It **refuses to start** on a non-loopback bind without one.
+- **Single mandatory token** on every request and WebSocket — constant-time check, per-client lockout. It is a **single shared secret** (not per-user/per-device): anyone with it has full access. It **refuses to start** on a non-loopback bind without one. Rotate it anytime with `POST /token/rotate` (the old token is honored for a 60s grace, then rejected; the app re-stores the new one).
 - **HTTPS for anything remote** — a plain public port leaks the token. Always tunnel.
 - **The permission gate stays on** — you approve every tool from your phone. `--dangerously-skip-permissions` is per-session, **off by default**, and clearly marked.
-- **No sandbox** — the `claude` subprocess has your full machine access; `FS_ROOT` only scopes the file endpoints.
+- **⚠️ The agent is NOT sandboxed.** The `claude` subprocess runs as **you**, with your full machine access — it can run any command and touch any file your user can. `FS_ROOT` only scopes Remote Coder's *own* file-browser/upload/download endpoints; it does **not** confine what `claude` itself can read or write. Run this only on a machine you'd hand someone with your shell.
+- **Defense-in-depth controls** (all on by default, tunable — see the env table): a **cross-origin (CSWSH) guard** rejects a present, cross-origin, non-allow-listed `Origin` (`REMOTE_CODER_ALLOWED_ORIGINS`, `REMOTE_CODER_PUBLIC_URL`); a per-client **rate limiter** (`REMOTE_CODER_RATE_LIMIT_RPM`/`_BURST`, `0` disables); a **concurrency cap** on live sessions (`REMOTE_CODER_MAX_SESSIONS`); and `TRUST_PROXY` so those keys on the real client IP behind a proxy.
+
+**Stuck or unsure?** See **[docs/troubleshooting.md](docs/troubleshooting.md)** for the common first-run and runtime failures.
 
 ## Contributing & License
 

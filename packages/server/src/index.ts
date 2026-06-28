@@ -10,8 +10,14 @@ export {
   isLivePermissionMode,
 } from "./config.js";
 export type { ServerConfig, BuildClaudeArgsOptions, AttachSpawnOptions, McpConfigDocument } from "./config.js";
-export { ClaudeProcess } from "./claude-process.js";
-export type { ClaudeProcessOptions, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
+export { ClaudeProcess, ClaudeStartError, looksLikeAuthError } from "./claude-process.js";
+export type {
+  ClaudeProcessOptions,
+  PermissionEvent,
+  QuestionEvent,
+  DiagnosticEvent,
+  ClaudeStartErrorCode,
+} from "./claude-process.js";
 export { SessionManager } from "./session-manager.js";
 export type { CreateSessionOptions, Session, SessionManagerDeps } from "./session-manager.js";
 export { loadServerConfig, isLoopbackAddress, assertConfigAllowsStart } from "./server-config.js";
@@ -56,7 +62,7 @@ export { RateLimiter } from "./rate-limit.js";
 export type { RateLimiterOptions, RateLimitDecision } from "./rate-limit.js";
 export { resolveVapidKeys } from "./vapid.js";
 export type { VapidKeys, ResolveVapidKeysOptions } from "./vapid.js";
-export { createServer } from "./transport.js";
+export { createServer, mapSpawnError } from "./transport.js";
 export type { CreateServerResult, CreateServerDeps } from "./transport.js";
 export {
   registerStatic,
@@ -68,7 +74,7 @@ export {
   API_PATH_DENYLIST,
 } from "./static-routes.js";
 export type { RegisterStaticOptions } from "./static-routes.js";
-export { startServer } from "./start.js";
+export { startServer, claudePreflightWarning, runClaudePreflight } from "./start.js";
 export { HistoryService } from "./history-service.js";
 export type { HistoryServiceOptions } from "./history-service.js";
 export { ImageStore } from "./image-store.js";

@@ -57,6 +57,44 @@ export interface ClaudeProcessOptions {
   attach?: AttachSpawnOptions;
 }
 
+/**
+ * Identifiable spawn/start failure code so the transport layer can map a failed `start()` to an
+ * ACTIONABLE 4xx/5xx with a clear hint, instead of a bare 500. The cause is inferred from the kind of
+ * failure raised by the child:
+ *
+ *  - `CLAUDE_NOT_FOUND`     — the `claude` binary couldn't be spawned at all (ENOENT / spawn error). The
+ *                             CLI isn't installed or isn't on the server's PATH.
+ *  - `CLAUDE_START_FAILED`  — `claude` spawned but never completed the initialize handshake (it exited
+ *                             early, or its stderr indicated an auth/login problem). Usually means the
+ *                             host isn't authenticated — the operator must run `claude` once to log in.
+ */
+export type ClaudeStartErrorCode = "CLAUDE_NOT_FOUND" | "CLAUDE_START_FAILED";
+
+/**
+ * A typed error thrown by {@link ClaudeProcess.start} so the transport can branch on `code` (rather than
+ * string-matching a message) and surface an actionable hint to a semi-technical self-hoster. Carries the
+ * underlying cause for logging — no secrets, just the spawn/exit detail.
+ */
+export class ClaudeStartError extends Error {
+  readonly code: ClaudeStartErrorCode;
+  /** Best-effort stderr tail captured before the failure (helps the operator see WHY). May be empty. */
+  readonly detail?: string;
+  constructor(code: ClaudeStartErrorCode, message: string, options?: { cause?: unknown; detail?: string }) {
+    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
+    this.name = "ClaudeStartError";
+    this.code = code;
+    if (options?.detail) this.detail = options.detail;
+  }
+}
+
+/** Heuristic: does a stderr line look like an auth/login problem (so a "start failed" is really "not
+ *  authenticated")? Kept broad but specific to login/credential wording the CLI emits. */
+export function looksLikeAuthError(text: string): boolean {
+  return /\b(unauthorized|authenticat|not logged in|log ?in|login|credential|api key|expired|invalid token|please run claude)\b/i.test(
+    text,
+  );
+}
+
 /** One selectable model the account offers, from the init control_response `models` list. */
 export interface ModelOption {
   value: string;
@@ -199,11 +237,26 @@ export class ClaudeProcess extends EventEmitter {
 
     const timeoutMs = this.opts.startTimeoutMs ?? 30000;
 
+    // Capture a bounded tail of stderr DURING startup so a start failure can carry the host's own
+    // diagnostic (e.g. an auth/login message) — without it the operator only sees a generic "exited
+    // before the handshake". Detached after the handshake settles (the normal diagnostic path takes over).
+    let startupStderr = "";
+    const captureStartupStderr = (chunk: string): void => {
+      startupStderr = (startupStderr + chunk).slice(-4096);
+    };
+    child.stderr.on("data", captureStartupStderr);
+
     return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
         cleanup();
         this.stop();
-        reject(new Error(`claude did not respond to initialize within ${timeoutMs}ms`));
+        // Timed out without the handshake: claude DID spawn (no ENOENT) but never initialized — treat it
+        // as a start failure (often an auth/login wall the CLI is stuck on), carrying any stderr tail.
+        reject(
+          new ClaudeStartError("CLAUDE_START_FAILED", `claude did not respond to initialize within ${timeoutMs}ms`, {
+            detail: startupStderr.trim() || undefined,
+          }),
+        );
       }, timeoutMs);
 
       const onEvent = (ev: InboundEvent) => {
@@ -231,14 +284,29 @@ export class ClaudeProcess extends EventEmitter {
       };
       const onEarlyExit = () => {
         cleanup();
-        reject(new Error("claude exited before completing the initialize handshake"));
+        // claude spawned but died before initializing. If its stderr looks like an auth/login problem,
+        // keep the same CLAUDE_START_FAILED code but the message carries that detail so the transport's
+        // hint points at re-authenticating; the transport already advises "run `claude` once to log in".
+        const detail = startupStderr.trim() || undefined;
+        reject(
+          new ClaudeStartError("CLAUDE_START_FAILED", "claude exited before completing the initialize handshake", {
+            detail,
+          }),
+        );
       };
       const onEarlyError = (err: Error) => {
         cleanup();
-        reject(err);
+        // A spawn error before any successful exec is the binary-not-found case (ENOENT) — or another
+        // spawn-level failure (EACCES on a non-executable path). Map ENOENT to CLAUDE_NOT_FOUND so the
+        // transport tells the operator to install `claude`/put it on PATH; other spawn errors are a
+        // start failure.
+        const code = (err as NodeJS.ErrnoException).code;
+        const mapped: ClaudeStartErrorCode = code === "ENOENT" ? "CLAUDE_NOT_FOUND" : "CLAUDE_START_FAILED";
+        reject(new ClaudeStartError(mapped, err.message, { cause: err, detail: startupStderr.trim() || undefined }));
       };
       const cleanup = () => {
         clearTimeout(timer);
+        child.stderr.off("data", captureStartupStderr);
         this.off("event", onEvent);
         this.off("exit", onEarlyExit);
         this.off("error", onEarlyError);

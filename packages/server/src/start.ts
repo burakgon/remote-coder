@@ -15,7 +15,44 @@ import { PushDispatcher } from "./push-dispatcher.js";
 import { createWebPushSend } from "./web-push-send.js";
 import { createUsageService } from "./usage-service.js";
 import { createModelsService } from "./models-service.js";
+import { createClaudeVersionProbe, defaultRunClaudeVersion } from "./diag.js";
+import type { ClaudeAvailability, ClaudeVersionProbe } from "./diag.js";
 import type { CreateServerResult } from "./transport.js";
+
+/**
+ * STARTUP PREFLIGHT (#7): format a prominent, actionable boot warning when `claude --version` couldn't
+ * run. The server still boots (sessions just won't start until the operator fixes it) — this is purely
+ * to surface WHY in the logs immediately, like the better-sqlite3 fallback warning. Returns `undefined`
+ * when claude is available (no warning). PURE so it's unit-testable without spawning.
+ */
+export function claudePreflightWarning(availability: ClaudeAvailability): string | undefined {
+  if (availability.available) return undefined;
+  return (
+    "\n⚠ `claude` CLI not found or not runnable — new sessions will FAIL until this is fixed.\n" +
+    "  Install Claude Code and make sure `claude` is on this server's PATH, then authenticate by\n" +
+    "  running `claude` once in a terminal on the host (there is no remote login).\n" +
+    "  (If it IS installed, the service's PATH may not include it — see the README troubleshooting.)\n"
+  );
+}
+
+/**
+ * Run the startup preflight: best-effort probe `claude --version` and print {@link claudePreflightWarning}
+ * if it's missing/failing. NEVER throws and NEVER blocks boot — a hung/slow claude can't stall startup
+ * (the probe is short-timeout-guarded). Injectable probe + log sink so it's testable without a spawn.
+ */
+export async function runClaudePreflight(
+  probe: ClaudeVersionProbe,
+  warn: (msg: string) => void = (m) => console.warn(m),
+): Promise<void> {
+  let availability: ClaudeAvailability;
+  try {
+    availability = await probe.get();
+  } catch {
+    availability = { available: false }; // a thrown probe is treated as unavailable (defensive; probe never throws)
+  }
+  const message = claudePreflightWarning(availability);
+  if (message) warn(message);
+}
 
 export async function startServer(
   env: NodeJS.ProcessEnv = process.env,
@@ -60,6 +97,17 @@ export async function startServer(
         "  (or reinstall with native builds allowed:  pnpm install && pnpm approve-builds better-sqlite3)\n",
     );
   }
+  // STARTUP PREFLIGHT (#7): one cached `claude --version` probe SHARED by the boot preflight below and the
+  // authed GET /diag (injected into createServer), so we spawn at most once. The probe is short-timeout-
+  // guarded and never throws.
+  const claudeVersionProbe = createClaudeVersionProbe({
+    run: defaultRunClaudeVersion(config.claude.claudeBin, env),
+  });
+  // Best-effort, NON-BLOCKING: fire-and-forget so a slow/hung claude can't stall boot. The warning prints
+  // when the probe resolves (within its short timeout). Crash guards in installCrashGuards keep a probe
+  // rejection from taking the process down.
+  void runClaudePreflight(claudeVersionProbe);
+
   const history = new HistoryService();
   // DURABILITY: a file-backed append-only spool of each session's CRITICAL frames, under the data dir. It
   // lets a reopen after a crash / OTA restart recover the in-flight turn the transcript hadn't fsynced.
@@ -113,6 +161,8 @@ export async function startServer(
     usage,
     models,
     storeMode,
+    // Share the boot-preflight probe with /diag so claude is spawned at most once for both.
+    claudeVersionProbe,
   });
   // Hand the dispatcher's foreground-gate + badge predicates the live hub now that it exists.
   hubRef.hub = result.hub;

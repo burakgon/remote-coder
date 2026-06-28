@@ -8,6 +8,20 @@ const MODE = env.MOCK_MODE ?? "simple";
 const SESSION_ID = "mock-session";
 const TOOL_USE_ID = "toolu_mock_0001";
 
+// START-FAILURE modes (for the actionable first-run-error mapping): the process spawns OK but never
+// completes the initialize handshake, modelling an installed-but-broken/unauthenticated `claude`. These
+// exit WITHOUT ever installing the stdin handler below, so the initialize handshake is never answered.
+//  - "exit-before-init": exit immediately, before any init response (the "exited before the handshake" path).
+//  - "auth-fail":        write an auth-looking stderr line, THEN exit before init (the not-authenticated path).
+if (MODE === "exit-before-init") {
+  process.exit(1);
+}
+if (MODE === "auth-fail") {
+  // Write the auth line and exit only AFTER it has flushed to the parent, so the startup-stderr capture
+  // sees it. We never register the stdin handler (guarded below), so init is never answered.
+  process.stderr.write("Invalid API key · Please run `claude login` to authenticate\n", () => process.exit(1));
+}
+
 function send(obj) {
   stdout.write(JSON.stringify(obj) + "\n");
 }
@@ -216,28 +230,35 @@ function emitQuestionResult(answers) {
   });
 }
 
+// START-FAILURE modes already exited above (auth-fail exits in the stderr-flush callback). Only register
+// the stdin handler for the normal modes so a failure mode never answers the initialize handshake.
 let buffer = "";
-stdin.setEncoding("utf8");
-stdin.on("data", (chunk) => {
-  buffer += chunk;
-  let nl;
-  while ((nl = buffer.indexOf("\n")) !== -1) {
-    const line = buffer.slice(0, nl);
-    buffer = buffer.slice(nl + 1);
-    if (!line.trim()) continue;
-    let msg;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      continue; // ignore malformed input
+if (MODE !== "auth-fail") {
+  stdin.setEncoding("utf8");
+  stdin.on("data", (chunk) => {
+    buffer += chunk;
+    let nl;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      if (!line.trim()) continue;
+      let msg;
+      try {
+        msg = JSON.parse(line);
+      } catch {
+        continue; // ignore malformed input
+      }
+      handle(msg);
     }
-    handle(msg);
-  }
-});
-stdin.on("end", () => process.exit(0));
+  });
+  stdin.on("end", () => process.exit(0));
+}
 
 function handle(msg) {
   if (msg.type === "control_request" && msg.request?.subtype === "initialize") {
+    // "hang": spawn OK but NEVER answer the initialize handshake — models a claude stuck (e.g. on an
+    // interactive auth wall) so start() times out. Used to assert the init-timeout → CLAUDE_START_FAILED map.
+    if (MODE === "hang") return;
     emitInitResponse(msg.request_id);
     if (MODE === "resume") emitWarmupThenReady();
     if (MODE === "stderr") {

@@ -36,6 +36,7 @@ import { createUpdater, RUNNING_BUILD } from "./updater.js";
 import type { Updater } from "./updater.js";
 import { createClaudeVersionProbe, defaultRunClaudeVersion } from "./diag.js";
 import type { ClaudeVersionProbe } from "./diag.js";
+import { ClaudeStartError, looksLikeAuthError } from "./claude-process.js";
 import type { UsageService } from "./usage-service.js";
 import { ImageStore } from "./image-store.js";
 import type { ModelsService } from "./models-service.js";
@@ -43,6 +44,60 @@ import type { ModelsService } from "./models-service.js";
 /** Default reopen window: how many of the most-recent transcript turns GET /sessions/:id returns when
  * `?full=1` is absent. Keeps opening a large session fast; "load earlier" re-requests with `?full=1`. */
 const HISTORY_WINDOW = 200;
+
+/**
+ * Map a spawn/start failure from createSession/resumeSession into an ACTIONABLE HTTP response, so the
+ * #1 onboarding failure (a missing/unauthenticated `claude`) is self-explanatory instead of a bare 500.
+ *
+ *  - {@link ClaudeStartError} `CLAUDE_NOT_FOUND` (ENOENT / spawn error) → 503: the CLI isn't installed
+ *    or isn't on the server's PATH.
+ *  - {@link ClaudeStartError} `CLAUDE_START_FAILED` (exited before the handshake / auth-looking stderr /
+ *    init timeout) → 502: `claude` is installed but didn't start — almost always not authenticated.
+ *  - anything else → 500 (a genuinely-unexpected error).
+ *
+ * Returns `{ status, body }` with a `hint` the UI can show verbatim. The `detail` (a bounded stderr tail)
+ * is surfaced only for the start-failed case so the operator can see WHY, and it is NOT a secret — it's
+ * the CLI's own stderr, which never contains the access token (that lives in a 0600 file / header).
+ */
+export function mapSpawnError(err: unknown): {
+  status: number;
+  body: { error: string; code?: string; hint: string; detail?: string };
+} {
+  if (err instanceof ClaudeStartError) {
+    if (err.code === "CLAUDE_NOT_FOUND") {
+      return {
+        status: 503,
+        body: {
+          error: err.message,
+          code: err.code,
+          hint: "Claude Code CLI not found on PATH. Install it and ensure `claude` is on the server's PATH.",
+        },
+      };
+    }
+    // CLAUDE_START_FAILED: spawned but never initialized — usually an auth/login wall.
+    const detail = err.detail;
+    const authish = detail !== undefined && looksLikeAuthError(detail);
+    return {
+      status: 502,
+      body: {
+        error: err.message,
+        code: err.code,
+        hint: authish
+          ? "`claude` is installed but not authenticated. Run `claude` once in a terminal on the host to log in, then retry."
+          : "`claude` is installed but failed to start (it may not be authenticated). Run `claude` once in a terminal on the host to log in, then retry.",
+        ...(detail ? { detail } : {}),
+      },
+    };
+  }
+  // Genuinely-unexpected error: keep a generic 500 (no actionable hint to invent).
+  return {
+    status: 500,
+    body: {
+      error: (err as Error).message ?? "failed to create session",
+      hint: "Unexpected error starting the session. Check the server logs (GET /diag for diagnostics).",
+    },
+  };
+}
 
 export interface CreateServerDeps {
   store?: SessionStore;
@@ -389,15 +444,24 @@ export function createServer(
         reply.code(400).send({ error: "transcript has no cwd and none was provided" });
         return;
       }
-      const session = await hub.resumeFromTranscript({
-        sessionId: resumeId,
-        cwd,
-        model: body.model,
-        effort: body.effort,
-        dangerouslySkip: body.dangerouslySkip,
-        addDirs: body.addDirs,
-        frames: transcriptToFrames(parsed),
-      });
+      let session: SessionMeta;
+      try {
+        session = await hub.resumeFromTranscript({
+          sessionId: resumeId,
+          cwd,
+          model: body.model,
+          effort: body.effort,
+          dangerouslySkip: body.dangerouslySkip,
+          addDirs: body.addDirs,
+          frames: transcriptToFrames(parsed),
+        });
+      } catch (err) {
+        // SAME actionable mapping as the create path: a resume that SPAWNS a fresh `claude` hits the same
+        // missing/unauthenticated-CLI failures, so surface the same clear hint (not a bare 500).
+        const { status, body: errBody } = mapSpawnError(err);
+        reply.code(status).send(errBody);
+        return;
+      }
       reply.code(201).send({ session });
       return;
     }
@@ -419,7 +483,16 @@ export function createServer(
       // a second process, so two simultaneous same-key requests collapse to ONE session.
       const pending = inFlight.get(key);
       if (pending) {
-        const session = await pending;
+        let session: SessionMeta;
+        try {
+          session = await pending;
+        } catch (err) {
+          // The collapsed-onto create failed — give the SAME actionable mapping (not a bare 500) so a
+          // second same-key client sees the same clear hint as the request that did the spawn.
+          const { status, body: errBody } = mapSpawnError(err);
+          reply.code(status).send(errBody);
+          return;
+        }
         reply.code(200).send({ session });
         return;
       }
@@ -445,6 +518,12 @@ export function createServer(
     let session: SessionMeta;
     try {
       session = await createPromise;
+    } catch (err) {
+      // ACTIONABLE FIRST-RUN ERRORS: a missing/unauthenticated `claude` is the top onboarding failure.
+      // Map the spawn/init failure to a CLEAR 4xx/5xx with a hint instead of a bare 500 (see mapSpawnError).
+      const { status, body: errBody } = mapSpawnError(err);
+      reply.code(status).send(errBody);
+      return;
     } finally {
       if (key && deps.idempotency) inFlight.delete(key);
     }
