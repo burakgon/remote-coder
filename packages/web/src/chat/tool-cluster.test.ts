@@ -50,6 +50,17 @@ describe("summarizeToolInput", () => {
     expect(summarizeToolInput({})).toBe("");
     expect(summarizeToolInput(undefined)).toBe("");
   });
+  it("enriches a Read with its line range (offset/limit) like the terminal", () => {
+    expect(summarizeToolInput({ file_path: "/a/b.ts", offset: 120, limit: 41 })).toBe("/a/b.ts (lines 120–160)");
+    expect(summarizeToolInput({ file_path: "/a/b.ts", limit: 50 })).toBe("/a/b.ts (first 50 lines)");
+    expect(summarizeToolInput({ file_path: "/a/b.ts", offset: 40 })).toBe("/a/b.ts (from line 40)");
+    // A plain Read (no offset/limit) stays the bare path.
+    expect(summarizeToolInput({ file_path: "/a/b.ts" })).toBe("/a/b.ts");
+  });
+  it("enriches a Write with its line count", () => {
+    expect(summarizeToolInput({ file_path: "/a/b.ts", content: "l1\nl2\nl3" })).toBe("/a/b.ts (3 lines)");
+    expect(summarizeToolInput({ file_path: "/a/b.ts", content: "only" })).toBe("/a/b.ts (1 line)");
+  });
 });
 
 describe("parseToolResult", () => {
@@ -76,6 +87,14 @@ describe("parseToolResult", () => {
 
   it("detects an error result", () => {
     expect(parseToolResult({ is_error: true, content: "boom" }).isError).toBe(true);
+  });
+
+  it("strips ANSI color codes from the result text + summary (raw keeps the bytes)", () => {
+    const ESC = String.fromCharCode(0x1b);
+    const r = parseToolResult(`${ESC}[31mError:${ESC}[0m boom`);
+    expect(r.text).toBe("Error: boom");
+    expect(r.summary).toBe("Error: boom");
+    expect(r.raw).toContain(`${ESC}[31m`); // raw still has the original bytes for the verbose panel
   });
 
   it("surfaces an image tool_result as an image, summary '[image]', with the base64 blob redacted from raw", () => {

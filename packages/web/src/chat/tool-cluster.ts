@@ -1,5 +1,6 @@
 import type { TurnItem } from "../store/frame-reducer";
 import type { ContentBlock } from "../types/server";
+import { stripAnsi } from "./ansi";
 
 type ImageBlock = Extract<ContentBlock, { type: "image" }>;
 
@@ -106,9 +107,30 @@ function clipArg(s: string): string {
  * left bare), then a LIST-shaped field (e.g. TodoWrite's `todos`) summarized as a count, then any first
  * non-empty string field. Always collapsed to one capped line so a multi-line command can't break layout.
  */
+/** A "(lines 120–160)" / "(from line 40)" / "(first 50 lines)" suffix for a Read's offset/limit. */
+function readRange(offset: unknown, limit: unknown): string {
+  const o = typeof offset === "number" ? offset : undefined;
+  const l = typeof limit === "number" ? limit : undefined;
+  if (o !== undefined && l !== undefined) return ` (lines ${o}–${o + l - 1})`;
+  if (o !== undefined) return ` (from line ${o})`;
+  if (l !== undefined) return ` (first ${l} lines)`;
+  return "";
+}
+
 export function summarizeToolInput(input: unknown): string {
   if (!input || typeof input !== "object") return "";
   const obj = input as Record<string, unknown>;
+  // File tools: enrich the path with the READ range (offset/limit) or the WRITE size, so the collapsed
+  // step head says e.g. "config.ts (lines 120–160)" / "notes.md (47 lines)" like the terminal does —
+  // instead of a bare path that hides which slice was read / how much was written.
+  if (typeof obj.file_path === "string") {
+    const range = readRange(obj.offset, obj.limit);
+    if (range) return clipArg(obj.file_path + range);
+    if (typeof obj.content === "string") {
+      const lines = obj.content.length === 0 ? 0 : obj.content.split("\n").length;
+      return clipArg(`${obj.file_path} (${lines} ${lines === 1 ? "line" : "lines"})`);
+    }
+  }
   for (const key of [
     "command",
     "file_path",
@@ -162,7 +184,10 @@ export interface ParsedResult {
 export function parseToolResult(content: unknown): ParsedResult {
   const images = collectImages(content);
   const raw = stringifyRaw(content);
-  const text = extractText(content);
+  // Strip ANSI color/cursor codes from the human text so a colorized Bash result (eslint/jest/git/rg all
+  // colorize by default) reads cleanly instead of showing literal `[31m` garbage. The full raw bytes stay
+  // in `raw` for the verbose panel.
+  const text = stripAnsi(extractText(content));
   const isError = detectError(content);
   const firstLine =
     text

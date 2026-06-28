@@ -695,7 +695,9 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     let sawTool = false;
     let sawAgentSpawn = false;
     for (const block of content) {
-      if (block.type === "text" && typeof block.text === "string") {
+      if (block.type === "text" && typeof block.text === "string" && block.text.trim().length > 0) {
+        // Skip EMPTY/whitespace-only text blocks (a tool-only assistant message commonly carries a "" text
+        // block alongside its tool_use) — they rendered as a blank gap with a "You/assistant" rhythm break.
         added.push({ kind: "assistant-text", text: block.text });
       } else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking.trim().length > 0) {
         // Persist NON-EMPTY thinking as its own turn (routed into the subagent thread too, via `added`),

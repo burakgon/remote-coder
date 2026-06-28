@@ -250,6 +250,75 @@ describe("MessageList", () => {
       await userEvent.click(metaRow);
       expect(screen.getByText(/select:send_file/)).toBeInTheDocument();
     });
+
+    it("renders TodoWrite as a checklist (task text + state), not raw JSON", async () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "tool-use",
+                id: "td1",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "Write the parser", status: "completed" },
+                    { content: "Wire the reducer", status: "in_progress" },
+                    { content: "Add tests", status: "pending" },
+                  ],
+                },
+              },
+              { kind: "tool-result", toolUseId: "td1", content: "ok" },
+            ],
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
+      await userEvent.click(screen.getByRole("button", { name: /expand todowrite step/i }));
+      expect(screen.getByText("Write the parser")).toBeInTheDocument();
+      expect(screen.getByText("Wire the reducer")).toBeInTheDocument();
+      expect(screen.getByText("Add tests")).toBeInTheDocument();
+      // Not a raw JSON dump of the todos array.
+      expect(screen.queryByText(/"status":\s*"in_progress"/)).not.toBeInTheDocument();
+    });
+
+    it("renders an Edit as a unified ±diff (removed/added lines), not two separate code blocks", async () => {
+      render(
+        <MessageList
+          view={viewWith({
+            turns: [
+              {
+                kind: "tool-use",
+                id: "ed1",
+                name: "Edit",
+                input: { file_path: "/x/a.ts", old_string: "const a = 1;", new_string: "const a = 2;" },
+              },
+              { kind: "tool-result", toolUseId: "ed1", content: "ok" },
+            ],
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByRole("button", { name: /expand worked steps/i }));
+      await userEvent.click(screen.getByRole("button", { name: /expand edit step/i }));
+      // Both the removed and added lines render (the diff), and the old "old"/"new" labels are gone.
+      expect(screen.getByText("const a = 1;")).toBeInTheDocument();
+      expect(screen.getByText("const a = 2;")).toBeInTheDocument();
+      expect(screen.queryByText("old")).not.toBeInTheDocument();
+      expect(screen.queryByText("new")).not.toBeInTheDocument();
+    });
+
+    it("shows a 'running' indicator on a live cluster whose tool has no result yet", () => {
+      render(
+        <MessageList
+          view={viewWith({
+            wireState: "running-tool",
+            turns: [{ kind: "tool-use", id: "run1", name: "Bash", input: { command: "sleep 5" } }],
+          })}
+        />,
+      );
+      // Without expanding anything, the collapsed cluster header signals the in-flight tool.
+      expect(screen.getByText("running")).toBeInTheDocument();
+    });
   });
 
   describe("markdown is XSS-safe", () => {

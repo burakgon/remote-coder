@@ -7,6 +7,7 @@ import { Markdown } from "./Markdown";
 import { CodeBlock } from "./CodeBlock";
 import { imageBlockSrc } from "./content-images";
 import { planRender, parseToolResult, summarizeToolInput, type ToolStep } from "./tool-cluster";
+import { lineDiff } from "./diff";
 import { SubagentCard } from "./SubagentCard";
 import type { SessionView, SubagentThread, TurnItem } from "../store/frame-reducer";
 import type { ContentBlock } from "../types/server";
@@ -384,7 +385,7 @@ const rawPanelStyle: CSSProperties = {
  * EXPANDS it to reveal the full tool input AND a "Raw result" panel with the raw tool_result content
  * (the previously-leaking JSON) in muted monospace — verbose detail is de-emphasized, never hidden.
  */
-function ToolStepRow({ step }: { step: ToolStep }) {
+function ToolStepRow({ step, running }: { step: ToolStep; running?: boolean }) {
   const [open, setOpen] = useState(false);
   const { use, result, isMeta } = step;
   const arg = summarizeToolInput(use.input);
@@ -499,6 +500,16 @@ function ToolStepRow({ step }: { step: ToolStep }) {
                 <pre style={rawPanelStyle}>{parsed.raw}</pre>
               )}
             </>
+          ) : running ? (
+            // A live turn with no result yet → this tool is executing. Show an animated "Running…" so the
+            // user sees activity (the terminal shows a spinner) instead of a dead "No result yet".
+            <div
+              style={{ ...detailLabelStyle, color: "var(--coral-2)", display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <span className="rc-run-dot" aria-hidden="true" />
+              Running…
+              <style>{`@keyframes rc-run-blink{0%,100%{opacity:.3}50%{opacity:1}} .rc-run-dot{width:7px;height:7px;border-radius:50%;background:var(--coral);animation:rc-run-blink 1s ease-in-out infinite}`}</style>
+            </div>
           ) : (
             <div style={{ ...detailLabelStyle, color: "var(--text-faint)" }}>No result yet</div>
           )}
@@ -513,9 +524,12 @@ function ToolStepRow({ step }: { step: ToolStep }) {
  * run of plumbing. Collapsed by default (de-emphasized); its header (e.g. "Worked · 3 steps") toggles
  * the whole group, and each row inside independently expands to its verbose input + raw result.
  */
-function ToolCluster({ steps }: { steps: ToolStep[] }) {
+function ToolCluster({ steps, running }: { steps: ToolStep[]; running?: boolean }) {
   const [open, setOpen] = useState(false);
   const count = steps.length;
+  // A live turn with a step still awaiting its result → the cluster has work in flight. Surface it on the
+  // collapsed header (the cluster is collapsed by default) so the user sees Claude is mid-tool.
+  const inFlight = running === true && steps.some((s) => !s.result);
   return (
     <div
       style={{
@@ -563,11 +577,28 @@ function ToolCluster({ steps }: { steps: ToolStep[] }) {
         >
           {count} {count === 1 ? "step" : "steps"}
         </span>
+        {inFlight && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              marginLeft: "var(--sp-2)",
+              color: "var(--coral-2)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "var(--fs-xs)",
+            }}
+          >
+            <span className="rc-run-dot" aria-hidden="true" />
+            running
+            <style>{`@keyframes rc-run-blink{0%,100%{opacity:.3}50%{opacity:1}} .rc-run-dot{width:7px;height:7px;border-radius:50%;background:var(--coral);animation:rc-run-blink 1s ease-in-out infinite}`}</style>
+          </span>
+        )}
       </button>
       {open && (
         <div style={{ borderTop: "1px solid var(--border)", animation: "rc-reveal 0.18s ease-out" }}>
           {steps.map((step, i) => (
-            <ToolStepRow key={`${step.use.id}-${i}`} step={step} />
+            <ToolStepRow key={`${step.use.id}-${i}`} step={step} running={running} />
           ))}
         </div>
       )}
@@ -863,6 +894,9 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
   const queuedTurns = splitIdx === view.turns.length ? [] : view.turns.slice(splitIdx);
   const plan = planRender(committedTurns);
   const agents = subagents ?? view.subagents;
+  // A working wire means a tool in the latest cluster may be mid-execution → drive the "Running…" / header
+  // "running" affordance. A settled/dormant view shows the calm "No result yet" instead.
+  const running = view.wireState === "running-tool" || view.wireState === "streaming" || view.wireState === "thinking";
   return (
     // `gridTemplateColumns: minmax(0, 1fr)` lets the single column shrink BELOW its content width.
     // Without it a grid item's default `min-width: auto` lets a wide child (a table, a long code
@@ -873,7 +907,7 @@ export function MessageList({ view, downloadUrl, onRewind, subagents, onOpenSuba
     >
       {plan.map((node) =>
         node.kind === "cluster" ? (
-          <ToolCluster key={node.key} steps={node.steps} />
+          <ToolCluster key={node.key} steps={node.steps} running={running} />
         ) : node.kind === "subagent" ? (
           (() => {
             const thread = agents[node.id];
@@ -1017,16 +1051,32 @@ function ToolInput({ name, input }: { name: string; input: unknown }) {
     );
   }
 
-  // Edit: path + before/after, each in the file's language.
+  // TodoWrite: render the task list as a real checklist (status icons + strikethrough), not raw JSON.
+  if (name === "TodoWrite" && Array.isArray(obj.todos)) {
+    return <TodoList todos={obj.todos} />;
+  }
+
+  // Edit: path + a unified ±diff (old→new) — the terminal shows edits as a diff; two separate code blocks
+  // made it hard to see WHAT changed.
   if (typeof obj.old_string === "string" && typeof obj.new_string === "string") {
-    const lang = langFromPath(obj.file_path);
     return (
       <>
         {typeof obj.file_path === "string" && <ToolInputField name="file_path" value={obj.file_path} />}
-        <div style={detailLabelStyle}>old</div>
-        <CodeBlock code={obj.old_string} language={lang} />
-        <div style={detailLabelStyle}>new</div>
-        <CodeBlock code={obj.new_string} language={lang} />
+        <DiffView oldText={obj.old_string} newText={obj.new_string} />
+      </>
+    );
+  }
+
+  // MultiEdit: path + one ±diff per edit in the batch.
+  if (name === "MultiEdit" && Array.isArray(obj.edits)) {
+    return (
+      <>
+        {typeof obj.file_path === "string" && <ToolInputField name="file_path" value={obj.file_path} />}
+        {obj.edits.map((e, i) => {
+          const ed = (e ?? {}) as { old_string?: unknown; new_string?: unknown };
+          if (typeof ed.old_string !== "string" || typeof ed.new_string !== "string") return null;
+          return <DiffView key={i} oldText={ed.old_string} newText={ed.new_string} />;
+        })}
       </>
     );
   }
@@ -1040,6 +1090,87 @@ function ToolInput({ name, input }: { name: string; input: unknown }) {
         <ToolInputField key={k} name={k} value={v} />
       ))}
     </>
+  );
+}
+
+/** Render a TodoWrite `todos` array as a real checklist: a status marker per row (done = filled check +
+ *  strikethrough, in-progress = a coral dot, pending = a hairline ring) instead of dumping raw JSON. */
+function TodoList({ todos }: { todos: unknown[] }) {
+  return (
+    <div style={{ display: "grid", gap: "var(--sp-1)", margin: "2px 0 6px" }}>
+      {todos.map((t, i) => {
+        const o = (t ?? {}) as { content?: unknown; status?: unknown; activeForm?: unknown };
+        const content =
+          typeof o.content === "string" ? o.content : typeof o.activeForm === "string" ? o.activeForm : "";
+        const status = o.status === "completed" ? "completed" : o.status === "in_progress" ? "in_progress" : "pending";
+        const done = status === "completed";
+        const active = status === "in_progress";
+        return (
+          <div
+            key={i}
+            style={{ display: "flex", alignItems: "flex-start", gap: "var(--sp-2)", fontSize: "var(--fs-sm)" }}
+          >
+            <span style={{ flex: "none", marginTop: 2, display: "grid", placeItems: "center", width: 15, height: 15 }}>
+              {done ? (
+                <span style={{ color: "var(--ok)" }}>
+                  <Icon name="check" size={14} />
+                </span>
+              ) : active ? (
+                <span
+                  aria-hidden
+                  style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--coral)" }}
+                  title="in progress"
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  style={{ width: 11, height: 11, borderRadius: "50%", border: "1.5px solid var(--border-strong)" }}
+                  title="pending"
+                />
+              )}
+            </span>
+            <span
+              style={{
+                color: done ? "var(--text-faint)" : active ? "var(--text)" : "var(--text-muted)",
+                textDecoration: done ? "line-through" : undefined,
+                fontWeight: active ? 600 : 400,
+                lineHeight: 1.4,
+              }}
+            >
+              {content}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Render an Edit's old→new as a unified ±diff (LCS): removed lines in the error tint with a `-`, added
+ *  lines in the ok tint with a `+`, unchanged lines as quiet context — the terminal's edit presentation. */
+function DiffView({ oldText, newText }: { oldText: string; newText: string }) {
+  const lines = lineDiff(oldText, newText);
+  return (
+    <pre style={{ ...rawPanelStyle }}>
+      {lines.map((l, i) => {
+        const sign = l.type === "add" ? "+" : l.type === "remove" ? "-" : " ";
+        const color = l.type === "add" ? "var(--ok)" : l.type === "remove" ? "var(--err)" : "var(--code-text)";
+        const background =
+          l.type === "add"
+            ? "var(--ok-soft, rgba(126,176,108,0.10))"
+            : l.type === "remove"
+              ? "var(--err-soft, rgba(220,90,90,0.10))"
+              : "transparent";
+        return (
+          <div key={i} style={{ color, background, display: "flex", gap: "var(--sp-2)" }}>
+            <span aria-hidden style={{ flex: "none", opacity: 0.7, userSelect: "none" }}>
+              {sign}
+            </span>
+            <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{l.text}</span>
+          </div>
+        );
+      })}
+    </pre>
   );
 }
 
