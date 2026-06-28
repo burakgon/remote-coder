@@ -309,6 +309,10 @@ function handle(msg) {
   if (msg.type === "user") {
     if (MODE === "permission") emitToolUseAndPermissionRequest();
     else if (MODE === "question") emitQuestionRequest();
+    // "silent": accept the message but emit NOTHING (no echo, no result) — models the early-turn window
+    // where the process is busy spinning up / thinking before any frame is streamed back. Used to verify
+    // the server's `turnInFlight` makes a reopen show "working" even when the buffer has no turn frames.
+    else if (MODE === "silent") return;
     else emitSimpleTurn();
     return;
   }

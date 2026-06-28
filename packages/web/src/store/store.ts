@@ -258,7 +258,10 @@ export const useStore = create<StoreState>((set, get) => ({
       view = {
         ...view,
         lastSeq: sinceSeq,
-        wireState: awaiting ? "awaiting" : live?.turnActive ? "running-tool" : "idle",
+        // Reopen mid-turn: seed the HONEST phase from the server's buffer-derived `liveWire` ("running-tool"
+        // only when a tool is genuinely executing, else "thinking") — NOT a blanket "running-tool", which
+        // fabricated a tool during the thinking/streaming phases. Live WS frames refine it from here.
+        wireState: awaiting ? "awaiting" : live?.turnActive ? (live.liveWire ?? "thinking") : "idle",
         pendingPermission,
         pendingQuestion,
         usage: hasUsage ? seededUsage : undefined,

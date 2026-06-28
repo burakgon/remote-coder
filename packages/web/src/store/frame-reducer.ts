@@ -200,6 +200,10 @@ interface DeltaEvent {
   type?: string;
   index?: number;
   delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
+  /** `content_block_start` announces the block's type ("thinking" | "text" | "tool_use") at the START of
+   *  the block — the authoritative phase signal. Crucially it is reliable even when extended-thinking
+   *  content is REDACTED (the stream then carries `thinking: ""`), where the deltas alone reveal nothing. */
+  content_block?: { type?: string; name?: string };
   /** `message_delta` carries the running usage (output_tokens ticks up as the message generates). */
   usage?: { output_tokens?: number };
   /** `message_start` carries the message's initial usage (output_tokens ~ a few). */
@@ -441,6 +445,18 @@ function wireForStatus(status: SubagentThread["status"]): LiveWireState {
   return status === "failed" ? "error" : status === "completed" ? "success" : "running-tool";
 }
 
+/** The honest wire state for a streaming content block, by its `content_block.type` (from
+ *  `content_block_start`): a thinking block → "thinking", text → "streaming". A tool_use block is
+ *  deliberately NOT mapped: while the call is being COMPOSED (its args stream as input_json_delta) no tool
+ *  is executing yet — that is still generation, so the wire stays at the prior phase. "running-tool" is set
+ *  only once the call is FINALIZED + dispatched (the assistant tool_use frame), which also keeps the LIVE
+ *  wire identical to what a REOPEN can derive from the buffer (an unmatched finalized tool_use). */
+function wireForBlockType(blockType?: string): LiveWireState | undefined {
+  if (blockType === "thinking" || blockType === "redacted_thinking") return "thinking";
+  if (blockType === "text") return "streaming";
+  return undefined;
+}
+
 /** Merge a task_* usage object (totalTokens/...) into the thread's usage rollup (new values win). */
 function mergeUsage(prev: SubagentUsage | undefined, tu: TaskInfo["usage"]): SubagentUsage | undefined {
   if (!tu) return prev;
@@ -648,6 +664,10 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
       : info.code === null || info.code === undefined || info.code === 0;
     next.wireState = clean ? "idle" : "error";
     next.awaitingReply = false; // the process ended → nothing is coming; the "Thinking…" bridge is done
+    next.compacting = false; // a process that died MID-/compact never sends a result/status to clear this —
+    // without this the strip would be stuck on a calm "Compacting…" masking the crash/dormancy.
+    next.liveTokens = undefined;
+    next.turnTokenBase = undefined;
     return next;
   }
 
@@ -722,23 +742,35 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
         if (typeof out === "number") next.liveTokens = (next.turnTokenBase ?? 0) + out;
       }
     }
+    // PHASE SIGNAL — `content_block_start` announces the block's type at its START, so the wire shows the
+    // TRUE state (Thinking / Streaming / Running tool) the moment the block opens. This is the honest
+    // source: it works even when extended-thinking content is REDACTED (deltas carry `thinking: ""`), the
+    // case where the delta-only path below sees nothing and the state would otherwise stay stale.
+    if (inner?.type === "content_block_start") {
+      const wire = wireForBlockType(inner.content_block?.type);
+      if (wire) {
+        if (parent !== undefined) updateThread(parent, (t) => ({ ...t, wireState: wire }));
+        else next.wireState = wire;
+      }
+    }
     if (inner?.type === "content_block_delta" && inner.delta) {
-      if (inner.delta.type === "text_delta" && inner.delta.text) {
+      // Set the wire on the delta TYPE regardless of whether its content is present: redacted thinking
+      // streams as `thinking: ""`, so guarding on the text would drop the "Thinking" state entirely. Append
+      // the text only when there is some (an empty delta still advances the phase, not the transcript).
+      if (inner.delta.type === "text_delta") {
+        const text = inner.delta.text ?? "";
         if (parent !== undefined) {
-          updateThread(parent, (t) => ({ ...t, liveText: t.liveText + inner.delta!.text, wireState: "streaming" }));
+          updateThread(parent, (t) => ({ ...t, liveText: t.liveText + text, wireState: "streaming" }));
         } else {
-          next.liveText = view.liveText + inner.delta.text;
+          next.liveText = view.liveText + text;
           next.wireState = "streaming";
         }
-      } else if (inner.delta.type === "thinking_delta" && inner.delta.thinking) {
+      } else if (inner.delta.type === "thinking_delta") {
+        const thinking = inner.delta.thinking ?? "";
         if (parent !== undefined) {
-          updateThread(parent, (t) => ({
-            ...t,
-            thinkingText: t.thinkingText + inner.delta!.thinking,
-            wireState: "thinking",
-          }));
+          updateThread(parent, (t) => ({ ...t, thinkingText: t.thinkingText + thinking, wireState: "thinking" }));
         } else {
-          next.thinkingText = view.thinkingText + inner.delta.thinking;
+          next.thinkingText = view.thinkingText + thinking;
           next.wireState = "thinking";
         }
       }

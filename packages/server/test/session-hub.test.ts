@@ -91,6 +91,36 @@ test("reconnect replay: a late subscriber receives buffered frames including the
   hub.stopSession(meta.id);
 });
 
+test("getHistory reports turnActive in the EARLY window (sent, nothing echoed yet) so reopen shows 'working'", async () => {
+  // The buffer's turnActive only flips once the CLI echoes a frame; in "silent" mode nothing is echoed, so
+  // this isolates the server's `turnInFlight` signal — without it a reopen during spin-up/first-thinking
+  // read a wrong "idle"/"Ready". liveWire stays undefined (no tool frames), so the client seeds "thinking".
+  const { hub } = hubFor("silent");
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  // Before any send: no turn is in flight → idle.
+  const before = await hub.getHistory(meta.id);
+  expect(before.live?.turnActive).toBeFalsy();
+
+  // Send, but the mock echoes NOTHING — the buffer has no assistant/user/stream frame for this turn.
+  await hub.sendMessage(meta.id, "think hard");
+  const mid = await hub.getHistory(meta.id);
+  expect(mid.live?.turnActive).toBe(true); // honest "working" from turnInFlight, not idle
+  expect(mid.live?.liveWire).toBeUndefined(); // no tool yet → client seeds the neutral "thinking"
+  hub.stopSession(meta.id);
+});
+
+test("getHistory clears turnActive after the turn settles (result) so a later reopen reads idle", async () => {
+  const { hub } = hubFor("simple");
+  const meta = await hub.createSession({ cwd: process.cwd() });
+  const done = waitForFrame(hub, meta.id, (f) => f.kind === "result");
+  await hub.sendMessage(meta.id, "hi");
+  await done;
+  const after = await hub.getHistory(meta.id);
+  expect(after.live?.turnActive).toBeFalsy(); // turnInFlight reset on result → reopen is honest "Ready"/"Done"
+  hub.stopSession(meta.id);
+});
+
 test("a reconnect whose ?since= is below evicted content gets a `resync` signal first (no silent gap)", async () => {
   // A tiny replay buffer guarantees that one turn's frames evict the earlier (init) content, so a client
   // that reconnects from seq 0 can no longer be made whole by a delta — it must refetch full history.

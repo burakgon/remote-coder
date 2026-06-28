@@ -361,14 +361,28 @@ describe("ChatView — pending permission (allow/deny tool gate)", () => {
     expect(screen.getByRole("status")).toHaveAttribute("data-state", "awaiting");
   });
 
-  it("reopening mid-turn (server reports a turn active) shows a working state, not idle", async () => {
+  it("reopening mid-turn (turn active, no precise phase) shows the HONEST default 'thinking', not a fabricated tool", async () => {
     const api = {
       ...apiStub(),
       getSession: vi.fn(async () => ({ session, history, sinceSeq: 2, live: { turnActive: true } })),
     } as unknown as ApiClient;
     await mount(api);
-    // live.turnActive seeds a working wire on reopen, so a chat reopened WHILE Claude is mid-turn shows
-    // activity immediately instead of a wrong "Ready".
+    // turnActive with no `liveWire` → seed "thinking" (the model is generating). It must NOT default to
+    // "running-tool" (that fabricated a tool during the thinking/streaming phases), and must NOT be idle.
+    expect(screen.getByRole("status")).toHaveAttribute("data-state", "thinking");
+  });
+
+  it("reopening mid-turn while a tool is genuinely executing (liveWire='running-tool') shows 'Running tool'", async () => {
+    const api = {
+      ...apiStub(),
+      getSession: vi.fn(async () => ({
+        session,
+        history,
+        sinceSeq: 2,
+        live: { turnActive: true, liveWire: "running-tool" },
+      })),
+    } as unknown as ApiClient;
+    await mount(api);
     expect(screen.getByRole("status")).toHaveAttribute("data-state", "running-tool");
   });
 

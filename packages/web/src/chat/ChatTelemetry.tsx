@@ -110,15 +110,26 @@ export function ChatTelemetry({
   // The dot radar-pings whenever the session is "live": the agent working OR waiting on you. Only the
   // agent-working states get the typing ellipsis (it would misread on an awaiting-you state).
   const pinging = working || (!reconnecting && wireState === "awaiting");
-  const color = reconnecting ? "var(--warn)" : compacting || bridging ? "var(--coral-2)" : statusColor(wireState);
-  // "Reconnecting…" outranks "Compacting…" outranks the just-submitted "Thinking…" bridge outranks the wire.
+  // A real "error" wire is authoritative — it must NEVER be masked by a stale `compacting`/`bridging` flag
+  // (a crash mid-/compact, etc.): both the label and the color honor it before those flags.
+  const isError = wireState === "error";
+  const color = reconnecting
+    ? "var(--warn)"
+    : isError
+      ? "var(--err)"
+      : compacting || bridging
+        ? "var(--coral-2)"
+        : statusColor(wireState);
+  // "Reconnecting…" > "Error" > "Compacting…" > the just-submitted "Thinking…" bridge > the wire label.
   const label = reconnecting
     ? "Reconnecting…"
-    : compacting
-      ? "Compacting…"
-      : bridging
-        ? "Thinking…"
-        : STATUS_LABEL[wireState];
+    : isError
+      ? "Error"
+      : compacting
+        ? "Compacting…"
+        : bridging
+          ? "Thinking…"
+          : STATUS_LABEL[wireState];
 
   // Prefer the CLI's authoritative window; the name heuristic is a fallback for the pre-result frames.
   let windowTokens = contextWindow && contextWindow > 0 ? contextWindow : contextWindowFor(model);

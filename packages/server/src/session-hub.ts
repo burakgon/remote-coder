@@ -45,6 +45,13 @@ export interface LiveState {
    *  pending one to the client here — else a chat reopened mid-prompt is stuck "working" with no card. */
   pendingPermission?: unknown;
   pendingQuestion?: unknown;
+  /** The HONEST in-flight phase for a chat reopened mid-turn (only present while `turnActive`). The buffer
+   *  drops `stream_event` (so it can't tell thinking from streaming), but it retains the committed `tool_use`
+   *  / `tool_result` blocks: an UNMATCHED `tool_use` (incl. a `Task`/`Agent` spawn whose subagent is still
+   *  running) means a tool is genuinely executing → "running-tool"; otherwise the model is generating →
+   *  "thinking". We NEVER default to "running-tool" (it would fabricate a tool during thinking/streaming);
+   *  "thinking" is the honest, neutral "working" fallback. The live WS then refines it per `content_block`. */
+  liveWire?: "running-tool" | "thinking";
 }
 
 /** Sum a Claude per-turn `message.usage` into current context occupancy (input + cache-read + cache-create
@@ -69,6 +76,11 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
   let contextTokens: number | undefined;
   let contextWindow: number | undefined;
   let outputTokens: number | undefined;
+  // For the honest reopen phase (liveWire): collect the CURRENT turn's committed tool_use ids and the
+  // tool_result ids that close them. An unmatched tool_use ⇒ a tool is genuinely running. Only frames
+  // newer than the last boundary (`!boundaryHit`) belong to the in-flight turn.
+  const toolUseIds = new Set<string>();
+  const toolResultIds = new Set<string>();
   for (let i = frames.length - 1; i >= 0; i--) {
     const f = frames[i]!;
     if (f.kind === "result") {
@@ -81,14 +93,35 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
     } else if (f.kind === "permission" || f.kind === "question") {
       if (!boundaryHit) turnActive = true;
     } else if (f.kind === "event") {
-      const p = f.payload as { type?: string; parentToolUseId?: string; message?: { usage?: Record<string, unknown> } };
+      const p = f.payload as {
+        type?: string;
+        parentToolUseId?: string;
+        message?: { usage?: Record<string, unknown>; content?: unknown };
+      };
       if (!boundaryHit && (p.type === "assistant" || p.type === "stream_event" || p.type === "user")) turnActive = true;
+      if (!boundaryHit && (p.type === "assistant" || p.type === "user")) {
+        const content = p.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            const b = block as { type?: string; id?: string; tool_use_id?: string };
+            if (b.type === "tool_use" && typeof b.id === "string") toolUseIds.add(b.id);
+            else if (b.type === "tool_result" && typeof b.tool_use_id === "string") toolResultIds.add(b.tool_use_id);
+          }
+        }
+      }
       if (contextTokens === undefined && p.type === "assistant" && p.parentToolUseId === undefined) {
         contextTokens = sumAssistantUsage(p.message?.usage);
       }
     }
     if (boundaryHit && contextTokens !== undefined && contextWindow !== undefined) break;
   }
+  // An unmatched tool_use ⇒ "running-tool"; otherwise the model is generating ⇒ "thinking" (never default
+  // to "running-tool", which would lie about a tool during the thinking/streaming phases).
+  const liveWire: LiveState["liveWire"] = !turnActive
+    ? undefined
+    : [...toolUseIds].some((id) => !toolResultIds.has(id))
+      ? "running-tool"
+      : "thinking";
   // NOTE: liveTokens is NOT derived here — the retained `assistant` frames only carry the INITIAL
   // output_tokens (~2); the accurate running count lives in the never-buffered `message_delta`. getHistory
   // sets LiveState.liveTokens from the live process's record counter (see accumulateLiveTokens) instead.
@@ -100,7 +133,7 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
           ...(outputTokens !== undefined ? { outputTokens } : {}),
         }
       : undefined;
-  return { turnActive, ...(usage ? { usage } : {}) };
+  return { turnActive, ...(liveWire ? { liveWire } : {}), ...(usage ? { usage } : {}) };
 }
 
 /**
@@ -264,6 +297,13 @@ interface SessionRecord {
    */
   liveTokens: number;
   turnTokenBase: number;
+  /**
+   * TRUE from the instant a user message is SENT until the turn's `result` (or process exit). The buffer's
+   * `turnActive` only flips true once the CLI ECHOES the message back, so without this an early reopen — in
+   * the spin-up / first-thinking window before any frame is buffered — wrongly read "Ready". getHistory ORs
+   * this in so a chat reopened at ANY point of a live turn honestly shows "working", not idle.
+   */
+  turnInFlight: boolean;
 }
 
 export interface SessionHubOptions {
@@ -339,6 +379,7 @@ export class SessionHub {
       generation: 0,
       liveTokens: 0,
       turnTokenBase: 0,
+      turnInFlight: false,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -443,6 +484,7 @@ export class SessionHub {
       generation: 0,
       liveTokens: 0,
       turnTokenBase: 0,
+      turnInFlight: false,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -593,6 +635,7 @@ export class SessionHub {
       this.markActivity(record);
       record.liveTokens = 0; // the turn ended → reset the live token counter for the next turn
       record.turnTokenBase = 0;
+      record.turnInFlight = false; // turn done → a later reopen reads "Ready"/"Done", not a phantom "working"
       // Remember + PERSIST the authoritative context window (from the result's modelUsage) so the context
       // meter has the right denominator on a later reopen / after a restart, when no result is in the
       // buffer and the model name can't reveal it. Only persist when it actually changes (rare).
@@ -633,6 +676,7 @@ export class SessionHub {
       // held POST /ask requests (and the MCP tools) return instead of hanging. (A deliberate stop already
       // drained them in delete/stopAll; this covers a self-driven exit/crash mid-question.)
       this.cancelAllAsks(record);
+      record.turnInFlight = false; // the process is gone → no turn is in flight; a reopen reads idle/error
       emit("exit", info);
     });
   }
@@ -753,6 +797,12 @@ export class SessionHub {
     // meter. Derive both from the replay buffer (the authoritative live tail) so the client can seed them.
     const snapshot = record.buffer.snapshot();
     const live = liveStateFromBuffer(snapshot);
+    // EARLY-TURN reopen honesty: the buffer's `turnActive` only flips true once the CLI echoes a frame back,
+    // so a reopen during spin-up / first thinking (before anything is buffered) read a wrong "idle". The
+    // record KNOWS a turn is in flight from the instant of send — OR it in (only for a LIVE process). The
+    // buffer had no tool frames yet in that window, so `liveWire` stays undefined → the client seeds the
+    // honest neutral "thinking" (never a fabricated "running-tool").
+    if (this.manager.getSession(id) && record.turnInFlight) live.turnActive = true;
     // The buffer rarely has a result right after a (re)open/restart, so fall back to the PERSISTED context
     // window (captured from an earlier result) — without it the meter divides by a wrong model-name guess.
     if (record.meta.contextWindow !== undefined && live.usage?.contextWindow === undefined) {
@@ -857,7 +907,12 @@ export class SessionHub {
     this.manager.sendMessage(id, content);
     // User send is conversation activity: bump lastActivityAt (in-memory meta + durable store).
     const record = this.records.get(id);
-    if (record) this.markActivity(record);
+    if (record) {
+      this.markActivity(record);
+      // The turn is in flight NOW — before the CLI echoes anything — so a reopen during spin-up/first
+      // thinking honestly shows "working" (see SessionRecord.turnInFlight). Reset on the turn's result/exit.
+      record.turnInFlight = true;
+    }
   }
 
   async answerPermission(
@@ -1184,6 +1239,7 @@ export class SessionHub {
         generation: 0,
         liveTokens: 0,
         turnTokenBase: 0,
+        turnInFlight: false,
       });
     }
   }

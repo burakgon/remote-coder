@@ -375,6 +375,8 @@ describe("useStore", () => {
   it("loadHistory SEEDS wire + meter from the server live tail (switch to a chat mid-turn)", () => {
     // A switched-to chat whose turn is still in flight must show "working" (not a wrong idle) and its
     // context meter immediately — the transcript has no result/stream frame, so the server's `live` seeds it.
+    // With no precise `liveWire`, the HONEST default is "thinking" (the model is generating) — NOT a
+    // fabricated "running-tool", which lied about a tool during the thinking/streaming phases.
     const history: ServerFrame[] = [
       ev(1, { type: "user", uuid: "u1", message: { content: [{ type: "text", text: "go" }] } }),
     ];
@@ -383,8 +385,13 @@ describe("useStore", () => {
       usage: { contextTokens: 42000, contextWindow: 200000 },
     });
     const v = useStore.getState().viewFor("s1");
-    expect(v.wireState).toBe("running-tool");
+    expect(v.wireState).toBe("thinking");
     expect(v.usage).toEqual({ contextTokens: 42000, contextWindow: 200000 });
+  });
+
+  it("loadHistory seeds 'running-tool' when the server's liveWire says a tool is genuinely executing", () => {
+    useStore.getState().loadHistory("s1", [], 9, { turnActive: true, liveWire: "running-tool" });
+    expect(useStore.getState().viewFor("s1").wireState).toBe("running-tool");
   });
 
   it("setCompacting flags the session; a result frame clears it", () => {

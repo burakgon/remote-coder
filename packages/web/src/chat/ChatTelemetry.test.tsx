@@ -18,6 +18,14 @@ describe("ChatTelemetry", () => {
     expect(container.querySelector(".rc-tele__dots")).not.toBeNull();
   });
 
+  it("a real 'error' wire is authoritative — a stale 'compacting' flag can NOT mask it as 'Compacting…'", () => {
+    // A crash mid-/compact: the reducer now clears `compacting` on exit, but the render layer is also
+    // hardened so error wins the label AND the color (never a calm coral "Compacting…" over a red crash).
+    render(<ChatTelemetry wireState="error" compacting />);
+    expect(screen.getByText("Error")).toBeInTheDocument();
+    expect(screen.queryByText("Compacting…")).not.toBeInTheDocument();
+  });
+
   it("shows 'Reconnecting…' (outranking the wire label + working visuals) when the link is down", () => {
     // Even mid-stream, a dropped socket must read as "Reconnecting…" — not a stuck "Streaming…" with the
     // working animation, which would falsely imply Claude is still producing tokens we can see.

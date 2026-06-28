@@ -85,6 +85,54 @@ describe("liveStateFromBuffer", () => {
     const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), streamDelta()]);
     expect(live.liveTokens).toBeUndefined();
   });
+
+  // liveWire — the HONEST reopen phase derived from retained tool_use/tool_result blocks (the buffer drops
+  // stream_event, so this is the best phase signal: a tool genuinely running vs the model generating).
+  const assistantTool = (id: string, name = "Bash") =>
+    f("event", { type: "assistant", message: { content: [{ type: "tool_use", id, name, input: {} }] } });
+  const userToolResult = (id: string) =>
+    f("event", { type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } });
+
+  test("liveWire='running-tool' while a tool_use is UNMATCHED (a tool is executing)", () => {
+    const live = liveStateFromBuffer([userEv(), assistantTool("t1")]);
+    expect(live.turnActive).toBe(true);
+    expect(live.liveWire).toBe("running-tool");
+  });
+
+  test("liveWire='thinking' once the tool_use is closed by its tool_result (model is generating again)", () => {
+    const live = liveStateFromBuffer([assistantTool("t1"), userToolResult("t1")]);
+    expect(live.turnActive).toBe(true);
+    expect(live.liveWire).toBe("thinking");
+  });
+
+  test("liveWire='thinking' for a turn with NO tools yet (pure thinking/streaming) — never fabricates a tool", () => {
+    const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), streamDelta()]);
+    expect(live.liveWire).toBe("thinking");
+  });
+
+  test("a Task/Agent spawn keeps liveWire='running-tool' until its tool_result (the subagent is a tool)", () => {
+    const live = liveStateFromBuffer([assistantTool("ag1", "Task")]);
+    expect(live.liveWire).toBe("running-tool");
+  });
+
+  test("liveWire is undefined when no turn is active (turn ended)", () => {
+    const live = liveStateFromBuffer([assistant(PER_TURN), result({ contextWindow: 200000 })]);
+    expect(live.turnActive).toBe(false);
+    expect(live.liveWire).toBeUndefined();
+  });
+
+  test("tools from a PRIOR (already-resulted) turn don't count toward the current turn's phase", () => {
+    // t1 ran and was answered, the turn ended (result), then a NEW turn started with no tools yet → thinking.
+    const live = liveStateFromBuffer([
+      assistantTool("t1"),
+      userToolResult("t1"),
+      result({ contextWindow: 200000 }),
+      userEv(),
+      assistant(PER_TURN),
+    ]);
+    expect(live.turnActive).toBe(true);
+    expect(live.liveWire).toBe("thinking"); // the prior t1 is behind the boundary — not the current phase
+  });
 });
 
 describe("accumulateLiveTokens (the live '· N tok' counter, sourced from stream message_delta)", () => {

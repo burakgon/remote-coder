@@ -660,6 +660,16 @@ describe("reduceFrame", () => {
     expect(v.compacting).toBe(false);
   });
 
+  it("clears 'Compacting…' on a process EXIT — a crash mid-/compact never sends a result/status", () => {
+    // Otherwise the strip is stuck on a calm "Compacting…" masking the crash (it would also out-rank the
+    // dormant meta, since `compacting` is a view flag fed straight to the telemetry).
+    const clean = reduceFrame({ ...emptyView(), compacting: true }, { seq: 1, kind: "exit", payload: { code: 0 } });
+    expect(clean.compacting).toBe(false);
+    const crash = reduceFrame({ ...emptyView(), compacting: true }, { seq: 1, kind: "exit", payload: { code: 1 } });
+    expect(crash.compacting).toBe(false);
+    expect(crash.wireState).toBe("error"); // and the real state surfaces, not a masking "Compacting…"
+  });
+
   it("a user event with BOTH text and a tool_result yields a user turn AND a tool-result turn", () => {
     let v = emptyView();
     v = reduceFrame(
@@ -1318,6 +1328,119 @@ describe("awaitingReply — the turn-in-flight 'Thinking…' bridge", () => {
   it("is cleared by an exit (the process ended → nothing is coming)", () => {
     const out = reduceFrame(bridging(), { seq: 1, kind: "exit", payload: { code: 0 } });
     expect(out.awaitingReply).toBe(false);
+  });
+});
+
+describe("wireState — the HONEST phase (content_block_start + redacted-thinking deltas)", () => {
+  const start = (seq: number, blockType: string) =>
+    ev(seq, {
+      type: "stream_event",
+      event: { type: "content_block_start", index: 0, content_block: { type: blockType } },
+    });
+
+  it("content_block_start{thinking} → wireState 'thinking' (the real state, the moment the block opens)", () => {
+    expect(reduceFrame(emptyView(), start(1, "thinking")).wireState).toBe("thinking");
+  });
+
+  it("content_block_start{text} → wireState 'streaming'", () => {
+    expect(reduceFrame(emptyView(), start(1, "text")).wireState).toBe("streaming");
+  });
+
+  it("content_block_start{tool_use} leaves the wire UNCHANGED (the call is being composed, not executing)", () => {
+    // "running-tool" means a tool is genuinely executing; while the call streams its args it's still
+    // generation. The wire stays at the prior phase; the finalized assistant tool_use frame marks it running.
+    const v: SessionView = { ...emptyView(), wireState: "thinking" };
+    expect(reduceFrame(v, start(1, "tool_use")).wireState).toBe("thinking");
+  });
+
+  it("the FINALIZED assistant tool_use frame is what sets 'running-tool' (the dispatched call)", () => {
+    const v = reduceFrame(
+      emptyView(),
+      ev(1, {
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } }] },
+      }),
+    );
+    expect(v.wireState).toBe("running-tool");
+  });
+
+  it("content_block_start{redacted_thinking} → wireState 'thinking'", () => {
+    expect(reduceFrame(emptyView(), start(1, "redacted_thinking")).wireState).toBe("thinking");
+  });
+
+  // THE CORE BUG: extended-thinking content is encrypted, so the live stream carries `thinking: ""`. The
+  // old `&& inner.delta.thinking` guard then NEVER set "thinking" — the real state was invisible (only the
+  // send-bridge masked it). A thinking_delta MUST set "thinking" regardless of whether its text is redacted.
+  it("thinking_delta with REDACTED (empty) content still sets wireState 'thinking'", () => {
+    const out = reduceFrame(
+      emptyView(),
+      ev(1, {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "" } },
+      }),
+    );
+    expect(out.wireState).toBe("thinking");
+    expect(out.thinkingText).toBe(""); // nothing to append, but the PHASE is correct
+  });
+
+  it("text_delta with empty content still advances to 'streaming' (the delta is the signal)", () => {
+    const out = reduceFrame(
+      emptyView(),
+      ev(1, { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "" } } }),
+    );
+    expect(out.wireState).toBe("streaming");
+  });
+
+  it("the real LIVE phase order surfaces honestly: thinking → streaming (no stale gap)", () => {
+    let v = emptyView();
+    v = reduceFrame(
+      v,
+      ev(1, { type: "stream_event", event: { type: "message_start", message: { usage: { output_tokens: 1 } } } }),
+    );
+    v = reduceFrame(v, start(2, "thinking"));
+    expect(v.wireState).toBe("thinking");
+    // a redacted thinking_delta + a signature_delta keep it 'thinking' (signature_delta is ignored, not reset)
+    v = reduceFrame(
+      v,
+      ev(3, {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "" } },
+      }),
+    );
+    v = reduceFrame(
+      v,
+      ev(4, {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "signature_delta", signature: "x" } },
+      }),
+    );
+    expect(v.wireState).toBe("thinking");
+    v = reduceFrame(v, start(5, "text"));
+    expect(v.wireState).toBe("streaming");
+  });
+
+  it("a subagent's content_block_start updates THAT thread's wire, not the main wire", () => {
+    let v = emptyView();
+    // open a subagent thread via a Task tool_use anchor on the main turn
+    v = reduceFrame(
+      v,
+      ev(1, {
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "ag1", name: "Task", input: { description: "d", prompt: "p" } }] },
+      }),
+    );
+    const mainWire = v.wireState;
+    v = reduceFrame(v, {
+      seq: 2,
+      kind: "event",
+      payload: {
+        type: "stream_event",
+        parentToolUseId: "ag1",
+        event: { type: "content_block_start", content_block: { type: "thinking" } },
+      },
+    });
+    expect(v.subagents["ag1"]?.wireState).toBe("thinking");
+    expect(v.wireState).toBe(mainWire); // main wire untouched by subagent phase
   });
 });
 

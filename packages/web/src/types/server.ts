@@ -84,6 +84,10 @@ export interface LiveState {
    *  mid-prompt showed "working" with no card to answer → stuck. Seeded into the view on loadHistory. */
   pendingPermission?: PermissionPayload;
   pendingQuestion?: QuestionPayload;
+  /** The HONEST in-flight phase for a chat reopened mid-turn (only while `turnActive`): "running-tool" when
+   *  a tool_use is genuinely unmatched (executing), else "thinking" (the model is generating). Used to seed
+   *  the wire so reopen never fabricates a "Running tool" during thinking/streaming. Live frames refine it. */
+  liveWire?: "running-tool" | "thinking";
 }
 
 /** One selectable model the account offers (mirror of the server's ModelOption, from the init handshake). */
