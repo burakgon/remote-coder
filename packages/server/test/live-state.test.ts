@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { liveStateFromBuffer } from "../src/index.js";
+import { liveStateFromBuffer, accumulateLiveTokens } from "../src/index.js";
 import type { ServerFrame } from "../src/index.js";
 
 let seq = 0;
@@ -79,38 +79,50 @@ describe("liveStateFromBuffer", () => {
     expect(liveStateFromBuffer([])).toEqual({ turnActive: false });
   });
 
-  describe("liveTokens (the in-flight turn's output counter, for reopen-mid-turn)", () => {
-    test("sums the current turn's MAIN assistant output_tokens (monotonic across a tool round)", () => {
-      // Two assistant messages this turn (a tool round), no result yet → 794 + 794.
-      const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), assistant(PER_TURN), streamDelta()]);
-      expect(live.turnActive).toBe(true);
-      expect(live.liveTokens).toBe(794 * 2);
-    });
+  test("liveStateFromBuffer does NOT derive liveTokens (the buffer's assistant usage is initial-only)", () => {
+    // Real CLI: the retained assistant frame carries output_tokens ~2 (the message_start value); the
+    // accurate running count is in the never-buffered message_delta. So the buffer can't be the source.
+    const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), streamDelta()]);
+    expect(live.liveTokens).toBeUndefined();
+  });
+});
 
-    test("is absent once the turn ended (result) — the live counter stops", () => {
-      const live = liveStateFromBuffer([assistant(PER_TURN), result({ contextWindow: 200000 })]);
-      expect(live.turnActive).toBe(false);
-      expect(live.liveTokens).toBeUndefined();
-    });
+describe("accumulateLiveTokens (the live '· N tok' counter, sourced from stream message_delta)", () => {
+  const start = (out: number) => ({
+    type: "stream_event" as const,
+    event: { type: "message_start", message: { usage: { output_tokens: out } } },
+  });
+  const delta = (out: number) => ({
+    type: "stream_event" as const,
+    event: { type: "message_delta", usage: { output_tokens: out } },
+  });
+  const fold = (evs: Array<Parameters<typeof accumulateLiveTokens>[1]>) =>
+    evs.reduce((s, ev) => accumulateLiveTokens(s, ev), { liveTokens: 0, turnTokenBase: 0 });
 
-    test("counts ONLY the current turn (assistant output after the last result), not the previous one", () => {
-      const live = liveStateFromBuffer([
-        assistant(PER_TURN),
-        result({ contextWindow: 200000 }),
-        userEv(),
-        assistant(PER_TURN),
-      ]);
-      expect(live.liveTokens).toBe(794); // only the post-result assistant, not 794*2
-    });
+  test("ticks up from message_delta's running output_tokens", () => {
+    const s = fold([start(2), delta(120), delta(450)]);
+    expect(s.liveTokens).toBe(450);
+  });
 
-    test("EXCLUDES subagent output (its tokens live on the subagent card, not the main counter)", () => {
-      const sub = f("event", {
-        type: "assistant",
-        parentToolUseId: "ag1",
-        message: { content: [], usage: { output_tokens: 5000 } },
-      });
-      const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), sub]);
-      expect(live.liveTokens).toBe(794); // not 794 + 5000
-    });
+  test("stays MONOTONIC across a multi-message (tool) turn — message_start commits the prior into the base", () => {
+    // msg1: start 1 → delta 300; msg2 starts (base 300) → delta 180 → 480. (matches the real capture: 134→150)
+    const s = fold([start(1), delta(300), start(2), delta(180)]);
+    expect(s.turnTokenBase).toBe(300);
+    expect(s.liveTokens).toBe(480);
+  });
+
+  test("IGNORES subagent stream deltas (their tokens belong to the subagent card)", () => {
+    const subDelta = {
+      type: "stream_event" as const,
+      parentToolUseId: "ag1",
+      event: { type: "message_delta", usage: { output_tokens: 9999 } },
+    };
+    const s = fold([start(1), delta(100), subDelta]);
+    expect(s.liveTokens).toBe(100); // unchanged by the subagent delta
+  });
+
+  test("ignores non-stream events (assistant/result pass through unchanged)", () => {
+    const s = accumulateLiveTokens({ liveTokens: 42, turnTokenBase: 0 }, { type: "assistant" });
+    expect(s).toEqual({ liveTokens: 42, turnTokenBase: 0 });
   });
 });

@@ -69,7 +69,6 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
   let contextTokens: number | undefined;
   let contextWindow: number | undefined;
   let outputTokens: number | undefined;
-  let liveOut = 0; // sum of the IN-FLIGHT turn's MAIN assistant output_tokens (the live "· N tok" counter)
   for (let i = frames.length - 1; i >= 0; i--) {
     const f = frames[i]!;
     if (f.kind === "result") {
@@ -82,24 +81,17 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
     } else if (f.kind === "permission" || f.kind === "question") {
       if (!boundaryHit) turnActive = true;
     } else if (f.kind === "event") {
-      const p = f.payload as {
-        type?: string;
-        parentToolUseId?: string;
-        message?: { usage?: Record<string, unknown> };
-      };
+      const p = f.payload as { type?: string; parentToolUseId?: string; message?: { usage?: Record<string, unknown> } };
       if (!boundaryHit && (p.type === "assistant" || p.type === "stream_event" || p.type === "user")) turnActive = true;
-      if (p.type === "assistant" && p.parentToolUseId === undefined) {
-        if (contextTokens === undefined) contextTokens = sumAssistantUsage(p.message?.usage);
-        // Accumulate the CURRENT turn's output (before the boundary) for the live counter on reopen.
-        if (!boundaryHit) {
-          const o = p.message?.usage?.output_tokens;
-          if (typeof o === "number") liveOut += o;
-        }
+      if (contextTokens === undefined && p.type === "assistant" && p.parentToolUseId === undefined) {
+        contextTokens = sumAssistantUsage(p.message?.usage);
       }
     }
     if (boundaryHit && contextTokens !== undefined && contextWindow !== undefined) break;
   }
-  const liveTokens = turnActive && liveOut > 0 ? liveOut : undefined;
+  // NOTE: liveTokens is NOT derived here — the retained `assistant` frames only carry the INITIAL
+  // output_tokens (~2); the accurate running count lives in the never-buffered `message_delta`. getHistory
+  // sets LiveState.liveTokens from the live process's record counter (see accumulateLiveTokens) instead.
   const usage =
     contextTokens !== undefined || contextWindow !== undefined || outputTokens !== undefined
       ? {
@@ -108,7 +100,34 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
           ...(outputTokens !== undefined ? { outputTokens } : {}),
         }
       : undefined;
-  return { turnActive, ...(usage ? { usage } : {}), ...(liveTokens !== undefined ? { liveTokens } : {}) };
+  return { turnActive, ...(usage ? { usage } : {}) };
+}
+
+/**
+ * Fold one inbound event into the per-session live-token counter (the terminal's "· N tok"). The accurate
+ * running count is in the stream's `message_delta.usage.output_tokens` (the retained `assistant` frame only
+ * has the initial value). `base` sums the turn's ALREADY-FINISHED messages (committed at each `message_start`)
+ * so a multi-message/tool turn stays monotonic. Subagent stream events (parentToolUseId set) are ignored —
+ * their tokens belong to the subagent card. Pure; returns the next {liveTokens, base}.
+ */
+export function accumulateLiveTokens(
+  prev: { liveTokens: number; turnTokenBase: number },
+  ev: { type?: string; parentToolUseId?: string; event?: unknown },
+): { liveTokens: number; turnTokenBase: number } {
+  if (ev.type !== "stream_event" || ev.parentToolUseId !== undefined) return prev;
+  const inner = ev.event as
+    | { type?: string; usage?: { output_tokens?: number }; message?: { usage?: { output_tokens?: number } } }
+    | undefined;
+  if (inner?.type === "message_start") {
+    const base = prev.liveTokens; // the just-finished message's deltas are already in liveTokens → commit them
+    const out = inner.message?.usage?.output_tokens;
+    return { turnTokenBase: base, liveTokens: base + (typeof out === "number" ? out : 0) };
+  }
+  if (inner?.type === "message_delta") {
+    const out = inner.usage?.output_tokens;
+    if (typeof out === "number") return { turnTokenBase: prev.turnTokenBase, liveTokens: prev.turnTokenBase + out };
+  }
+  return prev;
 }
 
 /**
@@ -236,6 +255,15 @@ interface SessionRecord {
    * `exit` frame or flipping the freshly-resumed session to dormant.
    */
   generation: number;
+  /**
+   * The IN-FLIGHT turn's output tokens so far (the live "· N tok" counter), tracked from the stream's
+   * `message_delta`/`message_start` usage as frames pass through — `message_delta` carries the accurate
+   * running count (the retained `assistant` frame only has the initial ~2, so the buffer CAN'T derive it).
+   * `turnTokenBase` sums the turn's already-finished messages so a multi-message turn stays monotonic.
+   * Both reset on a `result`. Reported in getHistory's LiveState so a reopen-mid-turn shows the right count.
+   */
+  liveTokens: number;
+  turnTokenBase: number;
 }
 
 export interface SessionHubOptions {
@@ -309,6 +337,8 @@ export class SessionHub {
       pendingAsks: new Map(),
       intentionalStop: false,
       generation: 0,
+      liveTokens: 0,
+      turnTokenBase: 0,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -411,6 +441,8 @@ export class SessionHub {
       pendingAsks: new Map(),
       intentionalStop: false,
       generation: 0,
+      liveTokens: 0,
+      turnTokenBase: 0,
     };
     this.records.set(session.id, record);
     this.attach(session.process, record);
@@ -533,6 +565,11 @@ export class SessionHub {
       // deltas — so a long answer doesn't fire a synchronous sqlite write per token (in-memory still bumps).
       const isMessage = ev.type === "user" || ev.type === "assistant";
       this.markActivity(record, isMessage);
+      // Track the in-flight turn's live output-token count from the stream usage (the buffer can't derive
+      // it — only message_delta carries the running number). Reported in getHistory for reopen-mid-turn.
+      const t = accumulateLiveTokens({ liveTokens: record.liveTokens, turnTokenBase: record.turnTokenBase }, ev);
+      record.liveTokens = t.liveTokens;
+      record.turnTokenBase = t.turnTokenBase;
       emit("event", ev);
     });
     proc.on("permission", (perm: PermissionEvent) => {
@@ -554,6 +591,8 @@ export class SessionHub {
       // dropped), and this is real conversation activity.
       this.clearAllAwaiting(record);
       this.markActivity(record);
+      record.liveTokens = 0; // the turn ended → reset the live token counter for the next turn
+      record.turnTokenBase = 0;
       // Remember + PERSIST the authoritative context window (from the result's modelUsage) so the context
       // meter has the right denominator on a later reopen / after a restart, when no result is in the
       // buffer and the model name can't reveal it. Only persist when it actually changes (rare).
@@ -718,6 +757,12 @@ export class SessionHub {
     // window (captured from an earlier result) — without it the meter divides by a wrong model-name guess.
     if (record.meta.contextWindow !== undefined && live.usage?.contextWindow === undefined) {
       live.usage = { ...live.usage, contextWindow: record.meta.contextWindow };
+    }
+    // Live token counter for reopen-mid-turn: only meaningful while a process is LIVE and a turn is in
+    // flight (a dormant session has no in-flight turn). Sourced from the record (tracked off message_delta),
+    // since the buffer can't derive it from the initial-only assistant usage.
+    if (this.manager.getSession(id) && live.turnActive && record.liveTokens > 0) {
+      live.liveTokens = record.liveTokens;
     }
     // Hand the client any STILL-PENDING prompt so a chat reopened mid-permission/question shows the card to
     // answer (the transcript has no prompt frame and the ?since resume skips the retained one). The buffer
@@ -1137,6 +1182,8 @@ export class SessionHub {
         pendingAsks: new Map(),
         intentionalStop: false,
         generation: 0,
+        liveTokens: 0,
+        turnTokenBase: 0,
       });
     }
   }
