@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { precacheAndRoute } from "workbox-precaching";
-import { parsePushPayload, notificationOptions, clickTargetUrl } from "./sw-handlers";
+import { parsePushPayload, notificationOptions, clickTargetUrl, applyBadgeFromPush } from "./sw-handlers";
 
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision: string | null }> };
 
@@ -13,9 +13,12 @@ precacheAndRoute(self.__WB_MANIFEST);
 self.addEventListener("install", () => void self.skipWaiting());
 self.addEventListener("activate", (event: ExtendableEvent) => event.waitUntil(self.clients.claim()));
 
-// Web Push: show the notification the server sent.
+// Web Push: show the notification the server sent, and set the home-screen app badge to the awaiting count
+// carried in the payload — so the badge updates even when the app is CLOSED (the running app clears/refreshes
+// it on foreground). Both are feature-detected/best-effort and never throw out of the handler.
 self.addEventListener("push", (event: PushEvent) => {
   const payload = parsePushPayload(event.data?.text());
+  applyBadgeFromPush(payload, self.navigator);
   event.waitUntil(self.registration.showNotification(payload.title, notificationOptions(payload)));
 });
 

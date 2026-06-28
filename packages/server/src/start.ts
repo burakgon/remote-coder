@@ -71,9 +71,19 @@ export async function startServer(
   // Web Push (spec §1): VAPID keypair (persisted), subscription store, dispatcher with the real sender.
   const vapid = resolveVapidKeys({ dataDir: config.dataDir });
   const pushStore = openPushStore({ dbPath: join(config.dataDir, "push.db") });
+  // The hub is built INSIDE createServer (below); the dispatcher is built first because createServer needs
+  // its `onFrame`. A mutable holder lets the dispatcher's foreground / badge predicates read the hub once
+  // createServer fills it — so the gate + badge count stay LIVE without coupling the dispatcher to the hub.
+  // Until createServer assigns it, the predicates safely no-op (never suppress; count 0).
+  const hubRef: { hub?: CreateServerResult["hub"] } = {};
   const dispatcher = new PushDispatcher({
     store: pushStore,
     send: createWebPushSend({ vapid, subject: env.VAPID_SUBJECT ?? "mailto:remote-coder@localhost" }),
+    // FOREGROUND-GATING: suppress a push while the user is genuinely LOOKING at that session (a foreground
+    // WS subscriber exists). Fires when backgrounded / viewing a different session / disconnected.
+    hasForegroundSubscriber: (sessionId) => hubRef.hub?.hasForegroundSubscriber(sessionId) ?? false,
+    // APP BADGE: carry the current count of awaiting sessions so the SW badges the home screen even closed.
+    awaitingCount: () => hubRef.hub?.awaitingSessionCount() ?? 0,
     // baseUrl is set via setBaseUrl AFTER listen() resolves the real origin (port 0 → OS-chosen port).
   });
 
@@ -104,6 +114,8 @@ export async function startServer(
     models,
     storeMode,
   });
+  // Hand the dispatcher's foreground-gate + badge predicates the live hub now that it exists.
+  hubRef.hub = result.hub;
   const url = await result.app.listen({ port: config.port, host: config.bindAddress });
   // The deep-link origin in pushes (the notification's click URL) defaults to the listen URL, but that's
   // the BIND address (e.g. 127.0.0.1 / 0.0.0.0 / a LAN IP) — a different origin than the one a remote

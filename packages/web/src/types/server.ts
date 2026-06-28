@@ -381,4 +381,8 @@ export type OutboundFrame =
   // REWIND / CHECKPOINT: go back to a turn's checkpoint (its user-message uuid), optionally reverting
   // code and/or the conversation. `code` = live file rewind; `conversation`/`both` = resume truncated at
   // the checkpoint (and, for `both`, also rewind files on resume).
-  | { type: "rewind"; checkpointId: string; mode: "code" | "conversation" | "both" };
+  | { type: "rewind"; checkpointId: string; mode: "code" | "conversation" | "both" }
+  // FOREGROUND-GATING: report whether THIS connection's PWA tab is visible. The server suppresses a push
+  // for a session while a foreground subscriber exists, so the user never gets a notification for the
+  // chat they're actively looking at. Sent on document.visibilitychange and right after (re)connect.
+  | { type: "visibility"; state: "foreground" | "background" };

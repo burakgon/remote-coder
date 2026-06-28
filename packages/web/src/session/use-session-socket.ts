@@ -50,5 +50,25 @@ export function useSessionSocket(
   // over `send` — e.g. ChatView's `answer` and its auto-allow effect — don't churn every render.
   const send = useCallback((f: OutboundFrame) => socketRef.current?.send(f) ?? false, []);
 
+  // FOREGROUND-GATING: tell the server whether THIS tab is visible so it suppresses a push for the session
+  // the user is actively LOOKING at (and still fires for a backgrounded one / a different session). We send
+  // the current state right after (re)connect — `status === "open"` — and on every visibilitychange. The
+  // server defaults a fresh connection to foreground, so this is the authoritative refinement. Feature-
+  // detected (`document` may be absent in non-DOM/test envs) and a no-op-safe `send` (returns false while
+  // mid-reconnect; the socket queues it to flush on the next open). Only active while the socket is enabled.
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof document === "undefined") return;
+    const sendVisibility = () => {
+      send({ type: "visibility", state: document.visibilityState === "visible" ? "foreground" : "background" });
+    };
+    // Announce the current state once the socket is open (a just-(re)connected sub defaults to foreground;
+    // this confirms/corrects it — e.g. if the tab is already hidden when the socket comes up).
+    if (status === "open") sendVisibility();
+    const onChange = () => sendVisibility();
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, [enabled, status, send, session.id]);
+
   return { send, status };
 }

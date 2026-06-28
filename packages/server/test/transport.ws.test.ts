@@ -253,6 +253,74 @@ test("WS: a subscriber is removed on socket close (no leak in the hub)", async (
   });
 });
 
+test("WS: a `visibility` frame flips THIS connection's foreground flag (push foreground-gating)", async () => {
+  const config = configFor();
+  current = createServer(config, managerFor("simple", config));
+  const hub = current.hub;
+  const base = await listen(current);
+  const id = await createSession(current);
+
+  await new Promise<void>((resolve, reject) => {
+    const ws = openWs(base, id, TOKEN, () => {});
+    ws.on("open", () => {
+      // Default on connect: the subscriber is FOREGROUND (opening means looking at it).
+      expect(hub.hasForegroundSubscriber(id)).toBe(true);
+      // Background the tab → the server flips THIS subscription's foreground flag.
+      ws.send(JSON.stringify({ type: "visibility", state: "background" }));
+      setTimeout(() => {
+        try {
+          expect(hub.hasForegroundSubscriber(id)).toBe(false);
+          // Foreground again → flips back.
+          ws.send(JSON.stringify({ type: "visibility", state: "foreground" }));
+          setTimeout(() => {
+            try {
+              expect(hub.hasForegroundSubscriber(id)).toBe(true);
+              ws.close();
+              resolve();
+            } catch (err) {
+              ws.close();
+              reject(err as Error);
+            }
+          }, 100);
+        } catch (err) {
+          ws.close();
+          reject(err as Error);
+        }
+      }, 100);
+    });
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error("visibility ws never opened")), 6000);
+  });
+});
+
+test("WS: an unrecognized `visibility` state is ignored (foreground unchanged)", async () => {
+  const config = configFor();
+  current = createServer(config, managerFor("simple", config));
+  const hub = current.hub;
+  const base = await listen(current);
+  const id = await createSession(current);
+
+  await new Promise<void>((resolve, reject) => {
+    const ws = openWs(base, id, TOKEN, () => {});
+    ws.on("open", () => {
+      ws.send(JSON.stringify({ type: "visibility", state: "garbage" }));
+      setTimeout(() => {
+        try {
+          // Still foreground (the bad state was ignored, not applied).
+          expect(hub.hasForegroundSubscriber(id)).toBe(true);
+          ws.close();
+          resolve();
+        } catch (err) {
+          ws.close();
+          reject(err as Error);
+        }
+      }, 100);
+    });
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error("visibility ws never opened")), 6000);
+  });
+});
+
 test("WS: ?since=N delta replay sends only frames with seq > N", async () => {
   const config = configFor();
   current = createServer(config, managerFor("simple", config));

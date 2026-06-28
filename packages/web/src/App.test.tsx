@@ -485,7 +485,75 @@ describe("App — auto-allow rules are scoped per session (no cross-session leak
       sessionId: "b",
       frame: { type: "permission", requestId: "b-r1", decision: "allow" },
     });
-    expect(wsSends.filter((s) => s.sessionId === "b")).toHaveLength(0);
+    // No PERMISSION frame was sent on B at all (the gate held). B's socket may carry benign `visibility`
+    // foreground-gating frames — those are expected and not a leaked decision, so filter to permissions.
+    expect(wsSends.filter((s) => s.sessionId === "b" && s.frame.type === "permission")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// APP BADGE: the home-screen badge reflects the "needs you" count (awaiting sessions), set via the
+// feature-detected navigator.setAppBadge and cleared at 0.
+// ---------------------------------------------------------------------------------------------
+describe("App — home-screen app badge reflects the awaiting count", () => {
+  let setAppBadge: ReturnType<typeof vi.fn>;
+  let clearAppBadge: ReturnType<typeof vi.fn>;
+  let realWS: typeof WebSocket;
+
+  beforeEach(() => {
+    setAppBadge = vi.fn(async () => {});
+    clearAppBadge = vi.fn(async () => {});
+    (navigator as unknown as { setAppBadge: unknown }).setAppBadge = setAppBadge;
+    (navigator as unknown as { clearAppBadge: unknown }).clearAppBadge = clearAppBadge;
+    realWS = globalThis.WebSocket;
+    class NoopWS {
+      static readonly OPEN = 1;
+      readyState = 1;
+      onopen: (() => void) | null = null;
+      onmessage: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+      send() {}
+      close() {}
+    }
+    globalThis.WebSocket = NoopWS as unknown as typeof WebSocket;
+  });
+  afterEach(() => {
+    globalThis.WebSocket = realWS;
+    delete (navigator as unknown as { setAppBadge?: unknown }).setAppBadge;
+    delete (navigator as unknown as { clearAppBadge?: unknown }).clearAppBadge;
+  });
+
+  it("sets the badge to the number of awaiting sessions on load", async () => {
+    saveToken("good-token");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        sessions: [
+          { id: "s1", cwd: "/home/u/a", dangerouslySkip: false, status: "running", createdAt: 1, awaiting: true },
+          { id: "s2", cwd: "/home/u/b", dangerouslySkip: false, status: "running", createdAt: 2, awaiting: true },
+          { id: "s3", cwd: "/home/u/c", dangerouslySkip: false, status: "running", createdAt: 3 },
+        ],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("button", { name: /show sessions/i });
+    await waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(2));
+  });
+
+  it("clears the badge when no session is awaiting", async () => {
+    saveToken("good-token");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        sessions: [{ id: "s1", cwd: "/home/u/a", dangerouslySkip: false, status: "running", createdAt: 1 }],
+      }),
+    );
+    render(<App />);
+    await screen.findByRole("button", { name: /show sessions/i });
+    await waitFor(() => expect(clearAppBadge).toHaveBeenCalled());
+    expect(setAppBadge).not.toHaveBeenCalled();
   });
 });
 

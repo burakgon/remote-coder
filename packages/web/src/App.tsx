@@ -15,6 +15,7 @@ import { ChatView } from "./chat/ChatView";
 import { SettingsPanel } from "./settings/SettingsPanel";
 import { loadDefaults, saveDefaults } from "./settings/defaults";
 import { enablePush, disablePush, currentPushState } from "./pwa/push";
+import { applyAppBadge, badgeCount } from "./pwa/badge";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
 import { UpdateBanner } from "./pwa/UpdateBanner";
 import { UpdatePanel } from "./update/UpdatePanel";
@@ -350,6 +351,24 @@ export function App() {
       window.removeEventListener("focus", onFocus);
     };
   }, [phase, api, setUsage]);
+
+  // APP BADGE: reflect the "needs you" count (sessions awaiting a permission/question) onto the home-screen
+  // app badge so a backgrounded session that needs an answer is glanceable without opening the app. Driven
+  // by `sessions` (refreshed by the meta poll + synced live by applyFrame's syncAwaiting), so the badge
+  // tracks the count as it changes; it CLEARS at 0. Also refresh on visibilitychange→visible: opening the
+  // app re-asserts the truth (and supersedes any stale count the SW set from a push while we were closed).
+  // Feature-detected inside applyAppBadge — a silent no-op where the App Badging API is unsupported (iOS).
+  const needsYou = badgeCount(sessions);
+  useEffect(() => {
+    if (phase !== "ready") return;
+    applyAppBadge(needsYou);
+    if (typeof document === "undefined") return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") applyAppBadge(needsYou);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [phase, needsYou]);
 
   // Fetch the account's available models once the app is authenticated. Used by ModelSelect in the
   // wizard, global settings panel, and in-chat session settings to populate a dropdown instead of a

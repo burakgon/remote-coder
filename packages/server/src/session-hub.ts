@@ -242,6 +242,20 @@ export type FrameListener = (frame: ServerFrame) => void;
 
 export interface Subscription {
   unsubscribe(): void;
+  /**
+   * FOREGROUND-GATING: flip this subscription's foreground flag. The WS connection (a subscriber) is
+   * "foreground" when its PWA tab is VISIBLE; the client signals it via a `visibility` frame on
+   * document.visibilitychange. `hasForegroundSubscriber` reads the per-session OR of these so a push is
+   * suppressed only while the user is genuinely LOOKING at that session. Defaults to foreground on
+   * connect (opening/connecting means foreground).
+   */
+  setForeground(foreground: boolean): void;
+}
+
+/** One live subscriber to a session (a WS connection). `foreground` is whether its PWA tab is visible. */
+interface SubscriberEntry {
+  listener: FrameListener;
+  foreground: boolean;
 }
 
 /** A per-question answer map: question text -> a chosen label / custom "Other" text, or many (multi-select). */
@@ -269,7 +283,12 @@ export const ASK_TIMEOUT_MS = 4 * 60 * 1000;
 interface SessionRecord {
   meta: SessionMeta;
   buffer: ReplayBuffer;
-  listeners: Set<FrameListener>;
+  /**
+   * Live subscribers (WS connections). Each carries a mutable `foreground` flag (whether its PWA tab is
+   * visible) so the push seam can suppress a notification while the user is genuinely LOOKING at the
+   * session — see {@link SessionHub.hasForegroundSubscriber}.
+   */
+  listeners: Set<SubscriberEntry>;
   /**
    * SECURITY: the original `tool_input` the CLI sent with each AskUserQuestion, keyed by requestId,
    * captured when the hub emitted the "question" frame. answerQuestion uses THIS value — never a
@@ -525,7 +544,7 @@ export class SessionHub {
     // in-flight turn the transcript hasn't fsynced yet. `append` self-filters to spoolable frames and is
     // best-effort (never throws), so this can't unwind the claude emit. Cleared on each `result`.
     this.spool?.append(record.meta.id, frame);
-    for (const listener of record.listeners) listener(frame);
+    for (const entry of record.listeners) entry.listener(frame);
     if (this.onFrame) {
       try {
         this.onFrame(record.meta.id, frame);
@@ -783,6 +802,17 @@ export class SessionHub {
   }
 
   /**
+   * APP BADGE: how many sessions are currently AWAITING the user (a pending permission/question, i.e.
+   * meta.awaiting). The push dispatcher carries this in each payload so the SW sets the home-screen badge
+   * even when the app is closed; it mirrors the web's own `awaitingCount(views/metas)` so the two agree.
+   */
+  awaitingSessionCount(): number {
+    let n = 0;
+    for (const record of this.records.values()) if (record.meta.awaiting) n += 1;
+    return n;
+  }
+
+  /**
    * Evict DEAD sessions LIVE — no restart needed. A session whose claude process is gone and that has
    * no resumable transcript can't be revived (`claude --resume` would fail), so it must not linger in
    * the rail. Called on every GET /sessions, so a chat that died on the host (its process killed, its
@@ -948,6 +978,20 @@ export class SessionHub {
     return this.records.get(id)?.listeners.size ?? 0;
   }
 
+  /**
+   * FOREGROUND-GATING: TRUE iff ≥1 live subscriber for this session is in the FOREGROUND (its PWA tab is
+   * visible). The push seam consults this to SUPPRESS a notification while the user is genuinely looking
+   * at that session — a push fires only when no foreground subscriber exists (backgrounded, viewing a
+   * DIFFERENT session, or disconnected). A subscriber defaults to foreground on connect; the client flips
+   * it via a `visibility` frame on document.visibilitychange. Unknown id → false (no foreground viewer).
+   */
+  hasForegroundSubscriber(id: string): boolean {
+    const record = this.records.get(id);
+    if (!record) return false;
+    for (const entry of record.listeners) if (entry.foreground) return true;
+    return false;
+  }
+
   subscribe(id: string, listener: FrameListener, sinceSeq?: number): Subscription {
     const record = this.require(id);
     // GAP CHECK: if a `?since=` reconnect would miss frames the buffer has since evicted (a long turn
@@ -960,10 +1004,16 @@ export class SessionHub {
     // Replay first (spec §10), then go live.
     const replay = sinceSeq === undefined ? record.buffer.snapshot() : record.buffer.since(sinceSeq);
     for (const frame of replay) listener(frame);
-    record.listeners.add(listener);
+    // Default FOREGROUND on connect: opening/connecting a chat means the user is looking at it. The client
+    // sends the current visibility state right after connect and on every visibilitychange to refine this.
+    const entry: SubscriberEntry = { listener, foreground: true };
+    record.listeners.add(entry);
     return {
       unsubscribe: () => {
-        record.listeners.delete(listener);
+        record.listeners.delete(entry);
+      },
+      setForeground: (foreground: boolean) => {
+        entry.foreground = foreground;
       },
     };
   }

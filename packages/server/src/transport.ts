@@ -29,7 +29,7 @@ import type { IdempotencyStore } from "./idempotency.js";
 import type { FrameSpool } from "./frame-spool.js";
 import { createSendDedup } from "./send-dedup.js";
 import type { SendDedup } from "./send-dedup.js";
-import type { SessionMeta } from "./session-hub.js";
+import type { SessionMeta, Subscription } from "./session-hub.js";
 import type { PushStore } from "./push-store.js";
 import type { ServerFrame } from "./replay-buffer.js";
 import { createUpdater, RUNNING_BUILD } from "./updater.js";
@@ -298,7 +298,7 @@ export function createServer(
         // hub.subscribe replays buffered frames SYNCHRONOUSLY, so the listener can fire before this
         // assignment completes; a send-throw during that replay must not touch `subscription` in its TDZ.
         // Use a `let` + a deferred-unsubscribe flag for the synchronous case.
-        let subscription: { unsubscribe(): void } | undefined = undefined;
+        let subscription: Subscription | undefined = undefined;
         let unsubscribeWhenReady = false;
         subscription = hub.subscribe(
           id,
@@ -326,6 +326,18 @@ export function createServer(
             msg = JSON.parse(raw.toString());
           } catch {
             return; // ignore malformed client frames
+          }
+          // FOREGROUND-GATING: a `visibility` frame reports whether THIS connection's PWA tab is visible
+          // (the client sends it on document.visibilitychange + right after connect). It flips THIS
+          // subscription's foreground flag, which `hub.hasForegroundSubscriber` reads to suppress a push
+          // for a session the user is actively looking at. Handled here (not in handleClientFrame) because
+          // the subscription handle is in scope only here. A subscription fired during the synchronous
+          // replay before assignment is impossible by this point (the open message arrives in a later tick).
+          if (msg.type === "visibility") {
+            if (msg.state === "foreground" || msg.state === "background") {
+              subscription?.setForeground(msg.state === "foreground");
+            }
+            return;
           }
           handleClientFrame(hub, id, msg, imageStore, sendDedup);
         });

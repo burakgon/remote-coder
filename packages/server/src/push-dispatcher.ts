@@ -8,6 +8,12 @@ export interface PushMessage {
   url: string;
   /** Notification tag = session id, so a device replaces (not stacks) the prior notification. */
   tag: string;
+  /**
+   * APP BADGE: the total number of sessions awaiting the user at send time. The service worker reads this
+   * to set the home-screen app badge (navigator.setAppBadge) even when the app is CLOSED. Omitted when no
+   * count source is wired (the SW then leaves the badge alone).
+   */
+  badgeCount?: number;
 }
 
 /** Inject the real web-push send in production; tests pass a stub. Resolves with the HTTP statusCode. */
@@ -20,6 +26,22 @@ export interface PushDispatcherOptions {
   baseUrl?: string;
   /** At most one push per session per window (default 5000ms). 0 = no coalescing (send immediately). */
   coalesceMs?: number;
+  /**
+   * FOREGROUND-GATING (the core "don't push what you're staring at" predicate). When provided, a push for
+   * a session is SUPPRESSED at dispatch time if this returns true — i.e. ≥1 live client is viewing that
+   * session in the foreground (its PWA tab is visible). It fires when no foreground viewer exists
+   * (backgrounded, viewing a DIFFERENT session, or disconnected). Injected (rather than coupling the
+   * dispatcher to the hub) so the gate stays decoupled + unit-testable. Absent → never suppress (the
+   * pre-existing always-push behavior). Checked at FLUSH time, not enqueue time, so switching away DURING
+   * the coalesce window still lets the push out, and switching TO the session still suppresses it.
+   */
+  hasForegroundSubscriber?: (sessionId: string) => boolean;
+  /**
+   * APP BADGE: total count of sessions currently AWAITING the user (a pending permission/question), used
+   * to set the home-screen app badge from the push PAYLOAD so the badge updates even when the app is
+   * CLOSED. Injected so the dispatcher needn't know the hub. Absent → no count is carried (0).
+   */
+  awaitingCount?: () => number;
 }
 
 const PUSH_KINDS = new Set<ServerFrame["kind"]>(["result", "permission", "question"]);
@@ -39,6 +61,8 @@ export class PushDispatcher {
   private readonly send: PushSendFn;
   private baseUrl: string;
   private readonly coalesceMs: number;
+  private readonly hasForegroundSubscriber?: (sessionId: string) => boolean;
+  private readonly awaitingCount?: () => number;
   private readonly pending = new Map<string, PendingWindow>();
 
   constructor(opts: PushDispatcherOptions) {
@@ -46,6 +70,8 @@ export class PushDispatcher {
     this.send = opts.send;
     this.baseUrl = opts.baseUrl ?? "";
     this.coalesceMs = opts.coalesceMs ?? 5000;
+    this.hasForegroundSubscriber = opts.hasForegroundSubscriber;
+    this.awaitingCount = opts.awaitingCount;
   }
 
   /** Set the deep-link origin once the server's listen URL is known (handles port 0). */
@@ -79,6 +105,12 @@ export class PushDispatcher {
   }
 
   private async flush(sessionId: string, frame: ServerFrame): Promise<void> {
+    // FOREGROUND-GATING: suppress the push if the user is genuinely LOOKING at this session right now (a
+    // foreground subscriber exists). Checked HERE (at dispatch), not at enqueue, so a switch-away during
+    // the coalesce window still lets the push out and a switch-TO it still suppresses. No predicate wired
+    // → never suppress (pre-existing behavior). The coalescing/priority bookkeeping already ran; suppressing
+    // here just drops the (now-unwanted) send.
+    if (this.hasForegroundSubscriber?.(sessionId)) return;
     const message = this.buildMessage(sessionId, frame);
     const payload = JSON.stringify(message);
     const subs = this.store.list({ sessionId });
@@ -98,7 +130,10 @@ export class PushDispatcher {
 
   private buildMessage(sessionId: string, frame: ServerFrame): PushMessage {
     const url = `${this.baseUrl}/?session=${encodeURIComponent(sessionId)}`;
-    const base = { url, tag: sessionId };
+    // APP BADGE: carry the CURRENT total of awaiting sessions so the SW can set the home-screen badge even
+    // with the app closed. Omitted when no count source is wired (the SW then leaves the badge untouched).
+    const badgeCount = this.awaitingCount?.();
+    const base = { url, tag: sessionId, ...(badgeCount !== undefined ? { badgeCount } : {}) };
     if (frame.kind === "permission") {
       const p = frame.payload as { toolName?: string } | undefined;
       return {

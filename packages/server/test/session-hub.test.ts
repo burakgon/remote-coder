@@ -282,6 +282,77 @@ test("pushAttachment throws for an unknown session id", () => {
   expect(() => hub.pushAttachment("nope", { id: "x", path: "/p", name: "p", isImage: false })).toThrow();
 });
 
+// FOREGROUND-GATING: a subscription defaults to foreground on connect; setForeground(false) flips it; it
+// drops to false when the last subscriber unsubscribes; and it is independent per session.
+test("hasForegroundSubscriber: default true on connect, flips with setForeground, false with no subscriber", async () => {
+  const { hub } = hubFor("simple");
+  const meta = await hub.createSession({ cwd: process.cwd() });
+
+  // No subscriber yet → no foreground viewer.
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(false);
+
+  // Subscribing defaults to FOREGROUND (opening the chat means looking at it).
+  const sub = hub.subscribe(meta.id, () => {});
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(true);
+
+  // Backgrounding the tab (a `visibility` background frame) flips it.
+  sub.setForeground(false);
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(false);
+
+  // Foregrounding again restores it.
+  sub.setForeground(true);
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(true);
+
+  // Disconnecting drops to false (nobody is looking).
+  sub.unsubscribe();
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(false);
+
+  // Unknown id → false (never a foreground viewer).
+  expect(hub.hasForegroundSubscriber("nope")).toBe(false);
+
+  hub.stopSession(meta.id);
+});
+
+test("hasForegroundSubscriber is true if ANY of several subscribers is foreground", async () => {
+  const { hub } = hubFor("simple");
+  const meta = await hub.createSession({ cwd: process.cwd() });
+  const a = hub.subscribe(meta.id, () => {});
+  const b = hub.subscribe(meta.id, () => {});
+  a.setForeground(false);
+  b.setForeground(false);
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(false);
+  // One device foregrounds → the session has a foreground viewer again.
+  b.setForeground(true);
+  expect(hub.hasForegroundSubscriber(meta.id)).toBe(true);
+  a.unsubscribe();
+  b.unsubscribe();
+  hub.stopSession(meta.id);
+});
+
+test("awaitingSessionCount counts only sessions with a pending prompt", async () => {
+  const { hub } = hubFor("permission");
+  const a = await hub.createSession({ cwd: process.cwd() });
+  const b = await hub.createSession({ cwd: process.cwd() });
+  // Neither is awaiting yet.
+  expect(hub.awaitingSessionCount()).toBe(0);
+
+  // Drive `a` to a pending permission (the mock blocks on a write approval).
+  const permPromise = waitForFrame(hub, a.id, (f) => f.kind === "permission");
+  hub.sendMessage(a.id, "write a file");
+  const perm = await permPromise;
+  expect(hub.awaitingSessionCount()).toBe(1); // only `a` is awaiting; `b` is idle
+
+  // Answering clears it back to 0.
+  const requestId = (perm.payload as { requestId: string }).requestId;
+  const done = waitForFrame(hub, a.id, (f) => f.kind === "result");
+  hub.answerPermission(a.id, requestId, "allow", "ok");
+  await done;
+  expect(hub.awaitingSessionCount()).toBe(0);
+
+  hub.stopSession(a.id);
+  hub.stopSession(b.id);
+});
+
 test("unknown ids throw on hub operations", async () => {
   const { hub } = hubFor("simple");
   // sendMessage/answerPermission/getHistory are async now — they REJECT for an unknown id.

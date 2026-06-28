@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { WebSocket } from "ws";
 import {
   SessionManager,
   createServer,
@@ -48,7 +49,17 @@ const auth = { authorization: `Bearer ${TOKEN}` };
  * no real `claude`. The injected `send` controls the dispatch outcome (a 201 dispatches, a 410 prunes).
  */
 function standUp(pushStore: PushStore, send: PushSendFn): { dispatcher: PushDispatcher; server: CreateServerResult } {
-  const dispatcher = new PushDispatcher({ store: pushStore, send, baseUrl: "https://host", coalesceMs: 0 });
+  // Wire the REAL hub's foreground-gate + awaiting-count into the dispatcher (mirrors start.ts). The hub is
+  // built inside createServer, so a mutable holder is filled after it returns; until then the predicates no-op.
+  const hubRef: { hub?: CreateServerResult["hub"] } = {};
+  const dispatcher = new PushDispatcher({
+    store: pushStore,
+    send,
+    baseUrl: "https://host",
+    coalesceMs: 0,
+    hasForegroundSubscriber: (id) => hubRef.hub?.hasForegroundSubscriber(id) ?? false,
+    awaitingCount: () => hubRef.hub?.awaitingSessionCount() ?? 0,
+  });
   const manager = new SessionManager(
     { claudeBin: process.execPath },
     { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
@@ -61,6 +72,7 @@ function standUp(pushStore: PushStore, send: PushSendFn): { dispatcher: PushDisp
     vapidPublicKey: "PUBKEY",
     onFrame: (id: string, frame: ServerFrame) => dispatcher.handleFrame(id, frame),
   });
+  hubRef.hub = server.hub;
   return { dispatcher, server };
 }
 
@@ -103,6 +115,51 @@ test("subscribe via REST -> a completed turn pushes the session deep link to the
   expect(payload.url).toBe(`https://host/?session=${id}`);
   expect(payload.tag).toBe(id);
 
+  pushStore.close();
+}, 20000);
+
+test("FOREGROUND-GATING e2e: a turn does NOT push while a foreground WS client is viewing that session; it DOES when backgrounded", async () => {
+  const pushStore = openPushStore({ dbPath: join(dir, "push.db") });
+  pushStore.upsert({ endpoint: ENDPOINT, p256dh: "p", auth: "a", createdAt: 1 });
+  const send = vi.fn<PushSendFn>(async () => ({ statusCode: 201 }));
+  const { server } = standUp(pushStore, send);
+  current = server;
+  // Stand up a real listener so a real WS client (a foreground subscriber) can connect.
+  const httpUrl = await server.app.listen({ port: 0, host: "127.0.0.1" });
+  const base = httpUrl.replace(/^http/, "ws");
+
+  const created = await server.app.inject({
+    method: "POST",
+    url: "/sessions",
+    headers: auth,
+    payload: { cwd: process.cwd() },
+  });
+  const id = created.json().session.id as string;
+
+  // (1) A foreground WS client connects (default foreground) and STAYS connected.
+  const ws = new WebSocket(`${base}/sessions/${id}/ws?token=${encodeURIComponent(TOKEN)}`);
+  await new Promise<void>((resolve, reject) => {
+    ws.on("open", () => resolve());
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error("foreground ws never opened")), 6000);
+  });
+  await vi.waitFor(() => expect(server.hub.hasForegroundSubscriber(id)).toBe(true));
+
+  // A turn completes while the user is LOOKING at this session → NO push (you're already here).
+  await server.hub.sendMessage(id, "hello while looking");
+  await new Promise((r) => setTimeout(r, 400)); // give the (coalesceMs 0) dispatch a chance
+  expect(send).not.toHaveBeenCalled();
+
+  // (2) The user backgrounds the tab (visibility frame) — the session now has no foreground viewer.
+  ws.send(JSON.stringify({ type: "visibility", state: "background" }));
+  await vi.waitFor(() => expect(server.hub.hasForegroundSubscriber(id)).toBe(false));
+
+  // A turn now DOES push (the user isn't looking — that's the whole async value prop).
+  await server.hub.sendMessage(id, "hello while away");
+  await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1), { timeout: 8000 });
+  expect(send.mock.calls[0]![0]).toMatchObject({ endpoint: ENDPOINT });
+
+  ws.close();
   pushStore.close();
 }, 20000);
 
