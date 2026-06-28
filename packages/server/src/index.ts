@@ -1,6 +1,14 @@
 export const SERVER_PACKAGE = "@remote-coder/server";
 export type { QuestionSpec, QuestionOption } from "@remote-coder/protocol";
-export { loadConfig, buildClaudeArgs, buildMcpConfigDocument, mcpConfigPathFor } from "./config.js";
+export {
+  loadConfig,
+  buildClaudeArgs,
+  buildMcpConfigDocument,
+  mcpConfigPathFor,
+  PERMISSION_MODES,
+  LIVE_PERMISSION_MODES,
+  isLivePermissionMode,
+} from "./config.js";
 export type { ServerConfig, BuildClaudeArgsOptions, AttachSpawnOptions, McpConfigDocument } from "./config.js";
 export { ClaudeProcess } from "./claude-process.js";
 export type { ClaudeProcessOptions, PermissionEvent, QuestionEvent, DiagnosticEvent } from "./claude-process.js";
@@ -34,8 +42,18 @@ export type {
 } from "./session-hub.js";
 export { openSessionStore } from "./session-store.js";
 export type { SessionStore, StoredSession, StoredStatus, OpenSessionStoreOptions, StoreMode } from "./session-store.js";
-export { resolveDataDir, ensureDataDir, resolveAccessToken } from "./data-dir.js";
+export {
+  resolveDataDir,
+  ensureDataDir,
+  resolveAccessToken,
+  generateAccessToken,
+  persistAccessToken,
+} from "./data-dir.js";
 export type { ResolveAccessTokenOptions } from "./data-dir.js";
+export { isOriginAllowed, normalizeOrigin, parseAllowedOrigins } from "./origin-check.js";
+export type { OriginCheckOptions } from "./origin-check.js";
+export { RateLimiter } from "./rate-limit.js";
+export type { RateLimiterOptions, RateLimitDecision } from "./rate-limit.js";
 export { resolveVapidKeys } from "./vapid.js";
 export type { VapidKeys, ResolveVapidKeysOptions } from "./vapid.js";
 export { createServer } from "./transport.js";

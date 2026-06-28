@@ -25,6 +25,7 @@ import type { ImageStore } from "./image-store.js";
 import type { FrameSpool } from "./frame-spool.js";
 import { spoolFrameIdentity } from "./frame-spool.js";
 import { slimImageBlocks } from "./transcript-images.js";
+import { isLivePermissionMode } from "./config.js";
 
 export type SessionStatus = "running" | "dormant" | "errored" | "stopped";
 
@@ -768,6 +769,20 @@ export class SessionHub {
   }
 
   /**
+   * Number of LIVE sessions/processes — the count the concurrency cap (REMOTE_CODER_MAX_SESSIONS) gates
+   * POST /sessions on. "Live" means an actual `claude` child is running (status `running` AND a registered
+   * manager process), so dormant/errored records (no host process) don't count against the cap — reopening
+   * a dormant session within the cap stays unaffected, and only genuine new spawns are bounded.
+   */
+  liveSessionCount(): number {
+    let n = 0;
+    for (const [id, record] of this.records) {
+      if (record.meta.status === "running" && this.manager.getSession(id)) n += 1;
+    }
+    return n;
+  }
+
+  /**
    * Evict DEAD sessions LIVE — no restart needed. A session whose claude process is gone and that has
    * no resumable transcript can't be revived (`claude --resume` would fail), so it must not linger in
    * the rail. Called on every GET /sessions, so a chat that died on the host (its process killed, its
@@ -1071,8 +1086,22 @@ export class SessionHub {
       if (settings.model !== undefined) this.manager.setModel(id, settings.model);
       if (settings.maxThinkingTokens !== undefined) this.manager.setMaxThinkingTokens(id, settings.maxThinkingTokens);
       if (settings.permissionMode !== undefined) {
-        this.manager.setPermissionMode(id, settings.permissionMode);
-        record.meta.permissionMode = settings.permissionMode;
+        // SECURITY: ALLOW-LIST the live permission mode. The spawn path already allow-lists modes, but
+        // forwarding a client `permissionMode` string straight to the CLI's setPermissionMode let a crafted
+        // `{type:"settings",permissionMode:"bypassPermissions"}` frame silently DISABLE the permission gate
+        // without going through the explicit dangerouslySkip respawn (the only sanctioned bypass path). So we
+        // refuse anything outside LIVE_PERMISSION_MODES (default/acceptEdits/plan) here — `bypassPermissions`
+        // is rejected live and reachable ONLY via dangerouslySkip. IGNORE the bad frame (keep the current
+        // mode + gate intact) and emit a diagnostic so a connected client gets honest feedback.
+        if (isLivePermissionMode(settings.permissionMode)) {
+          this.manager.setPermissionMode(id, settings.permissionMode);
+          record.meta.permissionMode = settings.permissionMode;
+        } else {
+          this.emitFrame(record, "diagnostic", {
+            source: "parser",
+            message: `ignored unsupported live permission mode "${settings.permissionMode}" (use dangerouslySkip for bypassPermissions)`,
+          } satisfies DiagnosticEvent);
+        }
       }
     }
     this.persist(record.meta);

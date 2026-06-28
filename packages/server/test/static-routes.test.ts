@@ -17,6 +17,8 @@ describe("API_PATH_DENYLIST mirrors the web apiNavigationDenylist (extended)", (
     expect(matches("/update/status")).toBe(true);
     // The authed diagnostics route is live API too — never the public shell.
     expect(matches("/diag")).toBe(true);
+    // The authed token-rotation route is server-only, token-gated — never the public shell.
+    expect(matches("/token/rotate")).toBe(true);
   });
   test("does NOT match app shell navigations / static assets", () => {
     expect(matches("/")).toBe(false);
@@ -50,6 +52,7 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/version")).toBe(false);
     expect(isPublicPath("/update")).toBe(false);
     expect(isPublicPath("/update/status")).toBe(false);
+    expect(isPublicPath("/token/rotate")).toBe(false);
   });
 });
 

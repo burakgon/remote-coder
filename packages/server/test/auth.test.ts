@@ -62,6 +62,74 @@ test("expired lockout entries are evicted opportunistically (map does not grow u
   expect(gate.lockedClientCount()).toBe(0);
 });
 
+test("rotateToken swaps the secret: the new token works immediately", () => {
+  const gate = new AuthGate({ token: "old-secret" });
+  expect(gate.check("old-secret", "ip-a")).toEqual({ ok: true });
+  gate.rotateToken("new-secret");
+  // The NEW token works immediately.
+  expect(gate.check("new-secret", "ip-a")).toEqual({ ok: true });
+});
+
+test("rotateToken grace window: the OLD token works within graceMs, then is rejected after it expires", () => {
+  let t = 1000;
+  const gate = new AuthGate({ token: "old-secret", graceMs: 60_000, now: () => t });
+  gate.rotateToken("new-secret");
+  // Within the grace window, an in-flight callback holding the OLD token still succeeds.
+  expect(gate.check("old-secret", "ip-a")).toEqual({ ok: true });
+  t += 59_000; // still inside the 60s window
+  expect(gate.check("old-secret", "ip-a")).toEqual({ ok: true });
+  // The NEW token works the whole time.
+  expect(gate.check("new-secret", "ip-a")).toEqual({ ok: true });
+  // Past the grace window the OLD token is dead.
+  t += 2_000; // now 61s after rotation
+  expect(gate.check("old-secret", "ip-a")).toEqual({ ok: false, reason: "invalid" });
+  expect(gate.check("new-secret", "ip-a")).toEqual({ ok: true });
+});
+
+test("rotateToken grace defaults to 60s when not configured", () => {
+  let t = 0;
+  const gate = new AuthGate({ token: "t0", now: () => t });
+  gate.rotateToken("t1");
+  t += 59_000;
+  expect(gate.check("t0", "ip-a")).toEqual({ ok: true }); // old token still alive at 59s (default 60s grace)
+  t += 2_000;
+  expect(gate.check("t0", "ip-a")).toEqual({ ok: false, reason: "invalid" }); // dead at 61s
+});
+
+test("a 2nd rotation within the window SUPERSEDES previousToken with the most-recent old token (no list)", () => {
+  let t = 0;
+  const gate = new AuthGate({ token: "t0", graceMs: 60_000, now: () => t });
+  gate.rotateToken("t1"); // previous = t0 (until t=60s)
+  t += 10_000;
+  gate.rotateToken("t2"); // previous = t1 (until t=70s); t0 is dropped, NOT retained alongside t1
+  // The current token works.
+  expect(gate.check("t2", "ip-a")).toEqual({ ok: true });
+  // The most-recent old token (t1) is honored within ITS grace.
+  expect(gate.check("t1", "ip-a")).toEqual({ ok: true });
+  // The token from TWO rotations ago (t0) is NOT accepted — only one previous token is retained.
+  expect(gate.check("t0", "ip-a")).toEqual({ ok: false, reason: "invalid" });
+});
+
+test("a wrong token of the OLD token's length is still rejected (length-mismatch hygiene on the grace compare)", () => {
+  const t = 0;
+  const gate = new AuthGate({ token: "current-token!!", graceMs: 60_000, now: () => t });
+  gate.rotateToken("brand-new-token"); // previous = "current-token!!"
+  // A same-length-as-previous but wrong token must NOT slip through the grace compare.
+  const wrongSameLen = "currXnt-tokenXX";
+  expect(wrongSameLen.length).toBe("current-token!!".length);
+  expect(gate.check(wrongSameLen, "ip-a")).toEqual({ ok: false, reason: "invalid" });
+});
+
+test("rotateToken clears lockout state (an administrative reset)", () => {
+  const t = 0;
+  const gate = new AuthGate({ token: "old", maxFailures: 1, lockoutMs: 10_000, now: () => t });
+  gate.check("wrong", "ip-x"); // trips the lock
+  expect(gate.check("old", "ip-x")).toEqual({ ok: false, reason: "locked" });
+  gate.rotateToken("new");
+  // Rotation cleared the lockout, so the new token is accepted immediately (no wait).
+  expect(gate.check("new", "ip-x")).toEqual({ ok: true });
+});
+
 test("lockout is per-client; a success resets the failure count", () => {
   const t = 0; // never reassigned in this case (prefer-const); the other case advances the clock
   const gate = new AuthGate({ token: "s3cret", maxFailures: 2, lockoutMs: 1000, now: () => t });

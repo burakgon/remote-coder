@@ -7,6 +7,9 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import { SessionHub } from "./session-hub.js";
 import { AuthGate, extractBearerToken } from "./auth.js";
+import { isOriginAllowed } from "./origin-check.js";
+import { RateLimiter } from "./rate-limit.js";
+import { generateAccessToken, persistAccessToken } from "./data-dir.js";
 import { registerStatic, isPublicForRequest, pathForGate } from "./static-routes.js";
 import { buildImageBlock } from "@remote-coder/protocol";
 import type { ContentBlock, HookPermissionDecision, QuestionSpec } from "@remote-coder/protocol";
@@ -96,6 +99,23 @@ export interface CreateServerDeps {
    * (no real spawn). When omitted a real probe is built from the configured claude bin + server env.
    */
   claudeVersionProbe?: ClaudeVersionProbe;
+  /**
+   * Global per-client request rate limiter (token bucket). Injected so tests can drive an injectable clock
+   * / a tiny limit. When omitted one is built from `config.rateLimitRpm`/`config.rateLimitBurst` (a
+   * rpm of 0 disables it). Applied in the global preHandler AFTER the auth gate + origin check.
+   */
+  rateLimiter?: RateLimiter;
+  /**
+   * CSPRNG token generator for POST /token/rotate (reuses data-dir.ts's default). Injected so tests get a
+   * deterministic rotated token. When omitted, resolveAccessToken's default 32-byte base64url generator.
+   */
+  generateToken?: () => string;
+  /**
+   * The token gate. Injected so tests can control the rotation grace window / clock (e.g. graceMs:0 to
+   * assert the OLD token is rejected the instant after rotation). When omitted one is built from
+   * `config.accessToken` with the default 60s rotation grace.
+   */
+  authGate?: AuthGate;
 }
 
 export interface CreateServerResult {
@@ -146,8 +166,23 @@ export function createServer(
   // a duplicate "force push"/"delete" prompt running twice is dangerous. Frames with no msgId (older
   // clients) are never deduped (current behavior preserved).
   const sendDedup = createSendDedup();
-  const authGate = new AuthGate({ token: config.accessToken });
+  const authGate = deps.authGate ?? new AuthGate({ token: config.accessToken });
+  // Global per-client rate limiter (token bucket). A real one is built from the configured rpm/burst; a
+  // rpm of 0 DISABLES it (enabled:false). Injected in tests for a deterministic clock + a tiny limit.
+  const rateLimiter =
+    deps.rateLimiter ??
+    new RateLimiter({
+      capacity: config.rateLimitRpm,
+      windowMs: 60_000,
+      burst: config.rateLimitBurst,
+      enabled: config.rateLimitRpm > 0,
+    });
   const fsService = new FsService({ root: config.fsRoot });
+  // CONCURRENCY CAP: refuse a new spawn once `config.maxSessions` live sessions exist (0 disables it).
+  // `liveSessionCount` counts only sessions with a running host process, so dormant/errored records don't
+  // count and reopening within the cap is unaffected. The message names the env var so an operator can lift it.
+  const sessionCapMessage = `live session cap reached (${config.maxSessions}); close a session or raise REMOTE_CODER_MAX_SESSIONS`;
+  const atSessionCap = (): boolean => config.maxSessions > 0 && hub.liveSessionCount() >= config.maxSessions;
   // OTA self-update. A real Updater reads/writes its status file in the data dir and runs git there;
   // tests inject a fake with FIXTURE git output (no real git mutation). The real Updater reads the
   // REMOTE_CODER_SERVICE_LABEL/_MANAGER overrides from process.env (its default) when resolving how to
@@ -197,6 +232,38 @@ export function createServer(
     if (!result.ok) {
       reply.code(401).send({ error: "unauthorized" });
       return;
+    }
+
+    // ORIGIN / CSWSH GUARD (runs AFTER the token gate, for authenticated requests — incl. the WS upgrade).
+    // The token can leak into a URL; this stops a malicious cross-origin BROWSER page that holds it from
+    // puppeting the host. SAFE DEFAULT: allow absent / same-origin / loopback / public-URL / allow-listed
+    // origins (the real PWA is always one of these); reject only a PRESENT, cross-origin, non-allow-listed
+    // Origin. The page cannot forge its Origin header, so this can never reject the genuine app.
+    const originAllowed = isOriginAllowed(request.headers.origin, request.headers.host, {
+      publicUrl: config.publicUrl,
+      allowedOrigins: config.allowedOrigins,
+    });
+    if (!originAllowed) {
+      reply.code(403).send({ error: "forbidden origin" });
+      return;
+    }
+
+    // GLOBAL RATE LIMIT (runs LAST, for authenticated requests). Keyed by the same clientKey as the auth
+    // lockout (request.ip, honoring trustProxy). Generous by default (way above the app's poll cadence) and
+    // disable-able; a flood gets 429 + Retry-After. /health was already exempted above (it never reaches
+    // here), so liveness probes are never throttled. The WS is ONE upgrade then long-lived, so the limit is
+    // for HTTP/API volume, not the WS data path.
+    // EXEMPTION: cacheable image thumbnails (GET /images/<ref>) skip the VOLUME limiter — they are
+    // content-addressed/immutable and still passed the auth + origin checks above (the token is required),
+    // so excluding them is safe and avoids 429-ing legit thumbnails when a fast scroll of an image-dense
+    // transcript fires many parallel <img> GETs. Auth/origin are NOT bypassed — only the rate-limit step.
+    const imageGetExempt = request.method === "GET" && path.startsWith("/images/");
+    if (!imageGetExempt) {
+      const limit = rateLimiter.take(request.ip);
+      if (!limit.allowed) {
+        reply.header("retry-after", String(limit.retryAfterSeconds)).code(429).send({ error: "rate limited" });
+        return;
+      }
     }
   });
 
@@ -286,6 +353,13 @@ export function createServer(
         reply.code(200).send({ session: live });
         return;
       }
+      // CONCURRENCY CAP: a resume that would SPAWN a fresh `claude` (the session isn't already live) counts
+      // against the live cap. Reopening within the cap is unaffected; at the cap we refuse rather than burn
+      // host resources/quota on another process. (Resuming an ALREADY-live id returned above, uncapped.)
+      if (atSessionCap()) {
+        reply.code(429).send({ error: sessionCapMessage });
+        return;
+      }
       const file = await findTranscriptFile(projectsDir, resumeId);
       if (!file) {
         reply.code(404).send({ error: "transcript not found for the requested session" });
@@ -337,6 +411,14 @@ export function createServer(
         reply.code(200).send({ session });
         return;
       }
+    }
+
+    // CONCURRENCY CAP (host DoS + quota burn): bound the number of LIVE `claude` processes. Checked AFTER
+    // the idempotency hits above (returning an existing session is never capped) and right before the real
+    // spawn. At the cap we refuse with 429; existing sessions + reopening within the cap are unaffected.
+    if (atSessionCap()) {
+      reply.code(429).send({ error: sessionCapMessage });
+      return;
     }
 
     const createPromise = hub.createSession({
@@ -686,6 +768,39 @@ export function createServer(
       node: process.version,
       update: updater.readStatus(),
     };
+  });
+
+  // POST /token/rotate → rotate the single access token (authed; token-gated by the global preHandler,
+  // and in API_PATH_DENYLIST). Generates a fresh CSPRNG token (data-dir.ts's generator), persists it to
+  // the same 0600 token file, atomically swaps it into the live AuthGate (the OLD token is rejected the
+  // instant this returns — every later request must present the new one), and returns it ONCE in the body
+  // so the client can re-store it.
+  // NOTE: rotation requires a persistable token file — it's unavailable in tokenless (NO_TOKEN) loopback
+  // dev (no token is configured); a rotate there is a 409. There's no in-memory rotate of a config-injected
+  // ACCESS_TOKEN: an env-set token reappears on restart, so we persist + swap and report that caveat.
+  app.post("/token/rotate", async (_request, reply) => {
+    if (!config.accessToken) {
+      reply.code(409).send({ error: "token rotation is unavailable when no access token is configured" });
+      return;
+    }
+    // Generate a fresh CSPRNG token (injectable for tests) and persist it to the same 0600 token file so
+    // the on-disk secret stays authoritative across a restart.
+    let next: string;
+    try {
+      next = (deps.generateToken ?? generateAccessToken)();
+      persistAccessToken(config.dataDir, next);
+    } catch (err) {
+      reply.code(500).send({ error: `failed to persist rotated token: ${(err as Error).message}` });
+      return;
+    }
+    // Swap into the live gate; the OLD token is rejected from here on. Keep `config.accessToken` coherent
+    // so anything that re-reads it sees the new secret. CAVEAT (inherent to the single-token model): an
+    // mcp-send subprocess ALREADY running holds the old token in its per-session 0600 config, so its next
+    // callback would 401 until the session respawns; new spawns pick up the persisted token. The client
+    // must re-store the returned token (the web side updates token-store on a rotate response).
+    authGate.rotateToken(next);
+    config.accessToken = next;
+    reply.code(200).send({ token: next });
   });
 
   // GET /usage → the Claude usage bars {usage: UsageInfo | null} (token-gated by the global preHandler).

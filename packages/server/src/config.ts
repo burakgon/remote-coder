@@ -14,6 +14,28 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
 }
 
 /**
+ * The CLI's `--permission-mode` values, allow-listed so a stored/forwarded value can never inject argv
+ * or silently disable the permission gate. `bypassPermissions` is in the spawn-time allow-list (it's a
+ * legitimate spawn flag, expressed in our wire via `dangerouslySkip`), but it is DELIBERATELY EXCLUDED
+ * from the LIVE allow-list ({@link LIVE_PERMISSION_MODES}): the permission boundary is fixed at spawn, so
+ * bypass must only be reachable through the explicit dangerouslySkip RESPAWN flow — never a bare live
+ * `{type:"settings",permissionMode:"bypassPermissions"}` frame (which would otherwise turn the gate off
+ * without going through dangerouslySkip).
+ */
+export const PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "bypassPermissions"]);
+
+/**
+ * Permission modes acceptable on the LIVE control path (the running session's `setPermissionMode`).
+ * Same as {@link PERMISSION_MODES} MINUS `bypassPermissions` — see that constant's note.
+ */
+export const LIVE_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan"]);
+
+/** True if `mode` is a permission mode acceptable to apply on a LIVE running session. */
+export function isLivePermissionMode(mode: string | undefined): boolean {
+  return mode !== undefined && LIVE_PERMISSION_MODES.has(mode);
+}
+
+/**
  * Wiring for the mcp-send server (Claude → user attachments). When present, the spawn layer writes a
  * per-session 0600 MCP config FILE (carrying the loopback base URL, this session's id, and the access
  * token via env) and passes its PATH to buildClaudeArgs as `--mcp-config <path>`. The token therefore
@@ -136,7 +158,6 @@ export function buildClaudeArgs(opts: BuildClaudeArgsOptions): string[] {
   } else {
     // Emit the saved permission mode so acceptEdits/plan survive a restart/respawn/rewind (they used to
     // revert to default). Allowlist the modes the CLI accepts so a bad stored value can't inject argv.
-    const PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "bypassPermissions"]);
     const mode = opts.permissionMode && PERMISSION_MODES.has(opts.permissionMode) ? opts.permissionMode : "default";
     args.push("--permission-mode", mode);
   }

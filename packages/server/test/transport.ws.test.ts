@@ -118,6 +118,56 @@ test("WS handshake WITH the correct token (via ?token=) succeeds and replays/str
   });
 });
 
+test("WS upgrade with a FOREIGN Origin is rejected even with a valid token (CSWSH defense)", async () => {
+  const config = configFor();
+  current = createServer(config, managerFor("simple", config));
+  const base = await listen(current);
+  const id = await createSession(current);
+
+  // A malicious cross-origin page can hold the token (URL leak) but the BROWSER stamps its own Origin on
+  // the upgrade — the server rejects it (403) before the socket opens, so the WS never receives a frame.
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(`${base}/sessions/${id}/ws?token=${encodeURIComponent(TOKEN)}`, {
+      origin: "https://evil.example",
+    });
+    let gotFrame = false;
+    ws.on("message", () => (gotFrame = true));
+    ws.on("open", () => {
+      ws.close();
+      reject(new Error("ws upgrade unexpectedly succeeded from a foreign origin"));
+    });
+    const settle = () => {
+      expect(gotFrame).toBe(false);
+      resolve();
+    };
+    ws.on("error", settle); // a 403 upgrade surfaces here
+    ws.on("close", settle);
+    setTimeout(() => reject(new Error("ws neither errored nor closed after a rejected foreign-origin upgrade")), 4000);
+  });
+});
+
+test("WS upgrade with a same-origin Origin header succeeds (the real PWA is always same-origin)", async () => {
+  const config = configFor();
+  current = createServer(config, managerFor("simple", config));
+  const base = await listen(current);
+  const id = await createSession(current);
+  // Derive the host (127.0.0.1:<port>) the server is listening on so the Origin matches Host.
+  const host = base.replace(/^ws:\/\//, "");
+
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(`${base}/sessions/${id}/ws?token=${encodeURIComponent(TOKEN)}`, {
+      origin: `http://${host}`,
+    });
+    ws.on("message", () => {
+      ws.close();
+      resolve();
+    });
+    ws.on("open", () => ws.send(JSON.stringify({ type: "user", content: "hi" })));
+    ws.on("error", reject);
+    setTimeout(() => reject(new Error("same-origin authed ws never opened or received a frame")), 6000);
+  });
+});
+
 test("WS: send a user message, receive streamed frames + a result", async () => {
   const config = configFor();
   current = createServer(config, managerFor("simple", config));

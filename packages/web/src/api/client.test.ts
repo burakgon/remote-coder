@@ -105,6 +105,21 @@ describe("ApiClient", () => {
     await expect(api.deleteSession("s1")).rejects.toMatchObject({ status: 500, message: "boom" });
   });
 
+  it("rotateToken POSTs /token/rotate, returns the new token, and persists it to the token store", async () => {
+    localStorage.clear();
+    localStorage.setItem("remote-coder.token", "old-token");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ token: "fresh-token" }));
+    const api = createApiClient({ baseUrl, getToken: () => "old-token" });
+    const next = await api.rotateToken();
+    expect(next).toBe("fresh-token");
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${baseUrl}/token/rotate`);
+    expect((init as RequestInit).method).toBe("POST");
+    expect((init as RequestInit).headers).toMatchObject({ authorization: "Bearer old-token" });
+    // The new token is stored so subsequent requests use it (the old one is dead server-side).
+    expect(localStorage.getItem("remote-coder.token")).toBe("fresh-token");
+  });
+
   it("downloadUrl includes path and token", () => {
     const api = createApiClient({ baseUrl, getToken: () => "tok" });
     expect(api.downloadUrl("/home/u/a.txt")).toBe(

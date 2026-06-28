@@ -25,6 +25,12 @@ export interface AuthGateOptions {
   maxFailures?: number;
   /** Lockout duration in ms. Default 60000. */
   lockoutMs?: number;
+  /**
+   * Grace window (ms) after {@link AuthGate.rotateToken} during which the PREVIOUS token is still
+   * accepted, so a callback already in flight with the old token (e.g. a running mcp-send subprocess that
+   * captured RC_TOKEN at spawn) survives the rotation instead of 401-ing mid-conversation. Default 60000.
+   */
+  graceMs?: number;
   /** Injectable clock for tests. Default Date.now. */
   now?: () => number;
 }
@@ -53,9 +59,20 @@ interface ClientState {
  * a proxy.
  */
 export class AuthGate {
-  private readonly token?: string;
+  // NOT readonly: rotateToken() atomically swaps in a fresh secret (POST /token/rotate). Every subsequent
+  // check() compares against the new token, so the OLD token is invalid the instant rotation completes —
+  // except within the brief grace window below, where the PREVIOUS token is still accepted.
+  private token?: string;
+  // DUAL-TOKEN GRACE: the token rotation REPLACED, plus the wall time it stays acceptable until. Lets a
+  // callback already in flight with the old token (a running mcp-send subprocess captured RC_TOKEN at
+  // spawn; rewriting its 0600 config can't update the live process env) finish instead of 401-ing
+  // mid-conversation. Only ONE previous token is ever retained — a 2nd rotation within the window
+  // supersedes it with the most-recent old token (never a growing list).
+  private previousToken?: string;
+  private previousValidUntil = 0;
   private readonly maxFailures: number;
   private readonly lockoutMs: number;
+  private readonly graceMs: number;
   private readonly now: () => number;
   private readonly clients = new Map<string, ClientState>();
 
@@ -63,6 +80,7 @@ export class AuthGate {
     this.token = opts.token;
     this.maxFailures = opts.maxFailures ?? 10;
     this.lockoutMs = opts.lockoutMs ?? 60000;
+    this.graceMs = opts.graceMs ?? 60000;
     this.now = opts.now ?? Date.now;
   }
 
@@ -74,7 +92,18 @@ export class AuthGate {
     const t = this.now();
     if (state.lockedUntil > t) return { ok: false, reason: "locked" };
 
-    const valid = presentedToken !== undefined && constantTimeEqual(presentedToken, this.token);
+    // Accept the CURRENT token, OR — within the post-rotation grace window — the PREVIOUS one. Both go
+    // through the same length-mismatch-safe constant-time compare (no early return leaks length). After
+    // `previousValidUntil` the old token is dead. SECURITY: the grace is a marginal exposure — the old
+    // token was already valid up to the instant of rotation; 60s more only lets in-flight MCP callbacks
+    // (send_image/send_file/ask_user) complete, the deliberate tradeoff vs breaking attachments mid-turn.
+    const matchesCurrent = presentedToken !== undefined && constantTimeEqual(presentedToken, this.token);
+    const matchesPrevious =
+      presentedToken !== undefined &&
+      this.previousToken !== undefined &&
+      t <= this.previousValidUntil &&
+      constantTimeEqual(presentedToken, this.previousToken);
+    const valid = matchesCurrent || matchesPrevious;
     if (valid) {
       this.clients.delete(clientKey); // reset on success
       return { ok: true };
@@ -87,6 +116,28 @@ export class AuthGate {
     }
     this.clients.set(clientKey, state);
     return { ok: false, reason: "invalid" };
+  }
+
+  /**
+   * Atomically swap in a fresh access token (POST /token/rotate). Every subsequent {@link check} compares
+   * against the new token; the OLD token is accepted only for a brief grace window (graceMs) so in-flight
+   * callbacks holding it (a running mcp-send subprocess) survive the rotation instead of 401-ing mid-turn.
+   * A 2nd rotation within the window REPLACES previousToken with the most-recent old token (no list grows).
+   * Also clears all per-client lockout state — rotation is an explicit administrative reset, so a fresh
+   * slate is correct (and avoids leaving a client locked out against a token that no longer exists).
+   */
+  rotateToken(newToken: string): void {
+    // Retain the just-replaced token for the grace window — but ONLY when graceMs > 0, so graceMs:0 means
+    // an UNAMBIGUOUS instant cutover (no previous token retained, no same-millisecond boundary acceptance).
+    if (this.token !== undefined && this.graceMs > 0) {
+      this.previousToken = this.token;
+      this.previousValidUntil = this.now() + this.graceMs;
+    } else {
+      this.previousToken = undefined;
+      this.previousValidUntil = 0;
+    }
+    this.token = newToken;
+    this.clients.clear();
   }
 
   /** Drop entries whose lockout has expired and whose failure count is 0 — keeps the map bounded. */

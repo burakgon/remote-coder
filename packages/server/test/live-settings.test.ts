@@ -56,3 +56,57 @@ test("applySettings flips dangerouslySkip live by RESPAWNING the session (permis
   expect(noop.dangerouslySkip).toBe(false);
   expect(noop.status).toBe("running");
 });
+
+test("applySettings accepts the allow-listed live permission modes (default/acceptEdits/plan)", async () => {
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
+  hub = new SessionHub(manager);
+  const meta = await hub.createSession({ cwd: process.cwd() });
+  expect(meta.permissionMode).toBe("default");
+
+  const accept = await hub.applySettings(meta.id, { permissionMode: "acceptEdits" });
+  expect(accept.permissionMode).toBe("acceptEdits");
+
+  const plan = await hub.applySettings(meta.id, { permissionMode: "plan" });
+  expect(plan.permissionMode).toBe("plan");
+
+  const def = await hub.applySettings(meta.id, { permissionMode: "default" });
+  expect(def.permissionMode).toBe("default");
+});
+
+test("applySettings REFUSES a live bypassPermissions string (gate stays on; not reachable without dangerouslySkip)", async () => {
+  const manager = new SessionManager(
+    { claudeBin: process.execPath },
+    { spawnPrefixArgs: [MOCK], baseEnv: { ...process.env, MOCK_MODE: "simple" }, startTimeoutMs: 5000 },
+  );
+  hub = new SessionHub(manager);
+  const meta = await hub.createSession({ cwd: process.cwd(), dangerouslySkip: false });
+  expect(meta.permissionMode).toBe("default");
+  expect(meta.dangerouslySkip).toBe(false);
+
+  // A crafted live "bypassPermissions" frame must be ignored: the mode + the dangerouslySkip flag both
+  // stay put, so the permission gate is never disabled by a bare settings string.
+  const after = await hub.applySettings(meta.id, { permissionMode: "bypassPermissions" });
+  expect(after.permissionMode).toBe("default");
+  expect(after.dangerouslySkip).toBe(false);
+  expect(hub.getSession(meta.id)?.permissionMode).toBe("default");
+
+  // An unknown garbage mode is likewise ignored (no argv injection, gate intact).
+  const garbage = await hub.applySettings(meta.id, { permissionMode: "wibble" });
+  expect(garbage.permissionMode).toBe("default");
+});
+
+test("isLivePermissionMode allow-lists default/acceptEdits/plan and excludes bypassPermissions", async () => {
+  const { isLivePermissionMode, LIVE_PERMISSION_MODES, PERMISSION_MODES } = await import("../src/index.js");
+  expect(isLivePermissionMode("default")).toBe(true);
+  expect(isLivePermissionMode("acceptEdits")).toBe(true);
+  expect(isLivePermissionMode("plan")).toBe(true);
+  expect(isLivePermissionMode("bypassPermissions")).toBe(false);
+  expect(isLivePermissionMode("garbage")).toBe(false);
+  expect(isLivePermissionMode(undefined)).toBe(false);
+  // bypassPermissions IS a valid spawn-time mode (expressed via dangerouslySkip), but NOT live.
+  expect(PERMISSION_MODES.has("bypassPermissions")).toBe(true);
+  expect(LIVE_PERMISSION_MODES.has("bypassPermissions")).toBe(false);
+});

@@ -9,6 +9,7 @@ import type {
   UsageInfo,
   VersionInfo,
 } from "../types/server";
+import { saveToken } from "../auth/token-store";
 
 export class ApiError extends Error {
   status: number;
@@ -86,6 +87,10 @@ export interface ApiClient {
   /** Selectable models for the model dropdown: GET /models → {models}. Empty when unavailable
    * (the UI falls back to a free-text field). */
   getModels(): Promise<ModelInfo[]>;
+  /** Rotate the single access token: POST /token/rotate (authed) → {token}. The OLD token is invalid the
+   * instant this resolves, so the new token MUST be re-stored. Persists it to the token-store and returns
+   * it so the caller can re-issue any token-bearing links (e.g. a fresh connect URL). */
+  rotateToken(): Promise<string>;
 }
 
 export interface ApiClientOptions {
@@ -274,6 +279,14 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
     async getModels() {
       const body = await req<{ models: ModelInfo[] }>("/models", { headers: headers() });
       return body.models;
+    },
+    async rotateToken() {
+      // POST with the CURRENT token; the server returns a fresh one and invalidates the old. Persist the
+      // new token IMMEDIATELY so every subsequent request (whose `getToken` reads the store) uses it — the
+      // old token is dead the moment this responds.
+      const body = await req<{ token: string }>("/token/rotate", { method: "POST", headers: headers() });
+      saveToken(body.token);
+      return body.token;
     },
   };
 }

@@ -18,8 +18,21 @@ export function ensureDataDir(dir: string): void {
  * Strong default token: 32 bytes of CSPRNG entropy (>= spec §9 baseline),
  * base64url-encoded (43 chars, no padding). Never Math.random / randomUUID.
  */
-function defaultGenerate(): string {
+export function generateAccessToken(): string {
   return randomBytes(32).toString("base64url");
+}
+
+/**
+ * Persist a token to `<dataDir>/token` with mode 0600 (overwriting any prior file). Used by both first-run
+ * generation and POST /token/rotate. `writeFileSync`'s `mode` is honored only when CREATING a file, so we
+ * chmod unconditionally afterwards — a rotated secret can never land in a too-permissive (e.g. world-
+ * readable) file left behind by an earlier write.
+ */
+export function persistAccessToken(dataDir: string, token: string): void {
+  ensureDataDir(dataDir);
+  const tokenPath = join(dataDir, "token");
+  writeFileSync(tokenPath, token + "\n", { mode: 0o600 });
+  chmodSync(tokenPath, 0o600);
 }
 
 export interface ResolveAccessTokenOptions {
@@ -50,13 +63,7 @@ export function resolveAccessToken(opts: ResolveAccessTokenOptions): { token: st
     // no token file yet — fall through to generation
   }
 
-  const token = (opts.generate ?? defaultGenerate)();
-  ensureDataDir(opts.dataDir);
-  // `mode` is honored only when CREATING a file; overwriting an existing path
-  // (e.g. a pre-existing empty `token` file) leaves its old, possibly
-  // world-readable mode intact. chmodSync unconditionally enforces 0600 so a
-  // freshly generated secret can never land in a too-permissive file.
-  writeFileSync(tokenPath, token + "\n", { mode: 0o600 });
-  chmodSync(tokenPath, 0o600);
+  const token = (opts.generate ?? generateAccessToken)();
+  persistAccessToken(opts.dataDir, token);
   return { token, generated: true };
 }
