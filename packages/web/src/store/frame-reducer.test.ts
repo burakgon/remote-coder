@@ -1279,3 +1279,55 @@ describe("awaitingReply — the send→first-frame 'Thinking…' bridge", () => 
     expect(out.awaitingReply).toBe(true);
   });
 });
+
+describe("liveTokens — the live per-turn output-token counter", () => {
+  const md = (seq: number, output: number) =>
+    ev(seq, { type: "stream_event", event: { type: "message_delta", usage: { output_tokens: output } } });
+  const ms = (seq: number, output: number) =>
+    ev(seq, { type: "stream_event", event: { type: "message_start", message: { usage: { output_tokens: output } } } });
+
+  it("ticks up from message_delta output_tokens (the running count for the current message)", () => {
+    let v = emptyView();
+    v = reduceFrame(v, ms(1, 1));
+    expect(v.liveTokens).toBe(1);
+    v = reduceFrame(v, md(2, 120));
+    expect(v.liveTokens).toBe(120);
+    v = reduceFrame(v, md(3, 450));
+    expect(v.liveTokens).toBe(450);
+  });
+
+  it("stays MONOTONIC across a multi-message (tool-using) turn — a new message_start commits the prior into the base", () => {
+    let v = emptyView();
+    v = reduceFrame(v, ms(1, 1)); // message 1 starts
+    v = reduceFrame(v, md(2, 300)); // message 1 → 300
+    v = reduceFrame(v, ms(3, 2)); // message 2 starts → base 300 + 2
+    expect(v.liveTokens).toBe(302);
+    v = reduceFrame(v, md(4, 180)); // message 2 → 180 → 300 + 180
+    expect(v.liveTokens).toBe(480);
+  });
+
+  it("is cleared when the turn settles (result)", () => {
+    let v = emptyView();
+    v = reduceFrame(v, ms(1, 1));
+    v = reduceFrame(v, md(2, 250));
+    expect(v.liveTokens).toBe(250);
+    v = reduceFrame(v, { seq: 3, kind: "result", payload: { subtype: "success" } });
+    expect(v.liveTokens).toBeUndefined();
+  });
+
+  it("ignores a SUBAGENT's stream deltas (parentToolUseId) — its tokens belong to its own card", () => {
+    let v = emptyView();
+    v = reduceFrame(v, md(1, 100)); // main
+    expect(v.liveTokens).toBe(100);
+    v = reduceFrame(v, {
+      seq: 2,
+      kind: "event",
+      payload: {
+        type: "stream_event",
+        parentToolUseId: "ag1",
+        event: { type: "message_delta", usage: { output_tokens: 9999 } },
+      },
+    });
+    expect(v.liveTokens).toBe(100); // unchanged by the subagent delta
+  });
+});

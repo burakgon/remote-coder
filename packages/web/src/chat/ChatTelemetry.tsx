@@ -82,6 +82,9 @@ export interface ChatTelemetryProps {
    *  terminal shows this the instant you hit enter) instead of leaving the stale prior state. Outranked
    *  by reconnecting and by an actual working/awaiting wire state, so it only fills the otherwise-blank gap. */
   awaitingReply?: boolean;
+  /** The CURRENT turn's output tokens so far — the terminal's live "· N tok" counter ticking up while
+   *  Claude works. Shown only while working; omitted/0 → hidden. */
+  liveTokens?: number;
 }
 
 export function ChatTelemetry({
@@ -93,6 +96,7 @@ export function ChatTelemetry({
   reconnecting,
   cost,
   awaitingReply,
+  liveTokens,
 }: ChatTelemetryProps) {
   // The send→first-frame bridge only "fills the gap": it doesn't apply when reconnecting, nor when the
   // wire is already in a real working/awaiting state (those have their own truthful label).
@@ -142,6 +146,12 @@ export function ChatTelemetry({
             <i />
           </span>
         )}
+        {/* The live per-turn output-token counter (terminal parity) — only while a turn is in flight. */}
+        {working && typeof liveTokens === "number" && liveTokens > 0 && (
+          <span className="rc-tele__tok" aria-label={`${liveTokens} tokens this turn`}>
+            {formatTokens(liveTokens)} tok
+          </span>
+        )}
       </span>
 
       {typeof cost === "number" && cost > 0 && (
@@ -183,6 +193,8 @@ const telemetryCss = `
 /* margin-right:auto pins the status left and packs the cost + context meter together on the right. */
 .rc-tele__status { display: inline-flex; align-items: center; gap: 7px; min-width: 0; margin-right: auto; }
 .rc-tele__cost { flex: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* The live per-turn output-token counter, sitting right after the working label/dots. */
+.rc-tele__tok { flex: none; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* The live-wire dot. While the agent works it emits a single expanding radar ring (the ::ping sibling)
    — calmer + more "alive" than a blunt opacity blink. */
 .rc-tele__dot { position: relative; width: 8px; height: 8px; border-radius: 50%; flex: none; }

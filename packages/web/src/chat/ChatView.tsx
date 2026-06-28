@@ -469,6 +469,8 @@ export function ChatView({
         cost={safeView.lastResult?.totalCostUsd}
         // Bridge the send→first-frame gap with an instant "Thinking…" (cleared once Claude engages).
         awaitingReply={safeView.awaitingReply}
+        // Live per-turn output-token counter (the terminal's "· N tok" ticking up while Claude works).
+        liveTokens={safeView.liveTokens}
       />
       <Composer
         commands={safeView.commands}

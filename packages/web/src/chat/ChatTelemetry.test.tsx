@@ -72,6 +72,25 @@ describe("ChatTelemetry", () => {
     });
   });
 
+  describe("liveTokens (the per-turn output counter the terminal shows)", () => {
+    it("shows the live token count while working", () => {
+      render(<ChatTelemetry wireState="streaming" liveTokens={1500} />);
+      expect(screen.getByText(/1\.5k tok/)).toBeInTheDocument();
+    });
+    it("shows it during the just-sent 'Thinking…' bridge too", () => {
+      render(<ChatTelemetry wireState="idle" awaitingReply liveTokens={42} />);
+      expect(screen.getByText(/42 tok/)).toBeInTheDocument();
+    });
+    it("hides the counter when idle (no turn in flight)", () => {
+      render(<ChatTelemetry wireState="idle" liveTokens={1500} />);
+      expect(screen.queryByText(/tok/)).not.toBeInTheDocument();
+    });
+    it("hides the counter at zero", () => {
+      render(<ChatTelemetry wireState="streaming" liveTokens={0} />);
+      expect(screen.queryByText(/tok/)).not.toBeInTheDocument();
+    });
+  });
+
   it("shows the cumulative session cost when provided, hidden at zero/absent", () => {
     const { rerender } = render(<ChatTelemetry wireState="idle" cost={0.1234} />);
     expect(screen.getByText("$0.1234")).toBeInTheDocument();

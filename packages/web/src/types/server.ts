@@ -76,6 +76,9 @@ export interface EventPayload {
 export interface LiveState {
   turnActive: boolean;
   usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
+  /** The in-flight turn's output tokens so far (the live "Thinking… · N tok" counter) — so a chat
+   *  reopened mid-turn shows the right count instead of zero; live deltas refine it after. */
+  liveTokens?: number;
   /** A permission/question prompt still PENDING when the session was (re)opened. The transcript carries
    *  no prompt frames and the `?since=` resume skips the retained one, so without this a chat reopened
    *  mid-prompt showed "working" with no card to answer → stuck. Seeded into the view on loadHistory. */

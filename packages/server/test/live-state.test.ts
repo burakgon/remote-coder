@@ -78,4 +78,39 @@ describe("liveStateFromBuffer", () => {
   test("empty buffer → idle, no usage", () => {
     expect(liveStateFromBuffer([])).toEqual({ turnActive: false });
   });
+
+  describe("liveTokens (the in-flight turn's output counter, for reopen-mid-turn)", () => {
+    test("sums the current turn's MAIN assistant output_tokens (monotonic across a tool round)", () => {
+      // Two assistant messages this turn (a tool round), no result yet → 794 + 794.
+      const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), assistant(PER_TURN), streamDelta()]);
+      expect(live.turnActive).toBe(true);
+      expect(live.liveTokens).toBe(794 * 2);
+    });
+
+    test("is absent once the turn ended (result) — the live counter stops", () => {
+      const live = liveStateFromBuffer([assistant(PER_TURN), result({ contextWindow: 200000 })]);
+      expect(live.turnActive).toBe(false);
+      expect(live.liveTokens).toBeUndefined();
+    });
+
+    test("counts ONLY the current turn (assistant output after the last result), not the previous one", () => {
+      const live = liveStateFromBuffer([
+        assistant(PER_TURN),
+        result({ contextWindow: 200000 }),
+        userEv(),
+        assistant(PER_TURN),
+      ]);
+      expect(live.liveTokens).toBe(794); // only the post-result assistant, not 794*2
+    });
+
+    test("EXCLUDES subagent output (its tokens live on the subagent card, not the main counter)", () => {
+      const sub = f("event", {
+        type: "assistant",
+        parentToolUseId: "ag1",
+        message: { content: [], usage: { output_tokens: 5000 } },
+      });
+      const live = liveStateFromBuffer([userEv(), assistant(PER_TURN), sub]);
+      expect(live.liveTokens).toBe(794); // not 794 + 5000
+    });
+  });
 });

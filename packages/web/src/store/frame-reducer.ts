@@ -137,6 +137,14 @@ export interface SessionView {
    *  (markAwaitingReply); cleared the moment Claude engages (a result/prompt/exit, or a real working wire).
    *  Transient — never persisted; a reopen mid-turn relies on the server's live `turnActive` instead. */
   awaitingReply?: boolean;
+  /** The CURRENT turn's output tokens so far (what the terminal shows ticking up while Claude works) —
+   *  turn-cumulative across the turn's messages, so it only grows. Sourced live from the stream's
+   *  `message_delta.usage.output_tokens` (+ `turnTokenBase` for prior messages this turn); seeded on a
+   *  reopen-mid-turn from the server's live tail. Undefined when no turn is in flight (cleared on result). */
+  liveTokens?: number;
+  /** Internal accumulator for {@link liveTokens}: the summed output of the turn's ALREADY-FINISHED messages,
+   *  so a multi-message (tool-using) turn's counter stays monotonic instead of resetting each tool round. */
+  turnTokenBase?: number;
   diagnostics: DiagnosticPayload[];
   wireState: LiveWireState;
   lastSeq: number;
@@ -191,6 +199,10 @@ interface DeltaEvent {
   type?: string;
   index?: number;
   delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
+  /** `message_delta` carries the running usage (output_tokens ticks up as the message generates). */
+  usage?: { output_tokens?: number };
+  /** `message_start` carries the message's initial usage (output_tokens ~ a few). */
+  message?: { usage?: { output_tokens?: number } };
 }
 interface AssistantMsg {
   message?: {
@@ -567,6 +579,8 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     next.thinkingText = "";
     next.compacting = false; // a /compact turn ends here → clear the "Compacting…" indicator
     next.awaitingReply = false; // the turn settled → the "Thinking…" bridge is done
+    next.liveTokens = undefined; // the turn ended → stop the live token counter (next turn rebuilds it)
+    next.turnTokenBase = undefined;
     next.wireState = stopped ? "idle" : r.isError ? "error" : "success";
     next.turns = [
       ...view.turns,
@@ -691,6 +705,19 @@ export function reduceFrame(view: SessionView, frame: ServerFrame): SessionView 
     const inner = (ev as { event?: DeltaEvent }).event;
     // Subagent partial deltas carry no parent linkage in practice, but route defensively if one ever does.
     const parent = ev.parentToolUseId;
+    // LIVE TOKEN COUNTER (main turn only): `message_delta` carries this message's running output_tokens; we
+    // add `turnTokenBase` (prior messages this turn) so a multi-message turn's count only grows. A new
+    // `message_start` commits the finished message into the base. Subagent (parent) usage stays on its card.
+    if (parent === undefined && inner) {
+      if (inner.type === "message_start") {
+        next.turnTokenBase = next.liveTokens ?? next.turnTokenBase ?? 0;
+        const out = inner.message?.usage?.output_tokens;
+        next.liveTokens = next.turnTokenBase + (typeof out === "number" ? out : 0);
+      } else if (inner.type === "message_delta") {
+        const out = inner.usage?.output_tokens;
+        if (typeof out === "number") next.liveTokens = (next.turnTokenBase ?? 0) + out;
+      }
+    }
     if (inner?.type === "content_block_delta" && inner.delta) {
       if (inner.delta.type === "text_delta" && inner.delta.text) {
         if (parent !== undefined) {

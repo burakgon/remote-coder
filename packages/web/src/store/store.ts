@@ -262,6 +262,11 @@ export const useStore = create<StoreState>((set, get) => ({
         pendingPermission,
         pendingQuestion,
         usage: hasUsage ? seededUsage : undefined,
+        // Reopen mid-turn: seed the live token counter from the server's tail (the turn's completed output)
+        // so it shows the right "· N tok" immediately; `turnTokenBase` matches so resumed deltas keep adding.
+        ...(live?.turnActive && typeof live.liveTokens === "number"
+          ? { liveTokens: live.liveTokens, turnTokenBase: live.liveTokens }
+          : {}),
         liveText: "",
         thinkingText: "",
       };
@@ -337,8 +342,11 @@ export const useStore = create<StoreState>((set, get) => ({
   markAwaitingReply: (id) =>
     set((state) => {
       const view = state.views[id] ?? emptyView();
-      if (view.awaitingReply) return {}; // already bridging — no needless re-render
-      return { views: { ...state.views, [id]: { ...view, awaitingReply: true } } };
+      if (view.awaitingReply && view.liveTokens === undefined) return {}; // already bridging — no re-render
+      // A new turn is starting: bridge to "Thinking…" and reset the live token counter from a clean slate.
+      return {
+        views: { ...state.views, [id]: { ...view, awaitingReply: true, liveTokens: undefined, turnTokenBase: 0 } },
+      };
     }),
   resetSession: (id) => set((state) => ({ views: { ...state.views, [id]: emptyView() } })),
   setCompacting: (id, compacting) =>

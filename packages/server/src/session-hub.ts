@@ -36,6 +36,10 @@ export interface LiveState {
    *  result's cumulative usage, which over-reads to many× the window on a long chat). `contextWindow` = the
    *  authoritative denominator from the newest result's modelUsage. Either may be absent if not in buffer. */
   usage?: { contextTokens?: number; outputTokens?: number; contextWindow?: number };
+  /** The IN-FLIGHT turn's output tokens so far (the terminal's live counter) — summed from the retained
+   *  assistant frames since the last result/exit, so a chat reopened mid-turn shows the right "Thinking…
+   *  · N tok" instead of zero. Only present while `turnActive`; live `message_delta`s refine it after. */
+  liveTokens?: number;
   /** A permission/question prompt STILL PENDING at (re)open. The buffer retains only unresolved prompt
    *  frames (resolvePrompt prunes answered ones) and the `?since=` resume skips them, so we hand the newest
    *  pending one to the client here — else a chat reopened mid-prompt is stuck "working" with no card. */
@@ -65,6 +69,7 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
   let contextTokens: number | undefined;
   let contextWindow: number | undefined;
   let outputTokens: number | undefined;
+  let liveOut = 0; // sum of the IN-FLIGHT turn's MAIN assistant output_tokens (the live "· N tok" counter)
   for (let i = frames.length - 1; i >= 0; i--) {
     const f = frames[i]!;
     if (f.kind === "result") {
@@ -77,14 +82,24 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
     } else if (f.kind === "permission" || f.kind === "question") {
       if (!boundaryHit) turnActive = true;
     } else if (f.kind === "event") {
-      const p = f.payload as { type?: string; parentToolUseId?: string; message?: { usage?: Record<string, unknown> } };
+      const p = f.payload as {
+        type?: string;
+        parentToolUseId?: string;
+        message?: { usage?: Record<string, unknown> };
+      };
       if (!boundaryHit && (p.type === "assistant" || p.type === "stream_event" || p.type === "user")) turnActive = true;
-      if (contextTokens === undefined && p.type === "assistant" && p.parentToolUseId === undefined) {
-        contextTokens = sumAssistantUsage(p.message?.usage);
+      if (p.type === "assistant" && p.parentToolUseId === undefined) {
+        if (contextTokens === undefined) contextTokens = sumAssistantUsage(p.message?.usage);
+        // Accumulate the CURRENT turn's output (before the boundary) for the live counter on reopen.
+        if (!boundaryHit) {
+          const o = p.message?.usage?.output_tokens;
+          if (typeof o === "number") liveOut += o;
+        }
       }
     }
     if (boundaryHit && contextTokens !== undefined && contextWindow !== undefined) break;
   }
+  const liveTokens = turnActive && liveOut > 0 ? liveOut : undefined;
   const usage =
     contextTokens !== undefined || contextWindow !== undefined || outputTokens !== undefined
       ? {
@@ -93,7 +108,7 @@ export function liveStateFromBuffer(frames: ServerFrame[]): LiveState {
           ...(outputTokens !== undefined ? { outputTokens } : {}),
         }
       : undefined;
-  return { turnActive, ...(usage ? { usage } : {}) };
+  return { turnActive, ...(usage ? { usage } : {}), ...(liveTokens !== undefined ? { liveTokens } : {}) };
 }
 
 /**

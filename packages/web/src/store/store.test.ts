@@ -215,6 +215,18 @@ describe("useStore", () => {
     expect(useStore.getState().viewFor("s1").awaitingReply).toBe(false);
   });
 
+  it("loadHistory seeds liveTokens from the live tail so a reopen mid-turn shows the right counter", () => {
+    useStore.getState().loadHistory("s1", [], 5, { turnActive: true, liveTokens: 1234 });
+    const v = useStore.getState().viewFor("s1");
+    expect(v.liveTokens).toBe(1234);
+    expect(v.turnTokenBase).toBe(1234); // resumed deltas keep adding from here (stays monotonic)
+  });
+
+  it("loadHistory does NOT seed liveTokens when no turn is active", () => {
+    useStore.getState().loadHistory("s1", [], 5, { turnActive: false, liveTokens: 50 });
+    expect(useStore.getState().viewFor("s1").liveTokens).toBeUndefined();
+  });
+
   it("setSessions seeds a missing lastActiveAt from createdAt and keeps existing stamps", () => {
     useStore.setState({ lastActiveAt: { s2: 12345 } });
     const a: SessionMeta = { id: "s1", cwd: "/a", dangerouslySkip: false, status: "running", createdAt: 7 };
