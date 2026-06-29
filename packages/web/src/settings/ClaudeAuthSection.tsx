@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import type { ApiClient } from "../api/client";
 import type { ClaudeAuthStatus } from "../types/server";
 
@@ -10,6 +11,10 @@ import type { ClaudeAuthStatus } from "../types/server";
  *   2. The user opens it in ANY browser, approves, and copies the code the callback page shows.
  *   3. Pastes the code → POST /auth/login/code finishes the exchange; the server saves fresh creds and
  *      turns work again (no restart).
+ *
+ * Styling is SELF-CONTAINED (inline, off the app's design tokens) so it renders identically whether it's
+ * embedded in the Settings panel or surfaced standalone in the ClaudeAuthDialog — the `.rc-settings__*`
+ * classes live in SettingsPanel's own <style> block and aren't present in the dialog.
  */
 type Flow =
   | { step: "idle" }
@@ -75,8 +80,8 @@ export function ClaudeAuthSection({ api }: { api: ApiClient }) {
     : undefined;
 
   return (
-    <div className="rc-settings__field" style={{ display: "grid", gap: "var(--sp-2)" }}>
-      <span className="rc-settings__field-label">Claude account</span>
+    <div className="rc-auth" style={{ display: "grid", gap: "var(--sp-2)" }}>
+      <span style={LABEL}>Claude account</span>
 
       <div style={{ fontSize: "var(--fs-sm)", color: "var(--text-muted)" }}>
         {status === undefined
@@ -85,42 +90,34 @@ export function ClaudeAuthSection({ api }: { api: ApiClient }) {
             ? `Signed in${account ? ` as ${account}` : ""}.`
             : "Not signed in."}
       </div>
-      <p className="rc-settings__hint" style={{ margin: 0 }}>
+      <p style={HINT}>
         If turns fail with “Failed to authenticate · 401”, the server&apos;s Claude login expired — sign in again here
         (no SSH needed).
       </p>
 
       {flow.step === "code" ? (
         <div style={{ display: "grid", gap: "var(--sp-2)" }}>
-          <a
-            href={flow.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rc-settings__secondary"
-            style={{ textAlign: "center", textDecoration: "none" }}
-          >
+          <a href={flow.url} target="_blank" rel="noopener noreferrer" style={LINK_BTN}>
             Open the Claude sign-in page ↗
           </a>
-          <p className="rc-settings__hint" style={{ margin: 0 }}>
-            Approve access in the page that opens, then paste the code it shows below.
-          </p>
+          <p style={HINT}>Approve access in the page that opens, then paste the code it shows below.</p>
           <input
             aria-label="authorization code"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder="Paste the code here"
-            className="rc-settings__control rc-settings__control--mono"
+            style={INPUT}
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
           />
-          <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
-            <button type="button" className="rc-settings__secondary" onClick={cancel} disabled={flow.submitting}>
+          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+            <button type="button" style={{ ...SECONDARY_BTN, flex: 1 }} onClick={cancel} disabled={flow.submitting}>
               Cancel
             </button>
             <button
               type="button"
-              className="rc-settings__primary"
+              style={{ ...PRIMARY_BTN, flex: 2 }}
               onClick={submit}
               disabled={flow.submitting || code.trim() === ""}
             >
@@ -140,13 +137,7 @@ export function ClaudeAuthSection({ api }: { api: ApiClient }) {
               {flow.message}
             </div>
           )}
-          <button
-            type="button"
-            className="rc-settings__secondary"
-            onClick={start}
-            disabled={flow.step === "starting"}
-            style={{ justifySelf: "start" }}
-          >
+          <button type="button" style={PRIMARY_BTN} onClick={start} disabled={flow.step === "starting"}>
             {flow.step === "starting" ? "Starting…" : signedIn ? "Re-authenticate" : "Sign in"}
           </button>
         </div>
@@ -154,3 +145,56 @@ export function ClaudeAuthSection({ api }: { api: ApiClient }) {
     </div>
   );
 }
+
+const LABEL: CSSProperties = {
+  fontFamily: "var(--font-display)",
+  fontSize: "var(--fs-xs)",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  color: "var(--text-muted)",
+  fontWeight: 600,
+};
+
+const HINT: CSSProperties = { margin: 0, color: "var(--text-faint)", fontSize: "var(--fs-xs)", lineHeight: 1.5 };
+
+const INPUT: CSSProperties = {
+  width: "100%",
+  minHeight: "var(--tap-min)",
+  padding: "0 var(--sp-3)",
+  borderRadius: "var(--radius-sm)",
+  border: "1px solid var(--border)",
+  background: "var(--surface-2)",
+  color: "var(--text)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--fs-sm)",
+  boxSizing: "border-box",
+};
+
+const BTN_BASE: CSSProperties = {
+  minHeight: "var(--tap-min)",
+  padding: "0 var(--sp-4)",
+  borderRadius: "var(--radius-sm)",
+  cursor: "pointer",
+  font: "inherit",
+  fontWeight: 600,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const PRIMARY_BTN: CSSProperties = {
+  ...BTN_BASE,
+  background: "var(--accent-grad)",
+  color: "var(--on-accent)",
+  border: "1px solid transparent",
+};
+
+const SECONDARY_BTN: CSSProperties = {
+  ...BTN_BASE,
+  fontWeight: 500,
+  background: "transparent",
+  color: "var(--text)",
+  border: "1px solid var(--border)",
+};
+
+const LINK_BTN: CSSProperties = { ...SECONDARY_BTN, textDecoration: "none" };

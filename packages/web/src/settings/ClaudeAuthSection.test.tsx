@@ -13,7 +13,7 @@ describe("ClaudeAuthSection", () => {
     const getAuthStatus = vi.fn().mockResolvedValue({ available: false });
     const { container } = render(<ClaudeAuthSection api={mockApi({ getAuthStatus })} />);
     await waitFor(() => expect(getAuthStatus).toHaveBeenCalled());
-    expect(container.querySelector(".rc-settings__field")).toBeNull();
+    expect(container.querySelector(".rc-auth")).toBeNull();
   });
 
   it("shows the signed-in account", async () => {
