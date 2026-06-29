@@ -15,6 +15,7 @@ import { PushDispatcher } from "./push-dispatcher.js";
 import { createWebPushSend } from "./web-push-send.js";
 import { createUsageService } from "./usage-service.js";
 import { createModelsService } from "./models-service.js";
+import { createClaudeAuthService } from "./claude-auth-service.js";
 import { createClaudeVersionProbe, defaultRunClaudeVersion } from "./diag.js";
 import type { ClaudeAvailability, ClaudeVersionProbe } from "./diag.js";
 import type { CreateServerResult } from "./transport.js";
@@ -149,6 +150,10 @@ export async function startServer(
   // TTL-cached; a failed probe yields [] (the UI falls back to free-text). Never 500s.
   const models = createModelsService({ claudeBin: config.claude.claudeBin, env });
 
+  // In-app Claude re-authentication (GET/POST /auth/*): wraps `claude auth login` so an expired server-side
+  // Claude login can be fixed from the app instead of SSHing in. Same claude bin + env as the chat spawns.
+  const claudeAuth = createClaudeAuthService({ claudeBin: config.claude.claudeBin, env });
+
   const result = createServer(config, manager, {
     store,
     history,
@@ -160,6 +165,7 @@ export async function startServer(
     onFrame: (id, frame) => dispatcher.handleFrame(id, frame),
     usage,
     models,
+    claudeAuth,
     storeMode,
     // Share the boot-preflight probe with /diag so claude is spawned at most once for both.
     claudeVersionProbe,

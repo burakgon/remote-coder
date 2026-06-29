@@ -1,4 +1,5 @@
 import type {
+  ClaudeAuthStatus,
   DirListing,
   LiveState,
   ModelInfo,
@@ -91,6 +92,13 @@ export interface ApiClient {
    * instant this resolves, so the new token MUST be re-stored. Persists it to the token-store and returns
    * it so the caller can re-issue any token-bearing links (e.g. a fresh connect URL). */
   rotateToken(): Promise<string>;
+  /** In-app Claude sign-in. `getAuthStatus` → which account is signed in (GET /auth/status). `startAuthLogin`
+   * → an authorize URL the user opens in a browser (POST /auth/login/start). `submitAuthCode` → finish the
+   * exchange with the pasted code (POST /auth/login/code). `cancelAuthLogin` → abandon it. */
+  getAuthStatus(): Promise<ClaudeAuthStatus>;
+  startAuthLogin(): Promise<{ loginId: string; url: string }>;
+  submitAuthCode(loginId: string, code: string): Promise<{ ok: boolean; message?: string }>;
+  cancelAuthLogin(): Promise<void>;
 }
 
 export interface ApiClientOptions {
@@ -287,6 +295,22 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       const body = await req<{ token: string }>("/token/rotate", { method: "POST", headers: headers() });
       saveToken(body.token);
       return body.token;
+    },
+    async getAuthStatus() {
+      return req<ClaudeAuthStatus>("/auth/status", { headers: headers() });
+    },
+    async startAuthLogin() {
+      return req<{ loginId: string; url: string }>("/auth/login/start", { method: "POST", headers: headers() });
+    },
+    async submitAuthCode(loginId, code) {
+      return req<{ ok: boolean; message?: string }>("/auth/login/code", {
+        method: "POST",
+        headers: headers({ "content-type": "application/json" }),
+        body: JSON.stringify({ loginId, code }),
+      });
+    },
+    async cancelAuthLogin() {
+      await reqNoBody("/auth/login/cancel", { method: "POST", headers: headers() });
     },
   };
 }

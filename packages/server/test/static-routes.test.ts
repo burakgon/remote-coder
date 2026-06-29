@@ -19,6 +19,10 @@ describe("API_PATH_DENYLIST mirrors the web apiNavigationDenylist (extended)", (
     expect(matches("/diag")).toBe(true);
     // The authed token-rotation route is server-only, token-gated — never the public shell.
     expect(matches("/token/rotate")).toBe(true);
+    // In-app Claude sign-in routes start an OAuth flow + reveal the account — token-gated, never public.
+    expect(matches("/auth/status")).toBe(true);
+    expect(matches("/auth/login/start")).toBe(true);
+    expect(matches("/auth/login/code")).toBe(true);
   });
   test("does NOT match app shell navigations / static assets", () => {
     expect(matches("/")).toBe(false);

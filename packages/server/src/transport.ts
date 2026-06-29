@@ -38,6 +38,7 @@ import { createClaudeVersionProbe, defaultRunClaudeVersion } from "./diag.js";
 import type { ClaudeVersionProbe } from "./diag.js";
 import { ClaudeStartError, looksLikeAuthError } from "./claude-process.js";
 import type { UsageService } from "./usage-service.js";
+import type { ClaudeAuthService } from "./claude-auth-service.js";
 import { ImageStore } from "./image-store.js";
 import type { ModelsService } from "./models-service.js";
 
@@ -143,6 +144,12 @@ export interface CreateServerDeps {
    * ModelsService is wired by start.ts from the configured claude bin + server env.
    */
   models?: ModelsService;
+  /**
+   * In-app Claude re-authentication (GET /auth/status, POST /auth/login/start|code|cancel). Injected so
+   * tests can pass a fake (no real `claude auth` spawn). When omitted the auth routes report "unavailable"
+   * (the UI hides the sign-in). A real ClaudeAuthService is wired by start.ts from the claude bin + env.
+   */
+  claudeAuth?: ClaudeAuthService;
   /**
    * How the session/idempotency stores are actually backed — "sqlite" (durable) or "memory-fallback"
    * (better-sqlite3 failed to load; NOT durable across restarts). Surfaced by the authed GET /diag for
@@ -907,6 +914,47 @@ export function createServer(
   app.get("/models", async () => {
     const models = deps.models ? await deps.models.getModels() : [];
     return { models };
+  });
+
+  // In-app Claude re-authentication (token-gated by the global preHandler). Lets a user whose server-side
+  // Claude login expired sign in again from the app: start → returns the authorize URL; the user authorizes
+  // in any browser + pastes the code back; code → finishes the exchange (fresh creds, no restart needed).
+  // GET /auth/status → which account is signed in (or {available:false} when the feature is off).
+  app.get("/auth/status", async () => {
+    if (!deps.claudeAuth) return { available: false as const };
+    const status = await deps.claudeAuth.status();
+    return { available: true as const, ...status };
+  });
+  // POST /auth/login/start → { loginId, url } (503 if the feature is off / the URL never appears).
+  app.post("/auth/login/start", async (_request, reply) => {
+    if (!deps.claudeAuth) {
+      reply.code(503).send({ error: "Claude sign-in is not available on this server." });
+      return;
+    }
+    try {
+      return await deps.claudeAuth.startLogin();
+    } catch (err) {
+      reply.code(502).send({ error: err instanceof Error ? err.message : "couldn't start sign-in" });
+      return;
+    }
+  });
+  // POST /auth/login/code { loginId, code } → { ok, message? }.
+  app.post<{ Body: { loginId?: string; code?: string } }>("/auth/login/code", async (request, reply) => {
+    if (!deps.claudeAuth) {
+      reply.code(503).send({ error: "Claude sign-in is not available on this server." });
+      return;
+    }
+    const { loginId, code } = request.body ?? {};
+    if (typeof loginId !== "string" || typeof code !== "string") {
+      reply.code(400).send({ error: "loginId and code are required" });
+      return;
+    }
+    return await deps.claudeAuth.submitCode(loginId, code);
+  });
+  // POST /auth/login/cancel → abandon an in-flight sign-in.
+  app.post("/auth/login/cancel", async () => {
+    deps.claudeAuth?.cancel();
+    return { ok: true as const };
   });
 
   app.get<{ Querystring: { path?: string } }>("/fs/list", async (request, reply) => {

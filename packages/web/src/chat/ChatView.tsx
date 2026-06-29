@@ -575,6 +575,7 @@ export function ChatView({
       {settingsOpen && (
         <SettingsPanel
           session={session}
+          api={api}
           defaults={loadDefaults()}
           onSaveDefaults={(d) => {
             saveDefaults(d);

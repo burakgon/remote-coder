@@ -339,6 +339,18 @@ export interface ModelInfo {
   description?: string;
 }
 
+/** GET /auth/status — the server-side Claude sign-in state. `available:false` means the feature is off
+ *  (no claude bin / a test server). `loggedIn` reflects stored creds existing (NOT that they still work —
+ *  expired creds report loggedIn:true yet 401 on use, so the UI always offers re-authentication). */
+export interface ClaudeAuthStatus {
+  available: boolean;
+  loggedIn?: boolean;
+  email?: string;
+  subscriptionType?: string;
+  authMethod?: string;
+  orgName?: string;
+}
+
 export type OutboundFrame =
   | {
       type: "user";

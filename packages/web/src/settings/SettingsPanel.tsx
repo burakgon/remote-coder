@@ -6,11 +6,15 @@ import { ModelSelect } from "./ModelSelect";
 import { EFFORTS, PERMISSION_MODES } from "./defaults";
 import type { SessionDefaults } from "./defaults";
 import type { ModelInfo, SessionMeta } from "../types/server";
+import type { ApiClient } from "../api/client";
+import { ClaudeAuthSection } from "./ClaudeAuthSection";
 
 export interface SettingsPanelProps {
   session?: SessionMeta;
   defaults: SessionDefaults;
   onSaveDefaults: (d: SessionDefaults) => void;
+  /** When provided, renders the "Claude account" section (in-app re-authentication). */
+  api?: ApiClient;
   onStopSession?: (id: string) => void;
   /** When provided, the active-session block becomes editable and applies changes live. A changed
    * `dangerouslySkip` is applied by the server via a respawn (the permission boundary is set at spawn). */
@@ -33,6 +37,7 @@ export function SettingsPanel({
   session,
   defaults,
   onSaveDefaults,
+  api,
   onStopSession,
   onApplyLiveSettings,
   models = [],
@@ -340,6 +345,18 @@ export function SettingsPanel({
               )}
             </button>
           </section>
+
+          {api && (
+            <section className="rc-settings__section rc-settings__section--divided">
+              <div className="rc-settings__section-head">
+                <span className="rc-settings__section-icon" aria-hidden="true">
+                  <Icon name="terminal" size={15} />
+                </span>
+                <span className="rc-settings__section-label">Claude sign-in</span>
+              </div>
+              <ClaudeAuthSection api={api} />
+            </section>
+          )}
 
           {pushState && (
             <section className="rc-settings__section rc-settings__section--divided">

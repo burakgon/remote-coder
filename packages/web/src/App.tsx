@@ -845,6 +845,7 @@ export function App() {
         <SettingsPanel
           defaults={globalDefaults}
           onSaveDefaults={saveDefaults}
+          api={api}
           models={models}
           pushState={pushState}
           onEnablePush={async () => {
