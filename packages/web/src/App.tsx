@@ -13,6 +13,7 @@ import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
 import { SettingsPanel } from "./settings/SettingsPanel";
+import { ClaudeAuthDialog } from "./settings/ClaudeAuthDialog";
 import { loadDefaults, saveDefaults } from "./settings/defaults";
 import { enablePush, disablePush, currentPushState } from "./pwa/push";
 import { applyAppBadge, badgeCount } from "./pwa/badge";
@@ -122,6 +123,8 @@ export function App() {
   // the rail header and the landing top bar. Rendered with no `session`, so it shows only the global
   // sections. Push state is read once (the opt-in itself is a deliberate tap).
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
+  // Claude sign-in dialog (the `/login` slash command + the "Sign in" button on a 401 auth-error turn).
+  const [authOpen, setAuthOpen] = useState(false);
   // Read the saved defaults once PER OPEN (not on every render while the panel is up) — the panel only
   // seeds its draft from the first value anyway.
   const globalDefaults = useMemo(() => loadDefaults(), [globalSettingsOpen]);
@@ -162,10 +165,11 @@ export function App() {
     setWizardMode(mode);
     setWizardOpen(true);
   };
-  // A client-action slash command was picked in the composer. Only `/resume` is handled today (opens
-  // the wizard on its resume tab); any other client-action name is a no-op for now.
+  // A client-action slash command was picked in the composer: `/resume` opens the wizard's resume tab;
+  // `/login` opens the Claude sign-in dialog (re-authenticate an expired server login).
   const onSlashCommand = (name: string) => {
     if (name === "/resume") openWizard("resume");
+    else if (name === "/login") setAuthOpen(true);
   };
   const online = useOnline();
 
@@ -715,6 +719,7 @@ export function App() {
                   onSlashCommand={onSlashCommand}
                   onClose={closeSession}
                   onShowSessions={() => setSessionsOpen(true)}
+                  onReauth={() => setAuthOpen(true)}
                   needsYou={awaitingCount(sessions)}
                   models={models}
                 />
@@ -868,6 +873,7 @@ export function App() {
           onClose={() => setGlobalSettingsOpen(false)}
         />
       )}
+      {authOpen && <ClaudeAuthDialog api={api} onClose={() => setAuthOpen(false)} />}
       {updatePanelOpen && updateInfo && (
         <UpdatePanel
           info={updateInfo}

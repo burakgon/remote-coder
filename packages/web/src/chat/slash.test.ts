@@ -19,6 +19,11 @@ describe("session-driven slash menu (real per-session commands from init)", () =
   it("keeps /resume a client action even when built from the session list", () => {
     expect(sessionCommands(["compact"]).find((c) => c.name === "/resume")?.clientAction).toBe(true);
   });
+  it("always merges /login as a client action (the CLI never advertises it) + matchSlash finds it", () => {
+    const login = sessionCommands(["compact"]).find((c) => c.name === "/login");
+    expect(login?.clientAction).toBe(true);
+    expect(matchSlash("/log", ["compact"]).map((c) => c.name)).toContain("/login");
+  });
 });
 
 describe("isSlashCommand", () => {

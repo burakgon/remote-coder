@@ -731,7 +731,14 @@ function formatDuration(ms: number): string {
   return `${m}m ${Math.round(s % 60)}s`;
 }
 
-function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> }) {
+/** A turn-result failure that is an EXPIRED Claude login (401), so the UI can offer a one-tap re-auth
+ *  instead of leaving the user staring at "Failed to authenticate". Matches the live + replayed message. */
+export function isClaudeAuthError(text: string | undefined): boolean {
+  if (!text) return false;
+  return /\b401\b/.test(text) && /auth/i.test(text);
+}
+
+function ResultMarker({ item, onReauth }: { item: Extract<TurnItem, { kind: "result" }>; onReauth?: () => void }) {
   // "stopped" wins over isError: an aborted turn carries the protocol error flags but is calm, not red.
   const tone = item.stopped ? "stopped" : item.isError ? "error" : "done";
   const color = tone === "stopped" ? "var(--text-muted)" : tone === "error" ? "var(--err)" : "var(--ok)";
@@ -739,6 +746,7 @@ function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> })
   // On a genuine error (NOT a user stop) the result string IS the failure reason (e.g. an API error), not
   // a copy of the assistant message — so surface it. The terminal shows the error; we showed only "error".
   const errorText = tone === "error" && item.result && item.result.trim().length > 0 ? item.result.trim() : undefined;
+  const authExpired = onReauth !== undefined && isClaudeAuthError(errorText);
   return (
     <div style={{ display: "grid", gap: "var(--sp-1)" }}>
       <div
@@ -784,6 +792,26 @@ function ResultMarker({ item }: { item: Extract<TurnItem, { kind: "result" }> })
           }}
         >
           {errorText}
+        </div>
+      )}
+      {authExpired && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: "var(--sp-1)" }}>
+          <button
+            type="button"
+            onClick={onReauth}
+            style={{
+              minHeight: "var(--tap-min)",
+              padding: "0 var(--sp-4)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid transparent",
+              background: "var(--accent-grad)",
+              color: "var(--on-accent)",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Sign in to Claude
+          </button>
         </div>
       )}
     </div>
@@ -976,12 +1004,14 @@ function Turn({
   item,
   downloadUrl,
   onRewind,
+  onReauth,
   imageUrl,
   search,
 }: {
   item: TurnItem;
   downloadUrl?: (path: string) => string;
   onRewind?: (checkpointId: string) => void;
+  onReauth?: () => void;
   imageUrl?: (url: string) => string;
   /** Active search query — highlights matched text + force-opens a matching collapsed section. */
   search?: string;
@@ -998,7 +1028,7 @@ function Turn({
     case "system-note":
       return <SystemNote item={item} />;
     case "result":
-      return <ResultMarker item={item} />;
+      return <ResultMarker item={item} onReauth={onReauth} />;
     case "rewound":
       return <RewoundMarker item={item} />;
     case "attachment":
@@ -1025,6 +1055,8 @@ export interface MessageListProps {
   subagents?: Record<string, SubagentThread>;
   /** Open a subagent's drill-in view. Absent → the card renders inert (e.g. read-only contexts). */
   onOpenSubagent?: (id: string) => void;
+  /** Open the Claude sign-in dialog — rendered as a "Sign in" button on a 401 auth-error result. */
+  onReauth?: () => void;
   /** Resolve a file-backed image `url` ref (e.g. `/images/<ref>`, shipped by the optimistic bubble and a
    *  reopen) to its absolute, token-bearing URL (api.mediaUrl). Absent → the bare relative ref is used. */
   imageUrl?: (url: string) => string;
@@ -1042,6 +1074,7 @@ export function MessageList({
   onOpenSubagent,
   imageUrl,
   search,
+  onReauth,
 }: MessageListProps) {
   // Split off any TRAILING queued user bubbles (sent while a turn was still running — the CLI handles
   // them after the current turn). They render BELOW the live stream so the transcript stays in order;
@@ -1107,6 +1140,7 @@ export function MessageList({
             item={node.item}
             downloadUrl={downloadUrl}
             onRewind={onRewind}
+            onReauth={onReauth}
             imageUrl={imageUrl}
             search={query}
           />

@@ -14,17 +14,21 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "/model", hint: "Switch the model" },
   { name: "/cost", hint: "Show token/cost usage" },
   { name: "/resume", hint: "Resume a past session", clientAction: true },
+  { name: "/login", hint: "Sign in to Claude (fix a 401)", clientAction: true },
 ];
 
-/** /resume is purely a CLIENT action (it opens the past-sessions picker); the CLI never advertises it, so
- *  it's always merged into the per-session menu. */
-const RESUME_COMMAND: SlashCommand = { name: "/resume", hint: "Resume a past session", clientAction: true };
+/** CLIENT-ONLY actions the CLI never advertises (they open a UI): `/resume` (past-sessions picker) and
+ *  `/login` (Claude re-authentication). Always merged into the per-session menu. */
+const CLIENT_COMMANDS: SlashCommand[] = [
+  { name: "/resume", hint: "Resume a past session", clientAction: true },
+  { name: "/login", hint: "Sign in to Claude (fix a 401)", clientAction: true },
+];
 
 /**
  * The full slash menu for a session: its REAL available commands as advertised by `system/init`
  * (`slash_commands` — custom skills, plugin + project commands, built-ins), each prefixed with `/` and
- * enriched with a known hint/clientAction when we have one; plus `/resume`. Falls back to the small static
- * list before init has arrived. This is what lets the phone run the SAME commands as the terminal.
+ * enriched with a known hint/clientAction when we have one; plus the client-only commands. Falls back to
+ * the small static list before init has arrived. This is what lets the phone run the SAME commands as the terminal.
  */
 export function sessionCommands(commands: string[] | undefined): SlashCommand[] {
   if (!commands || commands.length === 0) return SLASH_COMMANDS;
@@ -33,7 +37,8 @@ export function sessionCommands(commands: string[] | undefined): SlashCommand[] 
     const known = SLASH_COMMANDS.find((c) => c.name === full);
     return { name: full, hint: known?.hint ?? "", ...(known?.clientAction ? { clientAction: true } : {}) };
   });
-  return fromInit.some((c) => c.name === "/resume") ? fromInit : [RESUME_COMMAND, ...fromInit];
+  const missing = CLIENT_COMMANDS.filter((cc) => !fromInit.some((c) => c.name === cc.name));
+  return [...missing, ...fromInit];
 }
 
 /**

@@ -48,6 +48,36 @@ describe("MessageList", () => {
     expect(screen.getByText(/4\.1s/)).toBeInTheDocument();
   });
 
+  it("offers a 'Sign in to Claude' button on a 401 auth-error result (and calls onReauth)", async () => {
+    const onReauth = vi.fn();
+    render(
+      <MessageList
+        view={viewWith({
+          turns: [
+            {
+              kind: "result",
+              result: "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+              isError: true,
+            },
+          ],
+        })}
+        onReauth={onReauth}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /sign in to claude/i }));
+    expect(onReauth).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT offer the sign-in button on a non-auth error", () => {
+    render(
+      <MessageList
+        view={viewWith({ turns: [{ kind: "result", result: "API Error: 529 overloaded", isError: true }] })}
+        onReauth={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /sign in to claude/i })).not.toBeInTheDocument();
+  });
+
   it("does NOT echo a SUCCESS result string (it duplicates the assistant message) but shows duration", () => {
     render(
       <MessageList

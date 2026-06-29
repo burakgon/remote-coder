@@ -43,6 +43,8 @@ export interface ChatViewProps {
   needsYou?: number;
   /** Available models for the per-session model picker — fed from App's fetched list. */
   models?: ModelInfo[];
+  /** Open the Claude sign-in dialog — surfaced on a 401 auth-error turn so the user can re-authenticate. */
+  onReauth?: () => void;
 }
 
 export function ChatView({
@@ -54,6 +56,7 @@ export function ChatView({
   onShowSessions,
   needsYou,
   models = [],
+  onReauth,
 }: ChatViewProps) {
   const loadHistory = useStore((s) => s.loadHistory);
   const resetSession = useStore((s) => s.resetSession);
@@ -412,6 +415,7 @@ export function ChatView({
             view={safeView}
             downloadUrl={(path) => api.downloadUrl(path)}
             imageUrl={(url) => api.mediaUrl(url)}
+            onReauth={onReauth}
             onRewind={(checkpointId) => setRewindTarget(checkpointId)}
             onOpenSubagent={(id) => setSubagentStack([id])}
             search={searchOpen ? searchQuery : undefined}
