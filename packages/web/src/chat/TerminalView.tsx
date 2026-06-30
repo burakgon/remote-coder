@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalSocket, type TerminalSocket } from "../ws/terminal-socket";
+type CreateSocket = typeof createTerminalSocket;
 import { terminalWsUrl } from "../api/client";
 import { TerminalKeyBar } from "./TerminalKeyBar";
 import { keySequence, ctrlSeq } from "./terminal-keys";
@@ -32,8 +33,16 @@ const THEME = {
   brightWhite: "#ffffff",
 } as const;
 
-/** Renders a terminal session's claude TUI: xterm.js bridged to the binary terminal WebSocket. */
-export function TerminalView({ sessionId }: { sessionId: string }) {
+/** Renders a terminal session's claude TUI: xterm.js bridged to the binary terminal WebSocket.
+ *  `createSocket` is injectable purely so the screenshot harness / tests can feed controlled bytes;
+ *  production always uses the default real socket. */
+export function TerminalView({
+  sessionId,
+  createSocket = createTerminalSocket,
+}: {
+  sessionId: string;
+  createSocket?: CreateSocket;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | undefined>(undefined);
   const sockRef = useRef<TerminalSocket | undefined>(undefined);
@@ -51,8 +60,8 @@ export function TerminalView({ sessionId }: { sessionId: string }) {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
-      // Use the SAME webfont the rest of the app loads (JetBrains Mono) so cell metrics are consistent and
-      // `document.fonts.ready` actually gates on the font we render with.
+      // The app's mono webfont for regular text; the Canvas renderer draws block-element glyphs (the logo)
+      // as font-independent vectors, so the font never affects them.
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       theme: { ...THEME },
       allowProposedApi: true,
@@ -66,18 +75,10 @@ export function TerminalView({ sessionId }: { sessionId: string }) {
     let disposed = false;
     let connected = false;
 
-    // GPU renderer — the DOM renderer drifts sub-pixel and misaligns box-drawing (claude's TUI borders).
-    // Best-effort: WebGL where available (mobile Safari/Chrome have it), silently fall back to DOM otherwise.
-    void (async () => {
-      try {
-        const { WebglAddon } = await import("@xterm/addon-webgl");
-        const webgl = new WebglAddon();
-        webgl.onContextLoss(() => webgl.dispose());
-        if (!disposed) term.loadAddon(webgl);
-      } catch {
-        /* DOM renderer is an acceptable fallback */
-      }
-    })();
+    // Renderer: xterm's DEFAULT (DOM). The WebGL addon rounds cells to integer device pixels → HiDPI fit
+    // drift (the "kayık"/shift); the beta Canvas addon mis-sizes its backing store at HiDPI (everything
+    // renders 2-3× and clips). The DOM renderer uses CSS-sized cells and renders correctly on every device.
+    // (The logo's block glyphs come through intact now that the server runs tmux with `-u` + a UTF-8 locale.)
 
     // Sticky Ctrl applied to the REAL/soft keyboard: when armed, the next single printable keypress becomes
     // its control byte (Ctrl-R, Ctrl-L, …) and xterm's own handling of it is suppressed. This is what makes
@@ -111,7 +112,7 @@ export function TerminalView({ sessionId }: { sessionId: string }) {
         return;
       }
       connected = true;
-      const sock = createTerminalSocket({
+      const sock = createSocket({
         url: terminalWsUrl(sessionId, term.cols, term.rows),
         onData: (bytes) => term.write(bytes),
         onStatus: (s) => {
@@ -142,7 +143,7 @@ export function TerminalView({ sessionId }: { sessionId: string }) {
       sockRef.current = undefined;
       termRef.current = undefined;
     };
-  }, [sessionId]);
+  }, [sessionId, createSocket]);
 
   // Bar keys: emit the cursor-mode-correct bytes for the CURRENT terminal mode (arrows/Home/End), then keep
   // focus on the terminal so the on-screen keyboard stays up.
@@ -184,6 +185,9 @@ const terminalCss = `
 /* The padding lives on .xterm (NOT the host): FitAddon reads padding from the terminal element, so padding
    on the host was never subtracted from the grid math → the right column / bottom row got clipped ("shifted"). */
 .rc-terminal__host .xterm { height: 100%; box-sizing: border-box; padding: 6px; }
+/* Neutralize global text styling the terminal must not inherit: body sets letter-spacing: 0.1px, which a
+   character grid must never have (it drifts the columns) — matters for the DOM fallback renderer. */
+.rc-terminal__host .xterm, .rc-terminal__host .xterm * { letter-spacing: normal; }
 /* xterm.css hardcodes the viewport background to #000; match the theme so there's no black seam on resize. */
 .rc-terminal__host .xterm-viewport { background-color: #0b0e14 !important; }
 

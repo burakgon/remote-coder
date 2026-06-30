@@ -35,8 +35,10 @@ export interface TerminalProcessOptions {
 
 /** Dedicated tmux server socket — ISOLATES remote-coder's sessions from the host user's own tmux (their
  *  `tmux ls` never shows `rc-*`, a stray `kill-server` can't nuke ours, and our global options never touch
- *  theirs). Every tmux invocation must pass `-L <SOCKET>`. */
-export const TMUX_SOCKET = "remote-coder";
+ *  theirs). Every tmux invocation must pass `-L <SOCKET>`. Overridable via RC_TMUX_SOCKET so a SECOND
+ *  instance (a test/verification server) gets its own socket and never reaps the primary server's
+ *  sessions on boot (rehydrate treats unknown `rc-*` as orphans). Default is unchanged in production. */
+export const TMUX_SOCKET = process.env.RC_TMUX_SOCKET || "remote-coder";
 
 /** The tmux session name for a remote-coder session id. Stable so attach/kill always target the same one. */
 export function tmuxSessionName(id: string): string {
@@ -91,11 +93,21 @@ export class TerminalProcess extends EventEmitter {
     delete env.ANTHROPIC_API_KEY;
     delete env.TMUX;
     delete env.TMUX_PANE;
+    // UTF-8 LOCALE: a server launched by launchd/systemd often has NO locale env, so tmux assumes a non-UTF-8
+    // terminal and DOWNGRADES wide/block-element glyphs to ASCII — that's what turned claude's logo (drawn
+    // with █▛▜▌▐) into coral dashes + black boxes in the browser. Guarantee a UTF-8 locale so tmux passes the
+    // glyphs through verbatim. (Belt-and-suspenders with tmux's `-u` flag below.)
+    if (!/utf-?8/i.test(env.LC_ALL ?? env.LC_CTYPE ?? env.LANG ?? "")) {
+      env.LANG = "en_US.UTF-8";
+      env.LC_CTYPE = "en_US.UTF-8";
+    }
     // ONE command on our dedicated socket: configure the server, THEN attach-or-create the session running
     // claude. `;` tokens are tmux command separators (no shell involved). `-A` = attach if it already exists.
+    // `-u` forces tmux to treat the (node-pty) client as UTF-8 capable regardless of the locale it detects.
     const args = [
       "-L",
       TMUX_SOCKET,
+      "-u",
       ...tmuxConfigChain(),
       "new-session",
       "-A",

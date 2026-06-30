@@ -34,8 +34,8 @@ test("start: dedicated socket, server config chained before new-session running 
   expect(tmuxSessionName("abc")).toBe("rc-abc");
   const [file, args, opts] = spawn.mock.calls[0]!;
   expect(file).toBe("tmux");
-  // Isolated socket FIRST.
-  expect(args.slice(0, 2)).toEqual(["-L", TMUX_SOCKET]);
+  // Isolated socket FIRST, then `-u` to force UTF-8 (so tmux doesn't downgrade claude's block glyphs).
+  expect(args.slice(0, 3)).toEqual(["-L", TMUX_SOCKET, "-u"]);
   // Server config chained BEFORE the session (so claude renders full-height from frame 1).
   const joined = args.join(" ");
   expect(joined).toContain("set-option -g status off");

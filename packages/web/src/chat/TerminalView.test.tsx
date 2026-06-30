@@ -25,8 +25,6 @@ vi.mock("@xterm/xterm", () => ({
   },
 }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} activate() {} dispose() {} } }));
-// WebGL is loaded via dynamic import in a try/catch; stub it so jsdom doesn't need a GPU context.
-vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class { onContextLoss() {} activate() {} dispose() {} } }));
 
 const sent: string[] = [];
 vi.mock("../ws/terminal-socket", () => ({

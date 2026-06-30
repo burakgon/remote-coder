@@ -29,6 +29,8 @@ import { LoginScreen } from "../auth/LoginScreen";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import { SubagentTray } from "../chat/SubagentTray";
 import { SubagentView } from "../chat/SubagentView";
+import { TerminalView } from "../chat/TerminalView";
+import { makeFakeTerminalSocket } from "./fakeTerminalSocket";
 import { loadDefaults } from "../settings/defaults";
 import { emptyView } from "../store/frame-reducer";
 import type { SessionMeta } from "../types/server";
@@ -58,7 +60,8 @@ type Scene =
   | "settings"
   | "subagents"
   | "subagentview"
-  | "sessions";
+  | "sessions"
+  | "terminal";
 
 function currentScene(): Scene {
   const s = new URLSearchParams(window.location.search).get("scene");
@@ -71,11 +74,15 @@ function currentScene(): Scene {
     s === "settings" ||
     s === "subagents" ||
     s === "subagentview" ||
-    s === "sessions"
+    s === "sessions" ||
+    s === "terminal"
   )
     return s;
   return "chat";
 }
+
+// One stable fake socket for the terminal scene (a fresh ref each render would remount TerminalView).
+const TERMINAL_SOCKET = makeFakeTerminalSocket();
 
 /** A non-interactive mirror of ChatView's JSX (header + log + subagent tray + permission/question gate
  *  + composer). `sessionId`/`sessionOverride` let the subagent scenes render a dedicated session. */
@@ -171,6 +178,16 @@ export function AppShot() {
       }
     />
   );
+
+  // Terminal mode renders JUST TerminalView inside the shell (no ChatHeader), exactly as App.tsx does.
+  // The fake socket feeds a controlled glyph + edge-fit test frame; every pixel here is shipped code.
+  if (scene === "terminal") {
+    return (
+      <AppLayout sessionList={list} sessionsOpen={false} onHideSessions={() => {}}>
+        <TerminalView sessionId={ACTIVE_ID} createSocket={TERMINAL_SOCKET} />
+      </AppLayout>
+    );
+  }
 
   return (
     <>

@@ -62,6 +62,14 @@ test.skipIf(!hasTmux)(
     const echoed = await waitFor(() => out.join("").includes("round_trip_ok"), 4000);
     expect(echoed).toBe(true);
 
+    // 4b) UTF-8 BLOCK GLYPHS survive tmux verbatim (regression guard for the black-logo bug: without `-u`
+    // + a UTF-8 locale, tmux downgrades █▛▜ to ASCII, which rendered claude's logo as black boxes). The
+    // env here is the test runner's — the `-u` flag must carry UTF-8 even when the locale doesn't.
+    out.length = 0;
+    tp.write("printf '\\342\\226\\210\\342\\226\\233\\342\\226\\234 BLOCKS\\n'\n"); // █▛▜ BLOCKS
+    const blocksOk = await waitFor(() => out.join("").includes("█▛▜ BLOCKS"), 4000);
+    expect(blocksOk).toBe(true);
+
     // 5) Resize is honored by the live session.
     tp.resize(90, 24);
     const resized = await waitFor(
