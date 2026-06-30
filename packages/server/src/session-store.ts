@@ -18,6 +18,7 @@ export interface StoredSession {
    *  meter knows the right denominator on reopen/after a restart, when no result is in the buffer and the
    *  model name (often absent / lacking a "1m" marker) can't reveal it. */
   contextWindow?: number;
+  mode?: "chat" | "terminal";
 }
 
 /** How a store is actually backed: "sqlite" (durable) or "memory-fallback" (the native module failed to
@@ -57,6 +58,7 @@ interface Row {
   last_activity_at: number;
   permission_mode: string | null;
   context_window: number | null;
+  mode: string | null;
 }
 
 function rowToSession(r: Row): StoredSession {
@@ -67,6 +69,7 @@ function rowToSession(r: Row): StoredSession {
     status: r.status as StoredStatus,
     createdAt: r.created_at,
     lastActivityAt: r.last_activity_at,
+    mode: r.mode === "terminal" ? "terminal" : "chat",
   };
   if (r.model !== null) s.model = r.model;
   if (r.effort !== null) s.effort = r.effort;
@@ -84,7 +87,7 @@ function rowToSession(r: Row): StoredSession {
 function inMemoryStore(): SessionStore {
   const map = new Map<string, StoredSession>();
   return {
-    upsert: (s) => void map.set(s.id, { ...s }),
+    upsert: (s) => void map.set(s.id, { mode: "chat", ...s }),
     get: (id) => {
       const v = map.get(id);
       return v ? { ...v } : undefined;
@@ -133,7 +136,8 @@ export function openSessionStore(opts: OpenSessionStoreOptions): SessionStore {
       status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       last_activity_at INTEGER NOT NULL,
-      context_window INTEGER
+      context_window INTEGER,
+      mode TEXT NOT NULL DEFAULT 'chat'
     )
   `);
 
@@ -152,16 +156,22 @@ export function openSessionStore(opts: OpenSessionStoreOptions): SessionStore {
   } catch {
     // column already exists — nothing to do
   }
+  // Same backward-compatible migration for mode (added later): NOT NULL with default, swallow "duplicate".
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'chat'");
+  } catch {
+    // column already exists — nothing to do
+  }
 
   const upsertStmt = db.prepare(`
-    INSERT INTO sessions (id, cwd, model, effort, permission_mode, dangerously_skip, display_name, status, created_at, last_activity_at, context_window)
-    VALUES (@id, @cwd, @model, @effort, @permission_mode, @dangerously_skip, @display_name, @status, @created_at, @last_activity_at, @context_window)
+    INSERT INTO sessions (id, cwd, model, effort, permission_mode, dangerously_skip, display_name, status, created_at, last_activity_at, context_window, mode)
+    VALUES (@id, @cwd, @model, @effort, @permission_mode, @dangerously_skip, @display_name, @status, @created_at, @last_activity_at, @context_window, @mode)
     ON CONFLICT(id) DO UPDATE SET
       cwd=excluded.cwd, model=excluded.model, effort=excluded.effort,
       permission_mode=excluded.permission_mode,
       dangerously_skip=excluded.dangerously_skip, display_name=excluded.display_name,
       status=excluded.status, created_at=excluded.created_at, last_activity_at=excluded.last_activity_at,
-      context_window=excluded.context_window
+      context_window=excluded.context_window, mode=excluded.mode
   `);
   const getStmt = db.prepare("SELECT * FROM sessions WHERE id = ?");
   const listStmt = db.prepare("SELECT * FROM sessions ORDER BY created_at ASC");
@@ -183,6 +193,7 @@ export function openSessionStore(opts: OpenSessionStoreOptions): SessionStore {
         created_at: s.createdAt,
         last_activity_at: s.lastActivityAt,
         context_window: s.contextWindow ?? null,
+        mode: s.mode ?? "chat",
       }),
     get: (id) => {
       const row = getStmt.get(id) as Row | undefined;
