@@ -443,24 +443,33 @@ export function createServer(
       },
     );
 
-    wsScope.get<{ Params: { id: string } }>(
+    wsScope.get<{ Params: { id: string }; Querystring: { cols?: string; rows?: string } }>(
       "/sessions/:id/terminal",
       { websocket: true },
-      (socket: WebSocket, request: FastifyRequest<{ Params: { id: string } }>) => {
+      (socket: WebSocket, request: FastifyRequest<{ Params: { id: string }; Querystring: { cols?: string; rows?: string } }>) => {
         const id = request.params.id;
         if (!terminalManager.get(id)) {
           socket.close(4404, "terminal session not found");
           return;
         }
-        const sub = terminalManager.attach(id, (chunk) => {
-          if (socket.readyState !== socket.OPEN) return;
-          try {
-            socket.send(Buffer.from(chunk, "utf8")); // binary frame
-          } catch {
-            sub?.unsubscribe();
-            try { socket.close(); } catch { /* already gone */ }
-          }
-        });
+        // The client fits its xterm BEFORE connecting and passes the size as `?cols=&rows=`, so the pty/tmux
+        // is born at the real viewport (no spawn-at-80×24-then-reflow). Parsed defensively; absent → defaults.
+        const c = Number(request.query.cols);
+        const r = Number(request.query.rows);
+        const size = Number.isInteger(c) && c > 0 && Number.isInteger(r) && r > 0 ? { cols: c, rows: r } : undefined;
+        const sub = terminalManager.attach(
+          id,
+          (chunk) => {
+            if (socket.readyState !== socket.OPEN) return;
+            try {
+              socket.send(Buffer.from(chunk, "utf8")); // binary frame
+            } catch {
+              sub?.unsubscribe();
+              try { socket.close(); } catch { /* already gone */ }
+            }
+          },
+          size,
+        );
         if (!sub) {
           socket.close(4404, "terminal session not found");
           return;

@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
 
 // Mock xterm so jsdom doesn't need a real canvas; assert we wire onData→socket and socket→term.write.
 const writes: string[] = [];
@@ -8,6 +8,7 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    modes = { applicationCursorKeysMode: false };
     loadAddon() {}
     open() {}
     write(d: string) {
@@ -18,10 +19,14 @@ vi.mock("@xterm/xterm", () => ({
       return { dispose() {} };
     }
     onResize() {}
+    attachCustomKeyEventHandler() {}
+    focus() {}
     dispose() {}
   },
 }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} activate() {} dispose() {} } }));
+// WebGL is loaded via dynamic import in a try/catch; stub it so jsdom doesn't need a GPU context.
+vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: class { onContextLoss() {} activate() {} dispose() {} } }));
 
 const sent: string[] = [];
 vi.mock("../ws/terminal-socket", () => ({
@@ -32,6 +37,23 @@ vi.mock("../ws/terminal-socket", () => ({
 }));
 
 import { TerminalView } from "./TerminalView";
+
+// The view fits-then-connects on requestAnimationFrame and bails while the host has no height. jsdom reports
+// clientHeight 0 and schedules rAF on a ~16ms timer, so make rAF synchronous and give the host a real height
+// to drive the fit→connect path deterministically inside the effect.
+let origRAF: typeof requestAnimationFrame;
+beforeAll(() => {
+  origRAF = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    cb(0);
+    return 0;
+  }) as never;
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 600 });
+});
+afterAll(() => {
+  globalThis.requestAnimationFrame = origRAF;
+  delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+});
 
 test("pipes socket output into the terminal and input back to the socket", async () => {
   render(<TerminalView sessionId="s1" />);

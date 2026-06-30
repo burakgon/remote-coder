@@ -29,13 +29,36 @@ export interface TerminalProcessOptions {
   env?: NodeJS.ProcessEnv;
   /** Injectable PTY spawner (default loads node-pty). Tests pass a fake. */
   ptySpawn?: PtySpawn;
-  /** Injectable one-shot tmux command runner (set-option / kill-session). Default spawnSync(tmuxBin). */
+  /** Injectable one-shot tmux command runner (kill-session). Default spawnSync(tmuxBin). */
   runTmux?: (args: string[]) => void;
 }
+
+/** Dedicated tmux server socket — ISOLATES remote-coder's sessions from the host user's own tmux (their
+ *  `tmux ls` never shows `rc-*`, a stray `kill-server` can't nuke ours, and our global options never touch
+ *  theirs). Every tmux invocation must pass `-L <SOCKET>`. */
+export const TMUX_SOCKET = "remote-coder";
 
 /** The tmux session name for a remote-coder session id. Stable so attach/kill always target the same one. */
 export function tmuxSessionName(id: string): string {
   return `rc-${id}`;
+}
+
+/** Server-wide tmux options that make the embedded session behave like a plain, transparent terminal rather
+ *  than a visible tmux: NO status bar (it stole a row and made the TUI look shifted), instant escape-time (the
+ *  500ms default mangled Esc-prefixed sequences = arrow/alt keys), mouse + focus + clipboard passthrough, and
+ *  a 256-color terminfo. Set as ONE chained command BEFORE `new-session` so claude renders full-height from
+ *  its first frame (no status-bar reflow). Applied on our dedicated socket, so they never affect the user's tmux. */
+function tmuxConfigChain(): string[] {
+  const sets: Array<[scope: string, name: string, value: string]> = [
+    ["-g", "status", "off"],
+    ["-s", "escape-time", "0"],
+    ["-g", "mouse", "on"],
+    ["-g", "focus-events", "on"],
+    ["-g", "set-clipboard", "on"],
+    ["-g", "default-terminal", "tmux-256color"],
+    ["-g", "remain-on-exit", "on"], // claude exiting leaves a restartable [exited] pane, not a dead session
+  ];
+  return sets.flatMap(([scope, name, value]) => ["set-option", scope, name, value, ";"]);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
@@ -60,21 +83,36 @@ export class TerminalProcess extends EventEmitter {
   start(): void {
     if (this.started) return;
     this.started = true;
-    const cols = this.opts.cols ?? 80;
-    const rows = this.opts.rows ?? 24;
+    const cols = Math.max(1, this.opts.cols ?? 80);
+    const rows = Math.max(1, this.opts.rows ?? 24);
     const env: NodeJS.ProcessEnv = { ...(this.opts.env ?? process.env) };
+    // Subscription auth only; and strip TMUX/TMUX_PANE so a server itself running inside tmux can't make
+    // our `tmux` child think it's nesting (which makes it refuse / attach to the wrong server).
     delete env.ANTHROPIC_API_KEY;
+    delete env.TMUX;
+    delete env.TMUX_PANE;
+    // ONE command on our dedicated socket: configure the server, THEN attach-or-create the session running
+    // claude. `;` tokens are tmux command separators (no shell involved). `-A` = attach if it already exists.
     const args = [
-      "new-session", "-A", "-s", this.tmuxName,
-      "-x", String(cols), "-y", String(rows),
-      "--", this.opts.claudeBin, ...(this.opts.claudeArgs ?? []),
+      "-L",
+      TMUX_SOCKET,
+      ...tmuxConfigChain(),
+      "new-session",
+      "-A",
+      "-s",
+      this.tmuxName,
+      "-x",
+      String(cols),
+      "-y",
+      String(rows),
+      "--",
+      this.opts.claudeBin,
+      ...(this.opts.claudeArgs ?? []),
     ];
     const pty = this.ptySpawn(this.tmuxBin, args, { name: "xterm-256color", cols, rows, cwd: this.opts.cwd, env });
     this.pty = pty;
     pty.onData((d) => this.emit("data", d));
     pty.onExit((e) => this.emit("exit", e));
-    // Keep the session alive if claude exits, so an accidental exit leaves a restartable pane.
-    this.runTmux(["set-option", "-t", this.tmuxName, "remain-on-exit", "on"]);
   }
 
   write(d: string): void {
@@ -82,12 +120,13 @@ export class TerminalProcess extends EventEmitter {
   }
 
   resize(c: number, r: number): void {
-    this.pty?.resize(c, r);
+    // Clamp: a transient 0/NaN from a pre-layout fit() would otherwise hit ioctl(TIOCSWINSZ) and can throw.
+    this.pty?.resize(Math.max(1, Math.trunc(c) || 1), Math.max(1, Math.trunc(r) || 1));
   }
 
   /** Detach (kill the pty client; tmux + claude keep running). `kill:true` also kills the tmux session. */
   stop(opts: { kill?: boolean } = {}): void {
-    if (opts.kill) this.runTmux(["kill-session", "-t", this.tmuxName]);
+    if (opts.kill) this.runTmux(["-L", TMUX_SOCKET, "kill-session", "-t", this.tmuxName]);
     try {
       this.pty?.kill();
     } catch {

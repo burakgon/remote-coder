@@ -1,15 +1,49 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { createTerminalSocket, type TerminalSocket } from "../ws/terminal-socket";
 import { terminalWsUrl } from "../api/client";
 import { TerminalKeyBar } from "./TerminalKeyBar";
+import { keySequence, ctrlSeq } from "./terminal-keys";
+
+/** A full dark theme so xterm never falls back to default ANSI colors / a black viewport seam. */
+const THEME = {
+  background: "#0b0e14",
+  foreground: "#cdd6e4",
+  cursor: "#cdd6e4",
+  cursorAccent: "#0b0e14",
+  selectionBackground: "#2a3340",
+  black: "#11151c",
+  red: "#e06c75",
+  green: "#98c379",
+  yellow: "#e5c07b",
+  blue: "#61afef",
+  magenta: "#c678dd",
+  cyan: "#56b6c2",
+  white: "#cdd6e4",
+  brightBlack: "#5c6370",
+  brightRed: "#e06c75",
+  brightGreen: "#98c379",
+  brightYellow: "#e5c07b",
+  brightBlue: "#61afef",
+  brightMagenta: "#c678dd",
+  brightCyan: "#56b6c2",
+  brightWhite: "#ffffff",
+} as const;
 
 /** Renders a terminal session's claude TUI: xterm.js bridged to the binary terminal WebSocket. */
 export function TerminalView({ sessionId }: { sessionId: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | undefined>(undefined);
   const sockRef = useRef<TerminalSocket | undefined>(undefined);
+  // Sticky Ctrl: a ref drives the keydown handler (set once), state drives the button highlight.
+  const ctrlArmedRef = useRef(false);
+  const [ctrlArmed, setCtrlArmedState] = useState(false);
+  const setCtrlArmed = (v: boolean) => {
+    ctrlArmedRef.current = v;
+    setCtrlArmedState(v);
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -17,17 +51,47 @@ export function TerminalView({ sessionId }: { sessionId: string }) {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      theme: { background: "#0b0e14" },
+      // Use the SAME webfont the rest of the app loads (JetBrains Mono) so cell metrics are consistent and
+      // `document.fonts.ready` actually gates on the font we render with.
+      fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      theme: { ...THEME },
+      allowProposedApi: true,
+      scrollback: 0, // tmux owns scrollback/altscreen; an outer xterm buffer just double-buffers confusingly
     });
+    termRef.current = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
 
     let disposed = false;
-    // fit() needs the host laid out AND the font's cell metrics measured; called too early it computes the
-    // wrong grid and the terminal doesn't fill (the "doesn't cover the screen until you resize" bug). So we
-    // never fit synchronously on open — only after layout settles, after the web font loads, and on resize.
+    let connected = false;
+
+    // GPU renderer — the DOM renderer drifts sub-pixel and misaligns box-drawing (claude's TUI borders).
+    // Best-effort: WebGL where available (mobile Safari/Chrome have it), silently fall back to DOM otherwise.
+    void (async () => {
+      try {
+        const { WebglAddon } = await import("@xterm/addon-webgl");
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        if (!disposed) term.loadAddon(webgl);
+      } catch {
+        /* DOM renderer is an acceptable fallback */
+      }
+    })();
+
+    // Sticky Ctrl applied to the REAL/soft keyboard: when armed, the next single printable keypress becomes
+    // its control byte (Ctrl-R, Ctrl-L, …) and xterm's own handling of it is suppressed. This is what makes
+    // the bar's "Ctrl" actually work for typed keys, not just the bar's buttons.
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      if (ctrlArmedRef.current && e.key.length === 1) {
+        sockRef.current?.sendInput(ctrlSeq(e.key));
+        setCtrlArmed(false);
+        return false;
+      }
+      return true;
+    });
+
     const refit = () => {
       if (disposed || host.clientHeight === 0) return;
       try {
@@ -37,44 +101,72 @@ export function TerminalView({ sessionId }: { sessionId: string }) {
       }
       sockRef.current?.sendResize(term.cols, term.rows);
     };
+    // FIT FIRST, THEN connect with the fitted size in the URL, so the pty/tmux is BORN at the real viewport
+    // (no spawn-at-80×24-then-reflow jump). Only connect once the host has a real size.
+    const fitThenConnect = () => {
+      if (connected || disposed || host.clientHeight === 0) return;
+      try {
+        fit.fit();
+      } catch {
+        return;
+      }
+      connected = true;
+      const sock = createTerminalSocket({
+        url: terminalWsUrl(sessionId, term.cols, term.rows),
+        onData: (bytes) => term.write(bytes),
+        onStatus: (s) => {
+          if (s === "open") refit();
+        },
+      });
+      sockRef.current = sock;
+    };
+    const tick = () => (connected ? refit() : fitThenConnect());
 
-    const sock = createTerminalSocket({
-      url: terminalWsUrl(sessionId),
-      onData: (bytes) => term.write(bytes),
-      // The PTY/tmux is born at a default size; once the socket is open, push the fitted size so the claude
-      // TUI reflows to the real viewport immediately (not just after the first manual resize).
-      onStatus: (s) => {
-        if (s === "open") refit();
-      },
-    });
-    sockRef.current = sock;
-    const offData = term.onData((d) => sock.sendInput(d));
+    const offData = term.onData((d) => sockRef.current?.sendInput(d));
 
-    // Initial fit AFTER two frames (layout has settled) + again once the web font finishes loading (cell
-    // metrics change when the real monospace face swaps in).
-    const raf = requestAnimationFrame(() => requestAnimationFrame(refit));
-    document.fonts?.ready?.then(refit).catch(() => undefined);
-
-    // Re-fit on any host resize (rotation, on-screen keyboard, split view). Feature-detected — jsdom (tests)
-    // and SSR lack ResizeObserver; the rAF/fonts paths still perform the initial fit there.
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => refit()) : undefined;
+    // two rAFs (layout settled) → fit+connect; fonts.ready re-fits once the webfont swaps in; RO handles
+    // rotation / on-screen keyboard / split-view resizes (and connects if the host wasn't sized yet).
+    const raf = requestAnimationFrame(() => requestAnimationFrame(tick));
+    document.fonts?.ready?.then(tick).catch(() => undefined);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => tick()) : undefined;
     ro?.observe(host);
+    term.focus();
 
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
       ro?.disconnect();
       offData.dispose();
-      sock.close();
+      sockRef.current?.close();
       term.dispose();
       sockRef.current = undefined;
+      termRef.current = undefined;
     };
   }, [sessionId]);
+
+  // Bar keys: emit the cursor-mode-correct bytes for the CURRENT terminal mode (arrows/Home/End), then keep
+  // focus on the terminal so the on-screen keyboard stays up.
+  const onBarKey = (label: string) => {
+    const term = termRef.current;
+    const appMode = !!term?.modes?.applicationCursorKeysMode;
+    sockRef.current?.sendInput(keySequence(label, appMode));
+    term?.focus();
+  };
+  const onCtrlChord = (letter: string) => {
+    sockRef.current?.sendInput(ctrlSeq(letter));
+    setCtrlArmed(false);
+    termRef.current?.focus();
+  };
 
   return (
     <div className="rc-terminal">
       <div className="rc-terminal__host" ref={hostRef} />
-      <TerminalKeyBar onSend={(seq) => sockRef.current?.sendInput(seq)} />
+      <TerminalKeyBar
+        ctrlArmed={ctrlArmed}
+        onToggleCtrl={() => setCtrlArmed(!ctrlArmedRef.current)}
+        onKey={onBarKey}
+        onCtrlChord={onCtrlChord}
+      />
       <style>{terminalCss}</style>
     </div>
   );
@@ -87,11 +179,13 @@ const terminalCss = `
 }
 .rc-terminal__host {
   flex: 1 1 auto; min-height: 0;
-  padding: var(--sp-2, 6px);
   overflow: hidden;
 }
-/* Make xterm actually fill the host so the grid covers the pane from the first paint. */
-.rc-terminal__host .xterm { height: 100%; }
+/* The padding lives on .xterm (NOT the host): FitAddon reads padding from the terminal element, so padding
+   on the host was never subtracted from the grid math → the right column / bottom row got clipped ("shifted"). */
+.rc-terminal__host .xterm { height: 100%; box-sizing: border-box; padding: 6px; }
+/* xterm.css hardcodes the viewport background to #000; match the theme so there's no black seam on resize. */
+.rc-terminal__host .xterm-viewport { background-color: #0b0e14 !important; }
 
 /* Termux-style extra-keys row: a horizontally scrollable, touch-friendly key strip pinned below the
    terminal, with a safe-area inset so it clears the iOS home indicator / sits above the on-screen keyboard. */

@@ -1,7 +1,7 @@
 // packages/server/test/terminal-process.test.ts
 import { EventEmitter } from "node:events";
 import { expect, test, vi } from "vitest";
-import { TerminalProcess, tmuxSessionName } from "../src/terminal-process.js";
+import { TerminalProcess, tmuxSessionName, TMUX_SOCKET } from "../src/terminal-process.js";
 
 function fakePty() {
   const ee = new EventEmitter();
@@ -18,13 +18,14 @@ function fakePty() {
   return { pty, calls };
 }
 
-test("start spawns tmux new -A -s rc-<id> -- claude and bridges data", () => {
+test("start: dedicated socket, server config chained before new-session running claude; bridges data", () => {
   const { pty } = fakePty();
   const spawn = vi.fn(() => pty);
   const runTmux = vi.fn();
   const tp = new TerminalProcess({
     sessionId: "abc", cwd: "/work", claudeBin: "/bin/claude",
     cols: 100, rows: 30, ptySpawn: spawn as never, runTmux,
+    env: { ...process.env, TMUX: "/tmp/x,1,0", TMUX_PANE: "%1" },
   });
   const seen: string[] = [];
   tp.on("data", (d) => seen.push(d));
@@ -33,17 +34,29 @@ test("start spawns tmux new -A -s rc-<id> -- claude and bridges data", () => {
   expect(tmuxSessionName("abc")).toBe("rc-abc");
   const [file, args, opts] = spawn.mock.calls[0]!;
   expect(file).toBe("tmux");
-  expect(args).toEqual(["new-session", "-A", "-s", "rc-abc", "-x", "100", "-y", "30", "--", "/bin/claude"]);
+  // Isolated socket FIRST.
+  expect(args.slice(0, 2)).toEqual(["-L", TMUX_SOCKET]);
+  // Server config chained BEFORE the session (so claude renders full-height from frame 1).
+  const joined = args.join(" ");
+  expect(joined).toContain("set-option -g status off");
+  expect(joined).toContain("set-option -s escape-time 0");
+  expect(joined).toContain("set-option -g remain-on-exit on");
+  // new-session tail is exact.
+  const ns = args.indexOf("new-session");
+  expect(ns).toBeGreaterThan(0);
+  expect(args.slice(ns)).toEqual(["new-session", "-A", "-s", "rc-abc", "-x", "100", "-y", "30", "--", "/bin/claude"]);
   expect(opts).toMatchObject({ name: "xterm-256color", cwd: "/work", cols: 100, rows: 30 });
   expect(opts.env.ANTHROPIC_API_KEY).toBeUndefined();
-  // remain-on-exit set out-of-band so an accidental claude exit doesn't destroy the session
-  expect(runTmux).toHaveBeenCalledWith(["set-option", "-t", "rc-abc", "remain-on-exit", "on"]);
+  expect(opts.env.TMUX).toBeUndefined();
+  expect(opts.env.TMUX_PANE).toBeUndefined();
+  // Config is in the spawn chain — no out-of-band runTmux call on start.
+  expect(runTmux).not.toHaveBeenCalled();
 
   pty.emitData("hello");
   expect(seen).toEqual(["hello"]);
 });
 
-test("write + resize forward to the pty; stop(kill) kills tmux session", () => {
+test("write + resize forward; resize clamps; stop(kill) kills the session on the dedicated socket", () => {
   const { pty, calls } = fakePty();
   const runTmux = vi.fn();
   const tp = new TerminalProcess({
@@ -52,11 +65,12 @@ test("write + resize forward to the pty; stop(kill) kills tmux session", () => {
   tp.start();
   tp.write("ls\n");
   tp.resize(80, 24);
+  tp.resize(0, -5); // degenerate → clamped to >=1
   expect(calls.write).toEqual(["ls\n"]);
-  expect(calls.resize).toEqual([[80, 24]]);
+  expect(calls.resize).toEqual([[80, 24], [1, 1]]);
 
   tp.stop({ kill: true });
-  expect(runTmux).toHaveBeenCalledWith(["kill-session", "-t", "rc-z"]);
+  expect(runTmux).toHaveBeenCalledWith(["-L", TMUX_SOCKET, "kill-session", "-t", "rc-z"]);
   expect(calls.killed).toBe(1);
 });
 

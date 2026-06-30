@@ -33,6 +33,8 @@ export interface TerminalManagerDeps {
   env?: NodeJS.ProcessEnv;
 }
 
+const clampDim = (n: number | undefined, fallback: number): number => Math.max(1, Math.trunc(n ?? fallback) || fallback);
+
 export class TerminalManager {
   private readonly records = new Map<string, Record_>();
   constructor(private readonly deps: TerminalManagerDeps) {}
@@ -43,7 +45,7 @@ export class TerminalManager {
       id: opts.id, cwd: opts.cwd, mode: "terminal", status: "running", createdAt: now, lastActivityAt: now,
     };
     this.records.set(opts.id, {
-      meta, claudeArgs: opts.claudeArgs ?? [], cols: opts.cols ?? 80, rows: opts.rows ?? 24, subs: new Set(),
+      meta, claudeArgs: opts.claudeArgs ?? [], cols: clampDim(opts.cols, 80), rows: clampDim(opts.rows, 24), subs: new Set(),
     });
     this.deps.store.upsert({
       id: opts.id, cwd: opts.cwd, mode: "terminal", dangerouslySkip: false,
@@ -52,9 +54,18 @@ export class TerminalManager {
     return meta;
   }
 
-  attach(id: string, onData: (chunk: string) => void): TerminalSub | undefined {
+  /**
+   * Subscribe to a terminal's output. The pty/tmux is spawned lazily on the FIRST subscriber — and, when
+   * `size` is given, born at exactly the client's fitted viewport so the claude TUI's first frame matches
+   * (no spawn-at-80×24-then-reflow jump). Returns undefined for an unknown id.
+   */
+  attach(id: string, onData: (chunk: string) => void, size?: { cols: number; rows: number }): TerminalSub | undefined {
     const rec = this.records.get(id);
     if (!rec) return undefined;
+    if (size && !rec.proc) {
+      rec.cols = clampDim(size.cols, rec.cols);
+      rec.rows = clampDim(size.rows, rec.rows);
+    }
     rec.subs.add(onData);
     if (!rec.proc) {
       const proc = new TerminalProcess({
@@ -98,16 +109,15 @@ export class TerminalManager {
   resize(id: string, cols: number, rows: number): void {
     const rec = this.records.get(id);
     if (!rec) return;
-    rec.cols = cols;
-    rec.rows = rows;
-    rec.proc?.resize(cols, rows);
+    rec.cols = clampDim(cols, rec.cols);
+    rec.rows = clampDim(rows, rec.rows);
+    rec.proc?.resize(rec.cols, rec.rows);
   }
 
   stop(id: string): void {
     const rec = this.records.get(id);
-    if (!rec) return;
-    if (rec.proc) rec.proc.stop({ kill: true });
-    else new TerminalProcess({ sessionId: id, cwd: rec.meta.cwd, claudeBin: this.deps.claudeBin, ...(this.deps.runTmux ? { runTmux: this.deps.runTmux } : {}) }).stop({ kill: true });
+    if (rec?.proc) rec.proc.stop({ kill: true });
+    else this.killTmux(id);
     this.records.delete(id);
     this.deps.store.delete(id);
   }
@@ -120,9 +130,16 @@ export class TerminalManager {
     return [...this.records.values()].map((r) => r.meta);
   }
 
-  /** Re-list stored terminal sessions whose tmux session is still alive (after a server/OTA restart). */
+  /**
+   * After a server/OTA restart: adopt stored terminal sessions whose tmux session is still alive (so they
+   * reappear, resumable), prune store rows whose tmux session is gone, AND kill ORPHAN tmux sessions — live
+   * `rc-*` sessions with no store row (leaked by a crash or an interrupted cleanup) — so they don't pile up.
+   */
   rehydrate(opts: { liveTmuxNames: string[] }): void {
     const live = new Set(opts.liveTmuxNames);
+    const storedTerminalIds = new Set(
+      this.deps.store.list().filter((s) => s.mode === "terminal").map((s) => s.id),
+    );
     for (const s of this.deps.store.list()) {
       if (s.mode !== "terminal") continue;
       if (!live.has(tmuxSessionName(s.id))) {
@@ -135,5 +152,20 @@ export class TerminalManager {
         claudeArgs: [], cols: 80, rows: 24, subs: new Set(),
       });
     }
+    for (const name of opts.liveTmuxNames) {
+      if (!name.startsWith("rc-")) continue;
+      const id = name.slice(3);
+      if (!storedTerminalIds.has(id)) this.killTmux(id); // orphan → reap
+    }
+  }
+
+  /** Kill a tmux session for an id without needing a live proc (reuses TerminalProcess's socketed kill). */
+  private killTmux(id: string): void {
+    new TerminalProcess({
+      sessionId: id,
+      cwd: "/",
+      claudeBin: this.deps.claudeBin,
+      ...(this.deps.runTmux ? { runTmux: this.deps.runTmux } : {}),
+    }).stop({ kill: true });
   }
 }

@@ -136,9 +136,13 @@ export function wsUrl(baseUrl: string, id: string, opts: { token?: string; since
 
 /** The binary terminal WebSocket url for a terminal-mode session (PTY-backed claude TUI), sourcing the
  * app's base url + stored token itself so callers (TerminalView) pass only the session id. Reuses the
- * SAME `authQuery` token logic as `wsUrl` — no duplicated token handling. */
-export function terminalWsUrl(id: string): string {
-  const qs = authQuery(loadToken());
+ * SAME `authQuery` token logic as `wsUrl` — no duplicated token handling. The client passes its fitted
+ * `cols`/`rows` so the server spawns the pty/tmux at the real viewport size (no first-paint reflow). */
+export function terminalWsUrl(id: string, cols?: number, rows?: number): string {
+  const extra: Record<string, string> = {};
+  if (Number.isInteger(cols) && (cols as number) > 0) extra.cols = String(cols);
+  if (Number.isInteger(rows) && (rows as number) > 0) extra.rows = String(rows);
+  const qs = authQuery(loadToken(), extra);
   return `${wsBaseFor(API_BASE_URL)}/sessions/${id}/terminal${qs ? `?${qs}` : ""}`;
 }
 

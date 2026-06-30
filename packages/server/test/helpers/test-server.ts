@@ -58,8 +58,12 @@ function buildFakePtySpawn(): { ptySpawn: (file: string, args: string[]) => Fake
   const byId = new Map<string, FakePty>();
 
   const ptySpawn = (_file: string, args: string[]): FakePty => {
-    // args[3] is the tmux session name: "rc-<uuid>"
-    const tmuxName = args[3] as string | undefined;
+    // tmux args now begin with `-L <socket>` + a chained `set-option …` config (which itself contains a
+    // `-s` for escape-time), so the session name is no longer at a fixed index. Find the `-s` that belongs
+    // to `new-session` and read the name after it.
+    const ns = args.indexOf("new-session");
+    const sIdx = ns >= 0 ? args.indexOf("-s", ns) : args.indexOf("-s");
+    const tmuxName = sIdx >= 0 ? (args[sIdx + 1] as string | undefined) : undefined;
     const id = tmuxName?.startsWith("rc-") ? tmuxName.slice(3) : (tmuxName ?? "unknown");
     const pty = makeFakePty();
     byId.set(id, pty);
