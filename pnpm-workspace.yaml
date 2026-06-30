@@ -3,3 +3,4 @@ packages:
 allowBuilds:
   esbuild: true
   better-sqlite3: true
+  node-pty: true
