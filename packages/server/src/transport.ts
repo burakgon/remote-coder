@@ -42,6 +42,10 @@ import type { ClaudeAuthService } from "./claude-auth-service.js";
 import type { ClaudeLatestService } from "./claude-latest-service.js";
 import { ImageStore } from "./image-store.js";
 import type { ModelsService } from "./models-service.js";
+import { TerminalManager } from "./terminal-manager.js";
+import { detectTerminalSupport } from "./terminal-capability.js";
+import { listTmuxSessions } from "./tmux-list.js";
+import { openSessionStore } from "./session-store.js";
 
 /** Default reopen window: how many of the most-recent transcript turns GET /sessions/:id returns when
  * `?full=1` is absent. Keeps opening a large session fast; "load earlier" re-requests with `?full=1`. */
@@ -184,6 +188,16 @@ export interface CreateServerDeps {
    * `config.accessToken` with the default 60s rotation grace.
    */
   authGate?: AuthGate;
+  /**
+   * Whether terminal mode (tmux + node-pty) is available on this host. Injected so tests can force it
+   * on/off without real tmux/pty. When omitted, detectTerminalSupport() is called at boot.
+   */
+  terminalAvailable?: boolean;
+  /**
+   * Terminal session manager (injectable for tests; a real one is constructed from deps.store +
+   * config.claude.claudeBin when omitted).
+   */
+  terminalManager?: TerminalManager;
 }
 
 export interface CreateServerResult {
@@ -207,6 +221,9 @@ interface CreateSessionBody {
    * into the replay buffer. The transcript file must exist (else 404).
    */
   resumeSessionId?: string;
+  /** Session mode: "chat" (default) for a JSON-protocol Claude chat, "terminal" for a pty-backed tmux
+   *  terminal session. */
+  mode?: "chat" | "terminal";
 }
 
 export function createServer(
@@ -233,6 +250,15 @@ export function createServer(
     claudeVersionProbe,
   });
   hub.loadFromStore();
+  const terminalAvailable = deps.terminalAvailable ?? detectTerminalSupport();
+  const terminalManager =
+    deps.terminalManager ??
+    new TerminalManager({
+      store: deps.store ?? openSessionStore({ dbPath: ":memory:" }),
+      claudeBin: config.claude.claudeBin,
+      now: () => Date.now(),
+    });
+  if (terminalAvailable) terminalManager.rehydrate({ liveTmuxNames: listTmuxSessions() });
   const projectsDir = deps.projectsDir ?? defaultProjectsDir();
   // Per-idempotency-key in-flight lock: two simultaneous same-key POSTs must yield ONE session.
   const inFlight = new Map<string, Promise<SessionMeta>>();
@@ -420,8 +446,31 @@ export function createServer(
 
   app.post<{ Body: CreateSessionBody }>("/sessions", async (request, reply) => {
     const body = request.body;
-    if (!body || (typeof body.cwd !== "string" && typeof body.resumeSessionId !== "string")) {
+    if (!body || (typeof body.cwd !== "string" && typeof body.resumeSessionId !== "string" && body.mode !== "terminal")) {
       reply.code(400).send({ error: "cwd is required" });
+      return;
+    }
+
+    // Terminal mode: spawn a pty-backed tmux session (bypasses the chat/resume paths entirely).
+    if (body.mode === "terminal") {
+      if (!terminalAvailable) {
+        reply
+          .code(400)
+          .send({ error: "terminal mode unavailable", hint: "install tmux on the host (and ensure node-pty loads)" });
+        return;
+      }
+      if (typeof body.cwd !== "string") {
+        reply.code(400).send({ error: "cwd is required" });
+        return;
+      }
+      const id = randomUUID();
+      const claudeArgs: string[] = [];
+      if (typeof body.model === "string") claudeArgs.push("--model", body.model);
+      if (typeof body.permissionMode === "string") claudeArgs.push("--permission-mode", body.permissionMode);
+      const meta = terminalManager.create({ id, cwd: body.cwd, claudeArgs });
+      reply
+        .code(201)
+        .send({ id: meta.id, cwd: meta.cwd, mode: "terminal", status: meta.status, createdAt: meta.createdAt, dangerouslySkip: false });
       return;
     }
 
@@ -798,7 +847,8 @@ export function createServer(
     try {
       // `?force=1` (the in-app "Check for updates") bypasses the cached git check for a fresh fetch.
       const force = (request.query as { force?: string } | undefined)?.force === "1";
-      return await updater.getVersion(force);
+      const version = await updater.getVersion(force);
+      return { ...version, terminalAvailable };
     } catch (err) {
       // A git/spawn failure must not 500 the open-on-load probe — report a non-updatable version. The
       // running build sha is still reported (a property of the bundle, not the checkout); with no HEAD to
@@ -812,6 +862,7 @@ export function createServer(
         changelog: [],
         runningBuild: RUNNING_BUILD,
         buildDrift: false,
+        terminalAvailable,
         error: (err as Error).message,
       });
     }
