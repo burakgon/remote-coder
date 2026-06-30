@@ -212,4 +212,8 @@ const terminalCss = `
 }
 .rc-termkeys button:active { background: #2a3340; }
 .rc-termkeys .rc-termkeys__ctrl.is-on { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+/* The on-screen key bar exists for devices WITHOUT a physical keyboard. Hide it only where the PRIMARY
+   pointer is a mouse/trackpad (a real desktop) — keyed off INPUT TYPE, not width, so a FOLDABLE phone
+   (wide when unfolded but still touch, even with an S-Pen as a secondary pointer) keeps the keys. */
+@media (hover: hover) and (pointer: fine) { .rc-termkeys { display: none; } }
 `;
