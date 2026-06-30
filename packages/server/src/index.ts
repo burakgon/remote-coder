@@ -87,6 +87,12 @@ export {
   defaultProjectsDir,
 } from "./transcript.js";
 export type { TranscriptMessage, ParsedTranscript, ResumableSession, ListResumableOptions } from "./transcript.js";
+export { TerminalProcess, tmuxSessionName } from "./terminal-process.js";
+export type { TerminalProcessOptions, IPty, PtySpawn } from "./terminal-process.js";
+export { TerminalManager } from "./terminal-manager.js";
+export type { TerminalMeta, TerminalSub, TerminalManagerDeps } from "./terminal-manager.js";
+export { detectTerminalSupport } from "./terminal-capability.js";
+export { listTmuxSessions } from "./tmux-list.js";
 export { openIdempotencyStore } from "./idempotency.js";
 export type { IdempotencyStore, OpenIdempotencyStoreOptions } from "./idempotency.js";
 export { openFrameSpool, inMemoryFrameSpool, isSpoolable, spoolFrameIdentity, SPOOL_CAP } from "./frame-spool.js";
