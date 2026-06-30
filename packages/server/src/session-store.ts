@@ -18,7 +18,7 @@ export interface StoredSession {
    *  meter knows the right denominator on reopen/after a restart, when no result is in the buffer and the
    *  model name (often absent / lacking a "1m" marker) can't reveal it. */
   contextWindow?: number;
-  mode?: "chat" | "terminal";
+  mode: "chat" | "terminal";
 }
 
 /** How a store is actually backed: "sqlite" (durable) or "memory-fallback" (the native module failed to
@@ -87,7 +87,7 @@ function rowToSession(r: Row): StoredSession {
 function inMemoryStore(): SessionStore {
   const map = new Map<string, StoredSession>();
   return {
-    upsert: (s) => void map.set(s.id, { mode: "chat", ...s }),
+    upsert: (s) => void map.set(s.id, { ...s, mode: s.mode || "chat" }),
     get: (id) => {
       const v = map.get(id);
       return v ? { ...v } : undefined;

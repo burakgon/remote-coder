@@ -1378,6 +1378,7 @@ export class SessionHub {
         lastActivityAt: meta.lastActivityAt,
         permissionMode: meta.permissionMode,
         contextWindow: meta.contextWindow,
+        mode: "chat",
       });
     } catch {
       // best-effort: an exit/error frame can land AFTER onClose closed the store; the in-memory meta
