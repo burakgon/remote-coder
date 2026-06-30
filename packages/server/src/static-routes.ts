@@ -1,5 +1,7 @@
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
+import { existsSync } from "node:fs";
+import { resolve, sep } from "node:path";
 
 /**
  * Server-side mirror of the web SW's `apiNavigationDenylist` (packages/web/src/pwa/sw-exclusions.ts),
@@ -111,7 +113,9 @@ export interface RegisterStaticOptions {
 /**
  * Serve the built PWA at `/` with an SPA fallback: a GET NAVIGATION (extensionless, public, non-API)
  * that no static file matched returns index.html, so client routes (e.g. /login) work on a hard
- * refresh. A request that looks like a missing FILE (`/assets/*`, or any `*.ext`) returns 404, never
+ * refresh. A request that looks like a missing FILE (`/assets/*`, or any `*.ext`) is served LIVE from
+ * disk when the file exists under webDir but @fastify/static's startup glob missed it (a build that
+ * landed after this server started — an OTA window / manual rebuild); otherwise it returns 404, never
  * the shell — so a missing asset fails loudly instead of poisoning a browser/SW cache with HTML. An
  * unknown /sessions/... still 404/401s from the real handlers / the gate.
  */
@@ -140,13 +144,28 @@ export function registerStatic(app: FastifyInstance, opts: RegisterStaticOptions
   });
 
   app.setNotFoundHandler((request, reply) => {
-    if (
-      request.method === "GET" &&
-      isPublicForRequest(request.url) &&
-      !looksLikeAssetRequest(pathForGate(request.url))
-    ) {
-      // sendFile is added to reply by @fastify/static.
-      return (reply as unknown as { sendFile: (f: string) => unknown }).sendFile("index.html");
+    const sendFile = (reply as unknown as { sendFile: (f: string) => unknown }).sendFile.bind(reply);
+    const path = pathForGate(request.url);
+    if (request.method === "GET" && isPublicForRequest(request.url)) {
+      if (looksLikeAssetRequest(path)) {
+        // An asset @fastify/static didn't serve. With `wildcard:false` it freezes the asset route list
+        // at STARTUP, so a build that landed AFTER this server started — an OTA's build→restart window,
+        // a manual rebuild, a parallel deploy — has new content-hashed `/assets/*` with NO route. The
+        // freshly-served index.html points at exactly those, so without this they 404 and the app fails
+        // to boot until a restart re-globs. Serve such a file LIVE from disk (constrained to webDir) so
+        // the update window never 404s; a genuinely missing file still 404s (never the HTML shell, which
+        // would poison a browser/SW cache).
+        const rel = path.replace(/^\/+/, "");
+        const abs = resolve(opts.webDir, rel);
+        const root = resolve(opts.webDir);
+        if ((abs === root || abs.startsWith(root + sep)) && existsSync(abs)) {
+          return sendFile(rel);
+        }
+        reply.code(404).send({ error: "not found" });
+        return;
+      }
+      // A GET NAVIGATION (extensionless, public, non-API) that matched no file → the SPA shell.
+      return sendFile("index.html");
     }
     reply.code(404).send({ error: "not found" });
   });
