@@ -23,6 +23,7 @@ These are inherent to what the tool *is*; they're documented in the README's Sec
 - **The agent is not sandboxed.** `claude` runs as you, with your full machine access. `FS_ROOT` only scopes Remote Coder's own file endpoints, not what `claude` can read/write.
 - **A single shared token** grants full access (it's not per-user). Treat it like an SSH key; rotate via `POST /token/rotate`. The token must be kept off untrusted channels.
 - **You must put HTTPS in front of it** for any remote use; a plain public port leaks the token.
+- **Terminal mode is a raw host shell, on by default.** A "terminal" session runs the real `claude` TUI in a tmux+PTY and streams it to the browser over a token-gated WebSocket — i.e. an interactive shell on your machine. It rides the exact same token + origin/CSWSH + rate-limit gate as every other route (no separate gate), and it does **not** widen the trust boundary: a token holder can already run arbitrary commands through the chat. It auto-disables when `tmux`/`node-pty` are unavailable on the host.
 
 ## Supported versions
 
