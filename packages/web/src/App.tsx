@@ -12,6 +12,7 @@ import { sessionIdFromLocation } from "./session/deep-link";
 import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
 import { ChatView } from "./chat/ChatView";
+import { ChatHeader } from "./chat/ChatHeader";
 import { TerminalView } from "./chat/TerminalView";
 import { SettingsPanel } from "./settings/SettingsPanel";
 import { ClaudeAuthDialog } from "./settings/ClaudeAuthDialog";
@@ -714,7 +715,21 @@ export function App() {
               // the rail stays usable, and switching sessions resets it.
               <ErrorBoundary key={active.id} variant="compact" label="this conversation">
                 {active.mode === "terminal" ? (
-                  <TerminalView sessionId={active.id} />
+                  // Terminal mode has no composer/settings of its own, so it reuses the chat top-bar for
+                  // its navigation chrome: the mobile menu button (the ONLY way to reach the sessions
+                  // sheet on mobile / a narrow window), the session name, and a close button. The terminal
+                  // fills the rest of the column.
+                  <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+                    <ChatHeader
+                      session={active}
+                      onShowSessions={() => setSessionsOpen(true)}
+                      needsYou={awaitingCount(sessions)}
+                      onClose={() => closeSession(active.id)}
+                    />
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <TerminalView sessionId={active.id} />
+                    </div>
+                  </div>
                 ) : (
                   <ChatView
                     session={active}

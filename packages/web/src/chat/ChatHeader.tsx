@@ -21,6 +21,9 @@ export interface ChatHeaderProps {
   /** Count of sessions awaiting a permission/question. When > 0 the menu button carries a loud iris
    * "needs you" pip + the count is folded into the button's aria-label. */
   needsYou?: number;
+  /** Close/stop this session. When provided, an X button is rendered at the end of the header's right
+   * group. Used by terminal mode (which has no composer/settings) so the session is closable from its bar. */
+  onClose?: () => void;
 }
 
 function basename(p: string): string {
@@ -52,6 +55,7 @@ export function ChatHeader({
   onOpenMcp,
   onShowSessions,
   needsYou = 0,
+  onClose,
 }: ChatHeaderProps) {
   // The runtime flags after the path — model, effort, and (critically) skip-permissions. Built as a
   // list so they join with clean "·" separators whether or not the path precedes them (the path hides
@@ -205,6 +209,17 @@ export function ChatHeader({
           >
             <Icon name="settings" size={17} />
             <style>{`.rc-hdr-iconbtn:hover { color: var(--text); border-color: var(--border-strong); }`}</style>
+          </button>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close session"
+            className="rc-hdr-iconbtn"
+            style={iconTileStyle}
+          >
+            <Icon name="x" size={17} />
           </button>
         )}
       </div>
