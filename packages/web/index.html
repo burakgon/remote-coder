@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- interactive-widget=resizes-content: on Chrome/Android the on-screen keyboard resizes the LAYOUT
+         viewport (so `height:100%` shrinks and the composer/terminal stay above the keyboard). iOS ignores
+         it — there the visualViewport → --app-height sync (src/pwa/viewport.ts) does the same job. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#0a0a0b" />
     <!-- Installable PWA / iOS standalone. apple-mobile-web-app-capable keeps the browser chrome out when
          added to the Home Screen; the translucent status bar pairs with viewport-fit=cover + our

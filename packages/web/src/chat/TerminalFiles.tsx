@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../ui/Icon";
 
 /** One exchanged file/image: received FROM claude (send_image/send_file) or uploaded BY the user. */
@@ -30,6 +30,32 @@ export function TerminalFiles({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [lightbox, setLightbox] = useState<string | undefined>();
+
+  // Make the fullscreen image preview dismissible the ways users actually reach for — the previous version
+  // opened fullscreen with no obvious way out ("geri yok"). While it's open: Escape closes it, AND the
+  // Android / browser BACK gesture closes it instead of leaving the app (we push a throwaway history entry
+  // on open; a real back press fires popstate → close; closing any other way pops our entry back off).
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setLightbox(undefined);
+      }
+    };
+    const onPop = () => setLightbox(undefined);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("popstate", onPop);
+    window.history.pushState({ rcLightbox: true }, "");
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("popstate", onPop);
+      // Closed via the X / a tap / Escape (not a real back press): our pushed entry is still on top, so pop
+      // it so the back button isn't left "swallowing" a press to close an already-closed viewer.
+      if ((window.history.state as { rcLightbox?: boolean } | null)?.rcLightbox) window.history.back();
+    };
+  }, [lightbox]);
+
   if (!open) return null;
   return (
     <div className="rc-tf" role="dialog" aria-modal="true" aria-label="Terminal files">
@@ -96,9 +122,24 @@ export function TerminalFiles({
         </div>
       </div>
       {lightbox && (
-        <button type="button" className="rc-tf__lightbox" aria-label="Close image" onClick={() => setLightbox(undefined)}>
+        // Tap anywhere (backdrop or image) closes; the explicit X is the obvious, always-visible way out.
+        <div
+          className="rc-tf__lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+          onClick={() => setLightbox(undefined)}
+        >
+          <button
+            type="button"
+            className="rc-tf__lightbox-close"
+            aria-label="Close image"
+            onClick={() => setLightbox(undefined)}
+          >
+            <Icon name="x" size={22} />
+          </button>
           <img src={lightbox} alt="" />
-        </button>
+        </div>
       )}
       <style>{css}</style>
     </div>
@@ -134,8 +175,15 @@ const css = `
 .rc-tf__foot { display: flex; align-items: center; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #1e2530; }
 .rc-tf__upload { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 9px; background: #3b82f6; color: #fff; border: none; cursor: pointer; font: 600 13px/1 ui-monospace, monospace; }
 .rc-tf__hint { font-size: 11px; color: #5c6370; }
-.rc-tf__lightbox { position: absolute; inset: 0; z-index: 21; border: none; background: rgba(0,0,0,0.9); display: grid; place-items: center; cursor: zoom-out; padding: 16px; }
+.rc-tf__lightbox { position: absolute; inset: 0; z-index: 21; background: rgba(0,0,0,0.92); display: grid; place-items: center; cursor: zoom-out; padding: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
 .rc-tf__lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.rc-tf__lightbox-close {
+  position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px;
+  width: 40px; height: 40px; display: grid; place-items: center;
+  background: rgba(255,255,255,0.14); border: none; color: #fff; cursor: pointer;
+  border-radius: 999px; z-index: 22; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.rc-tf__lightbox-close:hover { background: rgba(255,255,255,0.24); }
 @media (min-width: 768px) {
   .rc-tf__panel { left: auto; top: 0; bottom: 0; width: 380px; max-height: none; border-radius: 0; border-top: none; border-left: 1px solid #2a3340; box-shadow: -12px 0 40px rgba(0,0,0,0.5); animation: none; }
 }

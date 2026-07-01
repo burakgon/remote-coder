@@ -5,6 +5,12 @@ import { registerSW } from "virtual:pwa-register";
 import "./styles/global.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { installViewportSync } from "./pwa/viewport";
+
+// Mirror the visual viewport into --app-height so the shell shrinks to the area above the on-screen keyboard
+// (instead of the composer / terminal cursor hiding behind it). Started before render so the first paint is
+// already keyboard-aware. Lives for the app's lifetime — no disposer needed.
+installViewportSync();
 
 // Auto-update the service worker (precached shell loads offline). With `registerType: "autoUpdate"`
 // the new SW activates in the background (skipWaiting), but the OPEN page keeps running the stale JS

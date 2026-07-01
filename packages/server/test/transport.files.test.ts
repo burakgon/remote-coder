@@ -31,6 +31,7 @@ function makeServer(maxUploadBytes = 26214400): CreateServerResult {
     bindAddress: "127.0.0.1",
     accessToken: TOKEN,
     fsRoot: root,
+    dataDir: join(root, ".data"), // within fsRoot → terminal uploads land here, not in a project cwd
     maxUploadBytes,
     claude: { claudeBin: process.execPath },
   };
@@ -127,6 +128,45 @@ test("POST /fs/upload writes a file under the target dir", async () => {
     headers: auth,
   });
   expect(back.body).toBe("uploaded-content");
+});
+
+test("POST /sessions/:id/upload saves in the data dir (outside the session cwd), never <cwd>/shared_files", async () => {
+  current = makeServer();
+  const cwd = join(root, "sub"); // the "project" the terminal was opened in
+  const id = "term-upload-1";
+  current.terminalManager.create({ id, cwd }); // register a terminal session (no tmux spawn needed)
+
+  const boundary = "----rcboundary";
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file"; filename="pic.png"\r\n` +
+    `Content-Type: image/png\r\n\r\n` +
+    `PIXELS\r\n` +
+    `--${boundary}--\r\n`;
+  const res = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/upload`,
+    headers: { ...auth, "content-type": `multipart/form-data; boundary=${boundary}` },
+    payload: body,
+  });
+  expect(res.statusCode).toBe(201);
+  const savedPath = res.json().path as string;
+
+  // The whole fix: the upload is NOT written into the project tree (which would dirty git / block the
+  // updater), but under the app data dir, keyed by session id.
+  expect(savedPath).toBe(join(root, ".data", "terminal-shared", id, "pic.png"));
+  expect(savedPath.startsWith(cwd)).toBe(false);
+  const { existsSync } = await import("node:fs");
+  expect(existsSync(join(cwd, "shared_files"))).toBe(false);
+
+  // Round-trips through the fsRoot-confined /fs/download (so the Files panel can still fetch it).
+  const back = await current.app.inject({
+    method: "GET",
+    url: `/fs/download?path=${encodeURIComponent(savedPath)}`,
+    headers: auth,
+  });
+  expect(back.statusCode).toBe(200);
+  expect(back.body).toBe("PIXELS");
 });
 
 test("POST /fs/upload rejects a file over the size cap with 413", async () => {

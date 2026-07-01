@@ -21,7 +21,6 @@ import {
   transcriptToFrames,
 } from "./transcript.js";
 import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { SessionManager } from "./session-manager.js";
 import type { ServerRuntimeConfig } from "./server-config.js";
 import type { SessionStore, StoreMode } from "./session-store.js";
@@ -29,6 +28,12 @@ import type { HistoryService } from "./history-service.js";
 import type { IdempotencyStore } from "./idempotency.js";
 import type { FrameSpool } from "./frame-spool.js";
 import { createSendDedup } from "./send-dedup.js";
+import {
+  TERMINAL_FILE_TTL_MS,
+  TERMINAL_SWEEP_INTERVAL_MS,
+  terminalSharedBase,
+  terminalSharedDir,
+} from "./terminal-shared.js";
 import type { SendDedup } from "./send-dedup.js";
 import type { SessionMeta, Subscription } from "./session-hub.js";
 import type { PushStore } from "./push-store.js";
@@ -57,12 +62,6 @@ const HISTORY_WINDOW = 200;
  *  and tmux redraws) rather than grow Node's heap unbounded on a slow link. */
 const MAX_TERMINAL_INPUT_BYTES = 1_000_000;
 const MAX_TERMINAL_WS_BUFFER = 16_000_000;
-
-/** Terminal uploads land in `<cwd>/shared_files/` (a tidy, predictable folder, NOT the project root) and
- *  live 7 days — pruned on each upload and by a periodic sweep, so they never accumulate. */
-const TERMINAL_SHARED_DIR = "shared_files";
-const TERMINAL_FILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const TERMINAL_SWEEP_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Map a spawn/start failure from createSession/resumeSession into an ACTIONABLE HTTP response, so the
@@ -301,13 +300,14 @@ export function createServer(
       enabled: config.rateLimitRpm > 0,
     });
   const fsService = new FsService({ root: config.fsRoot });
-  // Bound the lifetime of terminal `shared_files/` uploads: prune files older than the TTL across every
-  // known terminal session's folder — once at boot (catches files that aged out while the server was down)
-  // and on a periodic timer. (Also pruned on each upload.) unref() so it never keeps the process alive.
+  // Terminal uploads live under the app data dir (outside any project repo — see terminal-shared.ts), one
+  // folder per session. Bound their lifetime: prune files past the TTL across EVERY session folder under the
+  // shared base — once at boot (catches files that aged out while the server was down, and orphaned folders
+  // whose session is gone) and on a periodic timer. (Also pruned on each upload.) unref() so the timer never
+  // keeps the process alive.
+  const terminalSharedRoot = terminalSharedBase({ dataDir: config.dataDir, fsRoot: config.fsRoot });
   const sweepSharedFiles = (): void => {
-    for (const t of terminalManager.list()) {
-      void fsService.pruneOlderThan(join(t.cwd, TERMINAL_SHARED_DIR), TERMINAL_FILE_TTL_MS).catch(() => 0);
-    }
+    void fsService.pruneChildDirsOlderThan(terminalSharedRoot, TERMINAL_FILE_TTL_MS).catch(() => 0);
   };
   sweepSharedFiles();
   const sharedSweepTimer = setInterval(sweepSharedFiles, TERMINAL_SWEEP_INTERVAL_MS);
@@ -1255,10 +1255,11 @@ export function createServer(
   });
 
   // Serve the built PWA same-origin when a webDir was provided. Registered LAST so it never
-  // Terminal upload (user → claude): save the file under the session's `<cwd>/shared_files/` (created if
-  // needed) — NOT the project root — prune anything past the 7-day TTL, and return the absolute path (the
-  // client hands it to the terminal so claude can read it). Server owns the cwd so the client can't target
-  // an arbitrary dir. Token-gated by the global preHandler.
+  // Terminal upload (user → claude): save the file under the session's shared-files folder in the app DATA
+  // dir (NOT the project tree — a file there would dirty the git checkout and block the OTA updater; see
+  // terminal-shared.ts), prune anything past the 7-day TTL, and return the absolute path (the client hands
+  // it to the terminal so claude can read it). Server owns the location so the client can't target an
+  // arbitrary dir. Token-gated by the global preHandler.
   app.post<{ Params: { id: string } }>("/sessions/:id/upload", async (request, reply) => {
     const meta = terminalManager.get(request.params.id);
     if (!meta) {
@@ -1267,7 +1268,9 @@ export function createServer(
     }
     let dir: string;
     try {
-      dir = await fsService.ensureDirWithinRoot(join(meta.cwd, TERMINAL_SHARED_DIR));
+      dir = await fsService.ensureDirWithinRoot(
+        terminalSharedDir({ dataDir: config.dataDir, fsRoot: config.fsRoot, sessionId: meta.id }),
+      );
     } catch (err) {
       const code = err instanceof FsError && err.code === "forbidden" ? 403 : 400;
       reply.code(code).send({ error: (err as Error).message });

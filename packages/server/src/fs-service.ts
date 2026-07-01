@@ -191,9 +191,34 @@ export class FsService {
     return dir;
   }
 
+  /** Prune expired files inside EACH immediate subdirectory of `base` (confined to root). Used to age out
+   *  the terminal shared-files folders (one per session) in a single sweep — including ORPHANED folders
+   *  whose session no longer exists (the old per-live-session sweep leaked those forever). Best-effort:
+   *  returns the total files removed; a missing base / unreadable entry is skipped, not thrown. */
+  async pruneChildDirsOlderThan(base: string, maxAgeMs: number, now: number = Date.now()): Promise<number> {
+    let dir: string;
+    try {
+      dir = this.resolveWithinRoot(base);
+    } catch {
+      return 0;
+    }
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return 0; // base doesn't exist yet (nothing uploaded)
+    }
+    let removed = 0;
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      removed += await this.pruneOlderThan(join(dir, e.name), maxAgeMs, now);
+    }
+    return removed;
+  }
+
   /** Delete top-level regular files in `target` (confined to root) whose mtime is older than `maxAgeMs`.
    *  Best-effort — returns how many were removed; a missing dir / unreadable entry is skipped, not thrown.
-   *  Subdirectories are left untouched. Used to give terminal `shared_files/` uploads a bounded lifetime. */
+   *  Subdirectories are left untouched. Used to give terminal shared-files uploads a bounded lifetime. */
   async pruneOlderThan(target: string, maxAgeMs: number, now: number = Date.now()): Promise<number> {
     let dir: string;
     try {

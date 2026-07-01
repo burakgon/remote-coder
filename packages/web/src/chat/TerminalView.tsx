@@ -264,7 +264,7 @@ export function TerminalView({
       })
       .catch(() => undefined);
   };
-  // Upload → server saves under <cwd>/shared_files/ (7-day TTL), list it, and hand claude the absolute PATH.
+  // Upload → server saves it in the app data dir, outside any repo (7-day TTL), list it, and hand claude the absolute PATH.
   const onUploadFiles = (list: FileList) => {
     for (const file of Array.from(list)) {
       terminalUpload(sessionId, file)

@@ -146,3 +146,22 @@ test("pruneOlderThan deletes only files older than maxAge (best-effort, dir may 
   // a non-existent dir is a no-op, not a throw
   await expect(fs.pruneOlderThan(join(root, "nope"), 1000)).resolves.toBe(0);
 });
+
+test("pruneChildDirsOlderThan ages out files in EACH session subdir (incl. orphans), skips fresh", async () => {
+  const fs = new FsService({ root });
+  const base = join(root, "terminal-shared");
+  mkdirSync(join(base, "sessA"), { recursive: true });
+  mkdirSync(join(base, "sessB"), { recursive: true }); // an "orphan" folder with no live session
+  writeFileSync(join(base, "sessA", "old.png"), "x");
+  writeFileSync(join(base, "sessB", "fresh.png"), "y");
+  const now = Date.now();
+  const eightDaysAgo = (now - 8 * 24 * 3600 * 1000) / 1000;
+  const { utimesSync, existsSync } = await import("node:fs");
+  utimesSync(join(base, "sessA", "old.png"), eightDaysAgo, eightDaysAgo);
+  const removed = await fs.pruneChildDirsOlderThan(base, 7 * 24 * 3600 * 1000, now);
+  expect(removed).toBe(1);
+  expect(existsSync(join(base, "sessA", "old.png"))).toBe(false);
+  expect(existsSync(join(base, "sessB", "fresh.png"))).toBe(true);
+  // a non-existent base is a no-op, not a throw
+  await expect(fs.pruneChildDirsOlderThan(join(root, "nope"), 1000)).resolves.toBe(0);
+});
