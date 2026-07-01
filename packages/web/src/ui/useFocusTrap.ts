@@ -28,7 +28,7 @@ function focusable(container: HTMLElement): HTMLElement[] {
  * @param ref       points at the dialog's root element
  * @param active    when false the trap is inert (defaults to true)
  */
-export function useFocusTrap(ref: RefObject<HTMLElement>, active = true): void {
+export function useFocusTrap<T extends HTMLElement>(ref: RefObject<T | null>, active = true): void {
   useEffect(() => {
     if (!active) return;
     const container = ref.current;

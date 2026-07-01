@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ReactNode, RefObject } from "react";
+import type { ReactNode } from "react";
 import { Icon } from "./ui/Icon";
 import { useFocusTrap } from "./ui/useFocusTrap";
 
@@ -61,7 +61,7 @@ export function AppLayout({ children, sessionList, onHideSessions, sessionsOpen,
   // form gets dialog semantics: a focus trap, Escape-to-close, and role/aria-modal.
   const railRef = useRef<HTMLElement>(null);
   const sheetIsModal = Boolean(sessionsOpen) && !isDesktop;
-  useFocusTrap(railRef as RefObject<HTMLElement>, sheetIsModal);
+  useFocusTrap(railRef, sheetIsModal);
   useEffect(() => {
     if (!sheetIsModal) return;
     const onKey = (e: KeyboardEvent) => {
