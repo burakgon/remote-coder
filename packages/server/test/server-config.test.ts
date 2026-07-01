@@ -18,14 +18,12 @@ test("loadServerConfig reads PORT, BIND_ADDRESS, ACCESS_TOKEN, FS_ROOT, MAX_UPLO
     ACCESS_TOKEN: "secret-token",
     FS_ROOT: "/srv/projects",
     MAX_UPLOAD_BYTES: "1048576",
-    CLAUDE_DEFAULT_MODEL: "opus",
   });
   expect(cfg.port).toBe(8080);
   expect(cfg.bindAddress).toBe("0.0.0.0");
   expect(cfg.accessToken).toBe("secret-token");
   expect(cfg.fsRoot).toBe("/srv/projects");
   expect(cfg.maxUploadBytes).toBe(1048576);
-  expect(cfg.claude.defaultModel).toBe("opus");
 });
 
 test("loadServerConfig defaults trustProxy off and reads TRUST_PROXY", () => {

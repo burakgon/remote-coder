@@ -1,8 +1,6 @@
 import { readdir, readFile, stat, realpath, open, mkdir, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
 import { resolve, join, sep, basename } from "node:path";
-import { buildImageBlock } from "@remote-coder/protocol";
-import type { ImageBlock } from "@remote-coder/protocol";
 
 export type FsErrorCode = "forbidden" | "not-found";
 
@@ -31,19 +29,6 @@ export interface DirListing {
 
 export interface FsServiceOptions {
   root: string;
-}
-
-/**
- * The wire shape of an `attachment` server frame's payload (Claude sent a file to the chat).
- * Carries only the PATH — the web fetches the bytes via /fs/download — so a large file never
- * bloats the WS frame. Mirrored on the client in packages/web/src/types/server.ts.
- */
-export interface AttachmentPayload {
-  id: string;
-  path: string;
-  name: string;
-  caption?: string;
-  isImage: boolean;
 }
 
 /** Extensions rendered inline as images (lowercased, no dot). */
@@ -246,9 +231,5 @@ export class FsService {
       }
     }
     return removed;
-  }
-
-  buildImageBlockFromUpload(mediaType: string, data: Buffer): ImageBlock {
-    return buildImageBlock(mediaType, data.toString("base64"));
   }
 }

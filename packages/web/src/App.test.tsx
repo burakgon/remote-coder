@@ -32,7 +32,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 beforeEach(() => {
   localStorage.clear();
   // Reset the shared zustand singleton so tests don't leak state into each other.
-  useStore.setState({ token: undefined, sessions: [], activeSessionId: undefined, views: {} });
+  useStore.setState({ token: undefined, sessions: [], activeSessionId: undefined });
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -312,7 +312,7 @@ describe("App — session list refresh + select-doesn't-reorder", () => {
     globalThis.WebSocket = realWS;
   });
 
-  it("a focus-triggered refresh updates awaiting and drops a vanished session, keeping the live view", async () => {
+  it("a focus-triggered refresh updates awaiting and drops a vanished session", async () => {
     saveToken("good-token");
     // First GET → both sessions (no awaiting). Later GETs → only `a`, now awaiting (b vanished).
     let polled = false;
@@ -329,28 +329,15 @@ describe("App — session list refresh + select-doesn't-reorder", () => {
 
     render(<App />);
     await screen.findByRole("button", { name: /show sessions/i });
-    // Activate `a` and seed a live view (a streamed delta) so we can prove the poll doesn't wipe it.
     act(() => useStore.getState().setActive("a"));
-    act(() =>
-      useStore.getState().applyFrame("a", {
-        seq: 1,
-        kind: "event",
-        payload: {
-          type: "stream_event",
-          event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "live" } },
-        },
-      }),
-    );
-    expect(useStore.getState().viewFor("a").liveText).toBe("live");
 
     // Trigger the refresh via window focus; the next GET returns only `a` (awaiting), dropping `b`.
     polled = true;
     act(() => window.dispatchEvent(new Event("focus")));
 
-    // The poll merged meta only: b is dropped, a is now awaiting — and a's live view is untouched.
+    // The poll merged meta: b is dropped, a is now awaiting.
     await waitFor(() => expect(useStore.getState().sessions.map((s) => s.id)).toEqual(["a"]));
     await waitFor(() => expect(useStore.getState().sessions[0]!.awaiting).toBe(true));
-    expect(useStore.getState().viewFor("a").liveText).toBe("live");
   });
 
   it("selecting a session does NOT change the rail order (activity sort, not select)", async () => {

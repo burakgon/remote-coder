@@ -1,4 +1,3 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -8,7 +7,7 @@ export default defineConfig({
     // The WS/integration tests spawn a `node` mock subprocess per session. Running the test
     // FILES in parallel (the default) makes those handshakes/round-trips compete for the same
     // spawn/IO budget, so under full-suite load a WS turn intermittently never delivers its
-    // `result` frame ("no result over ws"). Serialising the files removes that contention and
+    // output ("no result over ws"). Serialising the files removes that contention and
     // makes the suite reliably green (verified across repeated full runs); tests WITHIN a file
     // still run as written. The suite is small, so the serial cost is minor.
     fileParallelism: false,
@@ -16,10 +15,5 @@ export default defineConfig({
     // subprocess-driven WS turn before its own deadline fires.
     testTimeout: 15000,
     hookTimeout: 15000,
-  },
-  resolve: {
-    alias: {
-      "@remote-coder/protocol": fileURLToPath(new URL("./packages/protocol/src/index.ts", import.meta.url)),
-    },
   },
 });

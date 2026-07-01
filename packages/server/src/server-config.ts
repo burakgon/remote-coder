@@ -48,7 +48,7 @@ export interface ServerRuntimeConfig {
   /** Max concurrent LIVE sessions/processes; POST /sessions is refused (429) at the cap. 0 disables the
    *  cap. (REMOTE_CODER_MAX_SESSIONS.) */
   maxSessions: number;
-  /** The claude-spawn config (claudeBin + default model/effort). */
+  /** The claude-spawn config (claudeBin). */
   claude: ServerConfig;
 }
 

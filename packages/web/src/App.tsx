@@ -22,7 +22,6 @@ import { UpdatePanel } from "./update/UpdatePanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { BUILD_SHA } from "./build-info";
 import { claimAutoRefresh, hardRefresh, isClientStale } from "./update/stale-client";
-import { anyTurnInFlight } from "./update/turn-in-flight";
 import { useOnline } from "./pwa/online-status";
 import { Icon } from "./ui/Icon";
 import { MobileMenuButton } from "./ui/MobileMenuButton";
@@ -64,10 +63,8 @@ export function App() {
   const [token, setTokenState] = useState<string | undefined>(() => consumeTokenFromUrl() ?? loadToken());
   const [phase, setPhase] = useState<Phase>(token === undefined ? "login" : "validating");
   const [loginError, setLoginError] = useState<string | undefined>();
-  // SCOPED selector (useShallow) over only the fields the shell needs — deliberately NOT `views`, which
-  // changes on every streaming frame. With views excluded, an inbound delta re-renders only SessionList
-  // (which subscribes to views itself), not this whole shell. Actions are stable; state fields are shallow-
-  // compared, so the shell re-renders only when one it actually uses changes.
+  // SCOPED selector (useShallow) over only the fields the shell needs. Actions are stable; state fields
+  // are shallow-compared, so the shell re-renders only when one it actually uses changes.
   const {
     sessions,
     setSessions,
@@ -103,10 +100,6 @@ export function App() {
       setUsage: s.setUsage,
     })),
   );
-  // OTA DRAIN WARNING: true when ANY session has a turn actively in flight — gates the update confirm so
-  // we don't restart the server (and interrupt a live turn) without warning. Selected as a boolean so it
-  // only re-renders App when the in-flight state actually flips.
-  const turnInProgress = useStore((s) => anyTurnInFlight(s.views));
   const [wizardOpen, setWizardOpen] = useState(false);
   // A small, dismissible error surfaced when a close actually FAILS (so we don't silently pretend a
   // session is gone). Cleared on the next close attempt or when the user dismisses it.
@@ -219,9 +212,8 @@ export function App() {
   // Keep the rail honest across ALL sessions — not just the one we're connected to. A lightweight poll
   // of GET /sessions every ~15s (and on window focus + when the connection comes back online, e.g. a WS
   // reconnect after sleep) refreshes status, `awaiting` and `lastActivityAt` for every session, and
-  // drops any that no longer exist. It merges META ONLY (mergeSessionMeta keeps the live `views`
-  // intact), so the actively-connected conversation is never disturbed. A poll that errors is ignored
-  // (transient) so a blip doesn't wipe the list.
+  // drops any that no longer exist. A poll that errors is ignored (transient) so a blip doesn't wipe
+  // the list.
   useEffect(() => {
     if (phase !== "ready") return;
     let cancelled = false;
@@ -342,8 +334,8 @@ export function App() {
 
   // APP BADGE: reflect the "needs you" count (sessions awaiting a permission/question) onto the home-screen
   // app badge so a backgrounded session that needs an answer is glanceable without opening the app. Driven
-  // by `sessions` (refreshed by the meta poll + synced live by applyFrame's syncAwaiting), so the badge
-  // tracks the count as it changes; it CLEARS at 0. Also refresh on visibilitychange→visible: opening the
+  // by `sessions` (refreshed by the meta poll), so the badge tracks the count as it changes; it CLEARS
+  // at 0. Also refresh on visibilitychange→visible: opening the
   // app re-asserts the truth (and supersedes any stale count the SW set from a push while we were closed).
   // Feature-detected inside applyAppBadge — a silent no-op where the App Badging API is unsupported (iOS).
   const needsYou = badgeCount(sessions);
@@ -538,8 +530,6 @@ export function App() {
       }}
       onNew={() => openWizard()}
       onClose={closeSession}
-      // viewWireState is intentionally NOT passed: SessionList subscribes to `views` itself and derives
-      // each row's wire state, so a streaming frame re-renders only the rail — not this whole App shell.
     />
   );
 
@@ -860,7 +850,6 @@ export function App() {
           status={updateStatus}
           onUpdate={applyUpdate}
           onClose={() => setUpdatePanelOpen(false)}
-          turnInProgress={turnInProgress}
         />
       )}
     </>

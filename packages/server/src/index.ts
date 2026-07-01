@@ -1,20 +1,12 @@
 export const SERVER_PACKAGE = "@remote-coder/server";
-export {
-  loadConfig,
-  buildClaudeArgs,
-  buildMcpConfigDocument,
-  mcpConfigPathFor,
-  PERMISSION_MODES,
-  LIVE_PERMISSION_MODES,
-  isLivePermissionMode,
-} from "./config.js";
-export type { ServerConfig, BuildClaudeArgsOptions, AttachSpawnOptions, McpConfigDocument } from "./config.js";
+export { loadConfig, buildMcpConfigDocument, mcpConfigPathFor } from "./config.js";
+export type { ServerConfig, AttachSpawnOptions, McpConfigDocument } from "./config.js";
 export { loadServerConfig, isLoopbackAddress, assertConfigAllowsStart } from "./server-config.js";
 export type { ServerRuntimeConfig } from "./server-config.js";
 export { AuthGate, extractBearerToken } from "./auth.js";
 export type { AuthGateOptions, AuthCheckResult } from "./auth.js";
 export { FsService, FsError } from "./fs-service.js";
-export type { DirEntry, DirListing, FsServiceOptions, FsErrorCode, AttachmentPayload } from "./fs-service.js";
+export type { DirEntry, DirListing, FsServiceOptions, FsErrorCode } from "./fs-service.js";
 export { openSessionStore } from "./session-store.js";
 export type { SessionStore, StoredSession, StoredStatus, OpenSessionStoreOptions, StoreMode } from "./session-store.js";
 export {

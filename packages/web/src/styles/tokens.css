@@ -142,7 +142,7 @@
   --accent-grad: var(--coral);
 
   /* Code surface — a clean dark card (spec .code): #0e0e10 + hairline. Monochrome
-     neutral code (shiki deferred). */
+     neutral code. */
   --code-bg: #0e0e10;
   --code-border: var(--border);
   --code-text: #c9c8cf;

@@ -110,14 +110,6 @@ test("describeForAttachment rejects a symlink that escapes root (realpath defens
   await expect(fs.describeForAttachment(join(root, "esc.png"))).rejects.toMatchObject({ code: "forbidden" });
 });
 
-test("buildImageBlockFromUpload returns a protocol image block", () => {
-  const fs = new FsService({ root });
-  const block = fs.buildImageBlockFromUpload("image/png", Buffer.from("PNGDATA"));
-  expect(block.type).toBe("image");
-  expect(block.source.media_type).toBe("image/png");
-  expect(block.source.data).toBe(Buffer.from("PNGDATA").toString("base64"));
-});
-
 test("ensureDirWithinRoot creates a nested dir (confined to root) and rejects escapes", async () => {
   const fs = new FsService({ root });
   const created = await fs.ensureDirWithinRoot(join(root, "proj", "shared_files"));

@@ -1,8 +1,0 @@
-{"type":"user","cwd":"/work/proj","gitBranch":"main","sessionId":"sess-abc","timestamp":"2026-06-20T10:00:00.000Z","uuid":"u-1","message":{"role":"user","content":[{"type":"text","text":"Create a file called spike.txt with the word hello"}]}}
-{"type":"queue-operation","operation":"enqueue","uuid":"q-1"}
-{"type":"assistant","cwd":"/work/proj","sessionId":"sess-abc","timestamp":"2026-06-20T10:00:02.000Z","uuid":"a-1","message":{"role":"assistant","model":"claude-mock","content":[{"type":"thinking","thinking":"I should use the Write tool."},{"type":"text","text":"I'll create that file for you."},{"type":"tool_use","id":"toolu_001","name":"Write","input":{"file_path":"/work/proj/spike.txt","content":"hello\n"}}]}}
-{"type":"user","cwd":"/work/proj","sessionId":"sess-abc","timestamp":"2026-06-20T10:00:03.000Z","uuid":"u-2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_001","content":"File created successfully at: /work/proj/spike.txt"}]}}
-{"type":"assistant","cwd":"/work/proj","sessionId":"sess-abc","isSidechain":true,"timestamp":"2026-06-20T10:00:04.000Z","uuid":"a-side","message":{"role":"assistant","model":"claude-mock","content":[{"type":"text","text":"(sub-agent chatter that must be skipped)"}]}}
-{"type":"assistant","cwd":"/work/proj","sessionId":"sess-abc","timestamp":"2026-06-20T10:00:05.000Z","uuid":"a-2","message":{"role":"assistant","model":"claude-mock","content":[{"type":"text","text":"Done — spike.txt now contains hello."}]}}
-this-is-not-valid-json{
-{"type":"summary","summary":"Created spike.txt","leafUuid":"a-2"}

@@ -124,7 +124,7 @@ interface CreateSessionBody {
   addDirs?: string[];
   dangerouslySkip?: boolean;
   /** Starting permission mode (default | acceptEdits | plan). bypassPermissions is expressed via
-   *  dangerouslySkip; buildClaudeArgs emits `--permission-mode` for the allowlisted non-default modes. */
+   *  dangerouslySkip; the terminal spawn emits `--permission-mode` for the non-default modes. */
   permissionMode?: string;
   /** Session mode: terminal is the only mode (a pty-backed tmux terminal session). */
   mode?: "terminal";
@@ -367,7 +367,7 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     const claudeArgs: string[] = [];
     if (typeof body.model === "string") claudeArgs.push("--model", body.model);
     // --dangerously-skip-permissions and --permission-mode are mutually exclusive (the CLI rejects both
-    // together); mirror buildClaudeArgs — the danger flag wins and suppresses the permission mode.
+    // together); the danger flag wins and suppresses the permission mode.
     if (body.dangerouslySkip) {
       claudeArgs.push("--dangerously-skip-permissions");
     } else if (typeof body.permissionMode === "string") {

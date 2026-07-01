@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../ui/Icon";
-import { LiveWire } from "../ui/LiveWire";
-import type { LiveWireState } from "../ui/LiveWire";
 import type { SessionMeta, UsageInfo } from "../types/server";
-import { useStore } from "../store/store";
-import { wireStateForSession } from "./status";
 import { sortSessionsByActivity } from "./order";
 import { relativeTime } from "./relative-time";
 import { UsageBars } from "./UsageBars";
@@ -22,10 +18,6 @@ export interface SessionListProps {
   onNew: () => void;
   /** Close (stop + remove) a session in one tap — the row's ✕ button. */
   onClose: (id: string) => void;
-  /** Override the per-row live wire state. Optional: when omitted, SessionList subscribes to the store's
-   *  `views` ITSELF and derives it — so the live rail dots update on streaming WITHOUT the whole App
-   *  shell re-rendering on every frame (App no longer needs to select `views`). Tests inject this. */
-  viewWireState?: (id: string) => LiveWireState;
   /** Claude usage limits (GET /usage). When present, two slim bars render at the very top of the rail;
    * null/undefined hides them (the feature is unavailable). */
   usage?: UsageInfo | null;
@@ -98,9 +90,9 @@ function CheckUpdateButton({ onCheck }: { onCheck: () => Promise<boolean> }) {
 }
 
 /**
- * The per-row status for a TERMINAL session — a terminal glyph + a "live"/"ended" label, standing in
- * for the chat LiveWire (which is meaningless for a PTY). Text-labelled so it never relies on color
- * alone; "live" gets a quiet accent + a small dot, "ended" reads muted.
+ * The per-row status for a TERMINAL session — a terminal glyph + a "live"/"ended" label. A PTY is
+ * either still running or its process has ended. Text-labelled so it never relies on color alone;
+ * "live" gets a quiet accent + a small dot, "ended" reads muted.
  */
 function TerminalState({ live }: { live: boolean }) {
   return (
@@ -137,7 +129,7 @@ export function NeedsYouBadge({ count, className }: { count: number; className?:
  * ordered most-recently-opened/active first (chat-app style) via the store's lastActiveAt stamps, so
  * the session you just opened or that's streaming floats to the top. Each row is one clean entry —
  * the cwd basename in the display font, the muted path beneath it, and a meta line carrying the
- * LiveWire status dot, the model·effort, and a compact relative time. A clear amber left-rail marks
+ * terminal status, the model·effort, and a compact relative time. A clear amber left-rail marks
  * the active row. Two affordances live on the right of each row: nothing extra in the body, and a
  * small ✕ button that closes (stops + removes) that session in one tap without selecting it. The
  * header carries a "New session" `+` icon button and a live session count. Works as the desktop rail
@@ -151,7 +143,6 @@ export function SessionList({
   onSelect,
   onNew,
   onClose,
-  viewWireState,
   usage,
   version,
   updateAvailable,
@@ -159,11 +150,6 @@ export function SessionList({
   onCheckUpdate,
   onOpenSettings,
 }: SessionListProps) {
-  // Subscribe to `views` HERE (not in App) so a streaming frame re-renders only this rail — for the live
-  // dots — instead of the whole App shell. When a `viewWireState` override is passed (tests), use it.
-  const storeViews = useStore((s) => s.views);
-  const wireFor = (s: SessionMeta): LiveWireState =>
-    viewWireState ? viewWireState(s.id) : wireStateForSession(s, storeViews[s.id]);
   const ordered = sortSessionsByActivity(sessions, lastActiveAt);
   const needs = awaitingCount(sessions);
 
@@ -217,12 +203,10 @@ export function SessionList({
                         <span className="rc-sl__await-dot" aria-hidden="true" />
                         needs you
                       </span>
-                    ) : s.mode === "terminal" ? (
+                    ) : (
                       // Terminal sessions have no chat wire state — a PTY is either still running ("live")
                       // or its process has ended. A terminal glyph + a text label (never color-only).
                       <TerminalState live={s.status === "running"} />
-                    ) : (
-                      <LiveWire state={wireFor(s)} />
                     )}
                   </span>
                   {/* Keep the full path as one text node (muted, ellipsised) so it stays scannable
@@ -432,8 +416,7 @@ const sessionListCss = `
   box-shadow: 0 0 7px var(--awaiting);
   animation: rc-sl-pulse 1.2s ease-in-out infinite;
 }
-/* Own keyframe name — a global "rc-pulse" also lives in LiveWire with a different 50% opacity, and the
-   duplicate name meant whichever <style> mounted last won for both. */
+/* Own keyframe name (rc-sl-pulse) so this rail pulse never collides with another component's keyframe. */
 @keyframes rc-sl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 /* Terminal-session status — a terminal glyph + "live"/"ended". Quiet mono pill; "live" gets a pulsing
    dot + brighter text, "ended" stays muted. Never color-only (paired with text). */

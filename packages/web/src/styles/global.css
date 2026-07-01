@@ -161,23 +161,6 @@ button {
   box-shadow: none;
 }
 
-/* Shiki syntax highlighting (CodeBlock) — make the highlighted block sit inside the clean code card:
-   a transparent background (so --code-bg shows through), our mono face + the card's padding/size.
-   Token colours come from the `vitesse-dark` theme's inline span styles. */
-.rc-code pre.shiki,
-.rc-code .shiki {
-  margin: 0;
-  padding: 11px 13px;
-  background: transparent !important;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.65;
-  overflow-x: auto;
-}
-.rc-code .shiki code {
-  font-family: var(--font-mono);
-  background: transparent;
-}
 /* A quiet hairline tool-step row — surfaces a subtle highlight on hover/focus. */
 .rc-tool-step:hover,
 .rc-tool-step:focus-visible {

@@ -1,10 +1,7 @@
 import type {
   ClaudeAuthStatus,
   DirListing,
-  LiveState,
   ModelInfo,
-  ResumableSession,
-  ServerFrame,
   SessionMeta,
   UpdateStatus,
   UsageInfo,
@@ -31,42 +28,17 @@ export interface CreateSessionBody {
   dangerouslySkip?: boolean;
   /** Starting permission mode (default | acceptEdits | plan) for a fresh session. */
   permissionMode?: string;
-  /** Resume a past conversation by its session id — the server seeds the replay buffer from the
-   * on-disk transcript so the prior thread replays into the chat on WS connect. */
-  resumeSessionId?: string;
-  /** Session kind: "chat" (the default Claude conversation) or "terminal" (a PTY-backed claude TUI
-   * driven over the binary terminal WebSocket). Omitted defaults to "chat" server-side. */
-  mode?: "chat" | "terminal";
+  /** Session kind — always "terminal" (a PTY-backed claude TUI over the binary terminal WebSocket). */
+  mode?: "terminal";
 }
 
 export interface ApiClient {
   listSessions(): Promise<SessionMeta[]>;
-  /** Past, resumable conversations (recent-first). Optionally scoped to a `cwd`. */
-  getResumable(cwd?: string): Promise<ResumableSession[]>;
-  /** Reopen a session: `history` is the FULL transcript (every user + assistant turn, correctly
-   * typed); `sinceSeq` is the replay buffer's max seq — connect the WS with `?since=sinceSeq` so it
-   * replays only NEW frames (no re-render of the shown history). */
-  getSession(
-    id: string,
-    opts?: { full?: boolean },
-  ): Promise<{
-    session: SessionMeta;
-    history: ServerFrame[];
-    sinceSeq: number;
-    truncated: boolean;
-    total?: number;
-    /** Server's live tail: whether a turn is in flight + the last result's usage — used to seed the
-     *  switched-to chat's wire state + context meter (neither survives in the transcript). */
-    live?: LiveState;
-  }>;
   createSession(body: CreateSessionBody): Promise<SessionMeta>;
   /** Close a session: DELETE /sessions/:id → 204 (no body). Removes it from the list + store while
    * keeping the transcript (still resumable via /resume). Idempotent server-side, so deleting an
    * already-gone session also resolves. Rejects (ApiError) only on a real failure (e.g. 5xx/network). */
   deleteSession(id: string): Promise<void>;
-  /** Legacy stop endpoint (Settings "Stop session"): POST /sessions/:id/stop. Now also fully removes
-   * the session server-side. 404 when already gone. */
-  stopSession(id: string): Promise<void>;
   listDir(path?: string): Promise<DirListing>;
   uploadFile(dir: string, file: File): Promise<{ path: string }>;
   /** Upload an image (binary) to the content-addressed store (POST /images) → its `{ ref }`. The composer
@@ -129,14 +101,9 @@ function authQuery(token?: string, extra?: Record<string, string>): string {
   return params.toString();
 }
 
-export function wsUrl(baseUrl: string, id: string, opts: { token?: string; since?: number }): string {
-  const qs = authQuery(opts.token, opts.since !== undefined ? { since: String(opts.since) } : undefined);
-  return `${wsBaseFor(baseUrl)}/sessions/${id}/ws${qs ? `?${qs}` : ""}`;
-}
-
 /** The binary terminal WebSocket url for a terminal-mode session (PTY-backed claude TUI), sourcing the
  * app's base url + stored token itself so callers (TerminalView) pass only the session id. Reuses the
- * SAME `authQuery` token logic as `wsUrl` — no duplicated token handling. The client passes its fitted
+ * SAME `authQuery` token logic as the other WS url builders — no duplicated token handling. The client passes its fitted
  * `cols`/`rows` so the server spawns the pty/tmux at the real viewport size (no first-paint reflow). */
 export function terminalWsUrl(id: string, cols?: number, rows?: number): string {
   const extra: Record<string, string> = {};
@@ -218,33 +185,6 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       const body = await req<{ sessions: SessionMeta[] }>("/sessions", { headers: headers() });
       return body.sessions;
     },
-    async getResumable(cwd) {
-      const qs = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
-      const body = await req<{ sessions: ResumableSession[] }>(`/resumable${qs}`, { headers: headers() });
-      return body.sessions;
-    },
-    async getSession(id, opts) {
-      // Default: the server returns only the most-recent window of turns (fast open). `full` re-requests
-      // the ENTIRE transcript — the explicit "load earlier" path.
-      const qs = opts?.full ? "?full=1" : "";
-      const body = await req<{
-        session: SessionMeta;
-        history: ServerFrame[];
-        sinceSeq?: number;
-        truncated?: boolean;
-        total?: number;
-        live?: LiveState;
-      }>(`/sessions/${id}${qs}`, { headers: headers() });
-      // sinceSeq is the WS-resume seq; default to 0 (full replay) if an older server omits it.
-      return {
-        session: body.session,
-        history: body.history,
-        sinceSeq: body.sinceSeq ?? 0,
-        truncated: body.truncated ?? false,
-        total: body.total,
-        live: body.live,
-      };
-    },
     async createSession(body) {
       const created = await req<{ session: SessionMeta }>("/sessions", {
         method: "POST",
@@ -257,9 +197,6 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
       // 204 No Content — do NOT parse a body. A real failure (5xx/network) rejects via ApiError so the
       // caller can surface it / undo the optimistic removal.
       await reqNoBody(`/sessions/${id}`, { method: "DELETE", headers: headers() });
-    },
-    async stopSession(id) {
-      await req<{ ok: true }>(`/sessions/${id}/stop`, { method: "POST", headers: headers() });
     },
     async listDir(path) {
       const qs = path ? `?path=${encodeURIComponent(path)}` : "";

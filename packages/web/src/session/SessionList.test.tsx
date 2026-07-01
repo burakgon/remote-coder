@@ -28,7 +28,6 @@ function renderList(overrides: Partial<SessionListProps> = {}) {
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onClose: vi.fn(),
-    viewWireState: () => "idle",
     ...overrides,
   };
   return { ...render(<SessionList {...props} />), props };
@@ -54,13 +53,13 @@ describe("SessionList", () => {
     expect(screen.getByText("/home/u/remote-coder")).toBeInTheDocument();
   });
 
-  it("surfaces the model·effort meta and the live status for a row", () => {
-    renderList({ viewWireState: (id) => (id === "s1" ? "running-tool" : "idle") });
+  it("surfaces the model·effort meta and the terminal status for a row", () => {
+    renderList();
     // The card shows the session's model + effort so it's scannable at a glance.
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-    // The LiveWire status reads its label out (color is never the sole signal).
-    expect(screen.getByText("Running tool")).toBeInTheDocument();
+    // The terminal status reads its label out (color is never the sole signal): s1 is running → "live".
+    expect(screen.getByText("live")).toBeInTheDocument();
   });
 
   it("shows the session count in the header (Sessions · N)", () => {
