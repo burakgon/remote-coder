@@ -22,12 +22,25 @@ const BASE = `http://localhost:${PORT}`;
 const IPHONE = devices["iPhone 13 Pro"];
 const SHOTS = [
   { name: "terminal-mobile", scene: "terminal", mobile: true, wait: 2200 },
-  { name: "keybar-mobile", scene: "terminal", mobile: true, wait: 2200, click: 'button[aria-label="Select text"]', post: 700 },
+  {
+    name: "keybar-mobile",
+    scene: "terminal",
+    mobile: true,
+    wait: 2200,
+    click: 'button[aria-label="Select text"]',
+    post: 700,
+  },
   { name: "sessions-mobile", scene: "sessions", mobile: true, wait: 1400 },
   { name: "newsession-mobile", scene: "newsession", mobile: true, wait: 1600 },
   { name: "files-mobile", scene: "files", mobile: true, wait: 1400 },
   { name: "ota-mobile", scene: "ota", mobile: true, wait: 1400 },
-  { name: "login-mobile", scene: "login", mobile: true, wait: 1200, fill: { sel: "input", value: "rc_9f3ad217e8b4c0615d" } },
+  {
+    name: "login-mobile",
+    scene: "login",
+    mobile: true,
+    wait: 1200,
+    fill: { sel: "input", value: "rc_9f3ad217e8b4c0615d" },
+  },
   { name: "desktop", scene: "desktop", mobile: false, wait: 2400 },
 ];
 

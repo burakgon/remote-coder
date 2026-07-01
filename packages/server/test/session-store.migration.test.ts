@@ -69,7 +69,15 @@ test("opening a chat-era DB drops dead columns + prunes non-terminal rows (termi
     mode: "terminal",
   });
   // A fresh upsert works against the cleaned schema.
-  store.upsert({ id: "term2", cwd: "/w2", dangerouslySkip: false, status: "running", createdAt: 3, lastActivityAt: 3, mode: "terminal" });
+  store.upsert({
+    id: "term2",
+    cwd: "/w2",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 3,
+    lastActivityAt: 3,
+    mode: "terminal",
+  });
   expect(store.get("term2")?.id).toBe("term2");
   store.close();
 

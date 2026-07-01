@@ -78,10 +78,34 @@ const VERSION: VersionInfo = {
   updateAvailable: true,
   terminalAvailable: true,
   changelog: [
-    { sha: "e4f5061", subject: "one-tap two-finger scroll hint for the terminal", group: "new", when: "2h ago", date: "" },
-    { sha: "9c1d2a3", subject: "match the mobile terminal chrome to the app theme", group: "improvements", when: "5h ago", date: "" },
-    { sha: "7b8e9f0", subject: "Select toggles the copy overlay + shows active state", group: "improvements", when: "6h ago", date: "" },
-    { sha: "3a4b5c6", subject: "heal the iOS post-update dead-touch on first open", group: "fixes", when: "1d ago", date: "" },
+    {
+      sha: "e4f5061",
+      subject: "one-tap two-finger scroll hint for the terminal",
+      group: "new",
+      when: "2h ago",
+      date: "",
+    },
+    {
+      sha: "9c1d2a3",
+      subject: "match the mobile terminal chrome to the app theme",
+      group: "improvements",
+      when: "5h ago",
+      date: "",
+    },
+    {
+      sha: "7b8e9f0",
+      subject: "Select toggles the copy overlay + shows active state",
+      group: "improvements",
+      when: "6h ago",
+      date: "",
+    },
+    {
+      sha: "3a4b5c6",
+      subject: "heal the iOS post-update dead-touch on first open",
+      group: "fixes",
+      when: "1d ago",
+      date: "",
+    },
   ],
 };
 const RECENTS = ["/Users/you/dev/acme-api", "/Users/you/dev/storefront-web", "/Users/you/dev/infra"];
@@ -90,9 +114,21 @@ const listDir = async (path?: string): Promise<DirListing> => ({
   parent: "/Users/you",
   entries: [
     { name: "acme-api", path: "/Users/you/dev/acme-api", isDirectory: true, isGitRepo: true, gitBranch: "main" },
-    { name: "storefront-web", path: "/Users/you/dev/storefront-web", isDirectory: true, isGitRepo: true, gitBranch: "feat/checkout" },
+    {
+      name: "storefront-web",
+      path: "/Users/you/dev/storefront-web",
+      isDirectory: true,
+      isGitRepo: true,
+      gitBranch: "feat/checkout",
+    },
     { name: "infra", path: "/Users/you/dev/infra", isDirectory: true, isGitRepo: true, gitBranch: "main" },
-    { name: "design-system", path: "/Users/you/dev/design-system", isDirectory: true, isGitRepo: true, gitBranch: "release/3.2" },
+    {
+      name: "design-system",
+      path: "/Users/you/dev/design-system",
+      isDirectory: true,
+      isGitRepo: true,
+      gitBranch: "release/3.2",
+    },
     { name: "scratch", path: "/Users/you/dev/scratch", isDirectory: true, isGitRepo: false },
     { name: "notes.md", path: "/Users/you/dev/notes.md", isDirectory: false, isGitRepo: false },
   ],
@@ -101,7 +137,12 @@ const listDir = async (path?: string): Promise<DirListing> => ({
 // A small chart image (data URI) so the Files thumbnail renders something real.
 const CHART = `data:image/svg+xml;utf8,${encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='160'><rect width='240' height='160' fill='#141416'/>` +
-    [30, 70, 45, 95, 60, 120].map((h, i) => `<rect x='${18 + i * 36}' y='${150 - h}' width='22' height='${h}' rx='3' fill='#f77a44' opacity='${0.5 + i * 0.08}'/>`).join("") +
+    [30, 70, 45, 95, 60, 120]
+      .map(
+        (h, i) =>
+          `<rect x='${18 + i * 36}' y='${150 - h}' width='22' height='${h}' rx='3' fill='#f77a44' opacity='${0.5 + i * 0.08}'/>`,
+      )
+      .join("") +
     `<line x1='12' y1='150' x2='228' y2='150' stroke='#5c6370' stroke-width='1'/></svg>`,
 )}`;
 const FILES = [
@@ -114,7 +155,13 @@ const FILES = [
 ];
 
 const terminal = (frame: string, session: SessionMeta = SESSION) => (
-  <TerminalView session={session} createSocket={mockSocket(frame) as never} onShowSessions={() => {}} needsYou={1} onClose={() => {}} />
+  <TerminalView
+    session={session}
+    createSocket={mockSocket(frame) as never}
+    onShowSessions={() => {}}
+    needsYou={1}
+    onClose={() => {}}
+  />
 );
 
 const list = (
@@ -150,7 +197,13 @@ export const SCENES: Record<string, () => ReactElement> = {
   newsession: () => <DirectoryPicker listDir={listDir} recents={RECENTS} onPick={() => {}} onCancel={() => {}} />,
   files: () => (
     <div style={{ position: "relative", height: "100vh", background: "var(--bg)" }}>
-      <TerminalFiles open files={FILES} onClose={() => {}} onUpload={() => {}} downloadUrl={(p) => (p.endsWith(".png") ? CHART : "#")} />
+      <TerminalFiles
+        open
+        files={FILES}
+        onClose={() => {}}
+        onUpload={() => {}}
+        downloadUrl={(p) => (p.endsWith(".png") ? CHART : "#")}
+      />
     </div>
   ),
   ota: () => (

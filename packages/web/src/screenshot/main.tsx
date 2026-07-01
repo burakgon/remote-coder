@@ -9,5 +9,9 @@ document.documentElement.style.setProperty("--app-height", "100vh");
 const scene = new URLSearchParams(location.search).get("scene") ?? "terminal";
 const render = SCENES[scene];
 createRoot(document.getElementById("root")!).render(
-  render ? render() : <div style={{ color: "#fff", padding: 24, fontFamily: "sans-serif" }}>unknown scene: {scene}</div>,
+  render ? (
+    render()
+  ) : (
+    <div style={{ color: "#fff", padding: 24, fontFamily: "sans-serif" }}>unknown scene: {scene}</div>
+  ),
 );

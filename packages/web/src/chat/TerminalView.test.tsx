@@ -24,7 +24,13 @@ vi.mock("@xterm/xterm", () => ({
     dispose() {}
   },
 }));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} activate() {} dispose() {} } }));
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit() {}
+    activate() {}
+    dispose() {}
+  },
+}));
 
 const sent: string[] = [];
 vi.mock("../ws/terminal-socket", () => ({

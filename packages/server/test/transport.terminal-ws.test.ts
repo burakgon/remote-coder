@@ -23,8 +23,14 @@ test("terminal WS streams pty output (binary) and forwards input/resize", async 
   // Wait for connection to open, then emit pty data.
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("ws never opened")), 5000);
-    ws.on("error", (err) => { clearTimeout(timeout); reject(err); });
-    ws.on("open", () => { clearTimeout(timeout); resolve(); });
+    ws.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    ws.on("open", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
   });
 
   // Register message listener before emitting to avoid race.
@@ -75,8 +81,14 @@ test("POST /sessions {dangerouslySkip:true} spawns claude with --dangerously-ski
   const ws = wsConnect(`/sessions/${id}/terminal?token=${token}`);
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("ws never opened")), 5000);
-    ws.on("error", (err) => { clearTimeout(timeout); reject(err); });
-    ws.on("open", () => { clearTimeout(timeout); resolve(); });
+    ws.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    ws.on("open", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
   });
 
   expect(fakePty.argsFor(id)).toContain("--dangerously-skip-permissions");
@@ -92,8 +104,13 @@ test("terminal WS returns 4404 for unknown session id", async () => {
   const closeCode = await new Promise<number>((resolve, reject) => {
     const ws = wsConnect(`/sessions/nonexistent-id/terminal?token=${token}`);
     const timeout = setTimeout(() => reject(new Error("ws never closed")), 5000);
-    ws.on("close", (code) => { clearTimeout(timeout); resolve(code); });
-    ws.on("error", () => { /* close event will follow */ });
+    ws.on("close", (code) => {
+      clearTimeout(timeout);
+      resolve(code);
+    });
+    ws.on("error", () => {
+      /* close event will follow */
+    });
   });
 
   expect(closeCode).toBe(4404);

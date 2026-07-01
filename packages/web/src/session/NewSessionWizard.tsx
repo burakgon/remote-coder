@@ -65,7 +65,9 @@ export function NewSessionWizard({ api, recents, now, models = [], onCreated, on
 
   // Step 1 — the directory picker (the headline). It owns the whole viewport.
   if (!cwd) {
-    return <DirectoryPicker listDir={api.listDir} recents={recents} onPick={(path) => setCwd(path)} onCancel={onClose} />;
+    return (
+      <DirectoryPicker listDir={api.listDir} recents={recents} onPick={(path) => setCwd(path)} onCancel={onClose} />
+    );
   }
 
   // Step 2 — defaults for the new session.

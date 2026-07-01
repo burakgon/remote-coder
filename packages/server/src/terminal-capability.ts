@@ -20,8 +20,6 @@ function ptyLoads(): boolean {
 }
 
 /** Terminal mode needs BOTH a tmux binary and a loadable node-pty. Injectable for tests. */
-export function detectTerminalSupport(
-  deps: { hasTmux?: () => boolean; hasPty?: () => boolean } = {},
-): boolean {
+export function detectTerminalSupport(deps: { hasTmux?: () => boolean; hasPty?: () => boolean } = {}): boolean {
   return (deps.hasTmux ?? tmuxOnPath)() && (deps.hasPty ?? ptyLoads)();
 }

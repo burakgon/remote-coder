@@ -35,7 +35,12 @@ function findSpawnHelpers(dir, found, depth) {
           const helper = join(p, plat.name, "spawn-helper");
           if (existsSync(helper)) found.push(helper);
         }
-      } else if (e.name === "node_modules" || e.name === ".pnpm" || e.name.startsWith("node-pty") || !e.name.startsWith(".")) {
+      } else if (
+        e.name === "node_modules" ||
+        e.name === ".pnpm" ||
+        e.name.startsWith("node-pty") ||
+        !e.name.startsWith(".")
+      ) {
         findSpawnHelpers(p, found, depth + 1);
       }
     }

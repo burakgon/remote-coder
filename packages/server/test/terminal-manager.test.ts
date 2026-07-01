@@ -7,7 +7,13 @@ import { openSessionStore } from "../src/session-store.js";
 function fakePtyFactory() {
   const ptys: EventEmitter[] = [];
   const spawn = () => {
-    const ee = new EventEmitter() as EventEmitter & { write(d: string): void; resize(c: number, r: number): void; kill(): void; onData(cb: (d: string) => void): void; onExit(cb: (e: { exitCode: number }) => void): void };
+    const ee = new EventEmitter() as EventEmitter & {
+      write(d: string): void;
+      resize(c: number, r: number): void;
+      kill(): void;
+      onData(cb: (d: string) => void): void;
+      onExit(cb: (e: { exitCode: number }) => void): void;
+    };
     ee.write = () => {};
     ee.resize = () => {};
     ee.kill = () => {};
@@ -23,7 +29,13 @@ function mgr() {
   const store = openSessionStore({ dbPath: ":memory:" });
   const { spawn, ptys } = fakePtyFactory();
   let t = 0;
-  const m = new TerminalManager({ store, claudeBin: "claude", now: () => ++t, ptySpawn: spawn as never, runTmux: () => {} });
+  const m = new TerminalManager({
+    store,
+    claudeBin: "claude",
+    now: () => ++t,
+    ptySpawn: spawn as never,
+    runTmux: () => {},
+  });
   return { m, store, ptys };
 }
 
@@ -42,7 +54,15 @@ test("create persists a terminal row; attach spawns pty and fans data", () => {
 
 test("rehydrate marks stored terminal sessions whose tmux session is alive", () => {
   const { m, store } = mgr();
-  store.upsert({ id: "old", cwd: "/w", mode: "terminal", dangerouslySkip: false, status: "running", createdAt: 1, lastActivityAt: 1 });
+  store.upsert({
+    id: "old",
+    cwd: "/w",
+    mode: "terminal",
+    dangerouslySkip: false,
+    status: "running",
+    createdAt: 1,
+    lastActivityAt: 1,
+  });
   m.rehydrate({ liveTmuxNames: ["rc-old"] });
   expect(m.get("old")?.status).toBe("running");
 });
@@ -69,7 +89,13 @@ test("detaching the last subscriber stops the pty without killing the tmux sessi
   const store = openSessionStore({ dbPath: ":memory:" });
   const { spawn } = fakePtyFactory();
   const tmuxCalls: string[][] = [];
-  const m = new TerminalManager({ store, claudeBin: "claude", now: () => 1, ptySpawn: spawn as never, runTmux: (a) => tmuxCalls.push(a) });
+  const m = new TerminalManager({
+    store,
+    claudeBin: "claude",
+    now: () => 1,
+    ptySpawn: spawn as never,
+    runTmux: (a) => tmuxCalls.push(a),
+  });
   m.create({ id: "d1", cwd: "/w" });
   const sub = m.attach("d1", { onData: () => {} });
   sub!.unsubscribe();

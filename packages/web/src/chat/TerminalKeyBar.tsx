@@ -25,10 +25,22 @@ export function TerminalKeyBar({
   onPaste?: () => void;
 }) {
   const keys = [
-    "Esc", "Tab", "ShiftTab",
-    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-    "Home", "End", "PageUp", "PageDown", "Delete",
-    "/", "-", "|", "~",
+    "Esc",
+    "Tab",
+    "ShiftTab",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "Home",
+    "End",
+    "PageUp",
+    "PageDown",
+    "Delete",
+    "/",
+    "-",
+    "|",
+    "~",
   ];
   const keep = (e: React.PointerEvent) => e.preventDefault(); // don't steal focus from the terminal
   return (

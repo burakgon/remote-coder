@@ -222,7 +222,8 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     // header on: the WS upgrade (`/sessions/:id/ws`), <img> media GETs (`/images/*`), and file downloads
     // (`/fs/download`). Every other route uses the header — so the access token isn't written into proxy /
     // access logs (query strings are routinely logged), which would otherwise leak a full-access credential.
-    const queryTokenAllowed = path.endsWith("/ws") || path.endsWith("/terminal") || path.startsWith("/images/") || path === "/fs/download";
+    const queryTokenAllowed =
+      path.endsWith("/ws") || path.endsWith("/terminal") || path.startsWith("/images/") || path === "/fs/download";
     const token = extractBearerToken(request.headers.authorization) ?? (queryTokenAllowed ? queryToken : undefined);
     const result = authGate.check(token, request.ip);
     if (!result.ok) {
@@ -273,7 +274,10 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     wsScope.get<{ Params: { id: string }; Querystring: { cols?: string; rows?: string } }>(
       "/sessions/:id/terminal",
       { websocket: true },
-      (socket: WebSocket, request: FastifyRequest<{ Params: { id: string }; Querystring: { cols?: string; rows?: string } }>) => {
+      (
+        socket: WebSocket,
+        request: FastifyRequest<{ Params: { id: string }; Querystring: { cols?: string; rows?: string } }>,
+      ) => {
         const id = request.params.id;
         if (!terminalManager.get(id)) {
           socket.close(4404, "terminal session not found");
@@ -293,26 +297,42 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
               // runaway amount of pty output, close rather than grow Node's heap unbounded. The client
               // reconnects and tmux redraws a clean screen, so no state is lost.
               if (socket.bufferedAmount > MAX_TERMINAL_WS_BUFFER) {
-                try { socket.close(4400, "terminal backpressure"); } catch { /* already gone */ }
+                try {
+                  socket.close(4400, "terminal backpressure");
+                } catch {
+                  /* already gone */
+                }
                 return;
               }
               try {
                 socket.send(Buffer.from(chunk, "utf8")); // binary frame
               } catch {
                 sub?.unsubscribe();
-                try { socket.close(); } catch { /* already gone */ }
+                try {
+                  socket.close();
+                } catch {
+                  /* already gone */
+                }
               }
             },
             // claude exited (the manager ended the session) → tell the client so it shows Restart/Close
             // instead of a frozen screen. 4410 = "ended" (do NOT auto-reconnect on this code).
             onExit: () => {
-              try { socket.close(4410, "session ended"); } catch { /* already gone */ }
+              try {
+                socket.close(4410, "session ended");
+              } catch {
+                /* already gone */
+              }
             },
             // Out-of-band control (file/image attachments claude sent) → a TEXT frame, so the client can
             // split it from the BINARY pty stream. Skipped under backpressure like the data path.
             onControl: (json) => {
               if (socket.readyState !== socket.OPEN || socket.bufferedAmount > MAX_TERMINAL_WS_BUFFER) return;
-              try { socket.send(json); } catch { /* already gone */ }
+              try {
+                socket.send(json);
+              } catch {
+                /* already gone */
+              }
             },
           },
           size,
@@ -325,7 +345,11 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
         // from under a live terminal. .unref() so the timer never keeps the process alive; cleared below.
         const pingTimer = setInterval(() => {
           if (socket.readyState === socket.OPEN) {
-            try { socket.ping(); } catch { /* socket dying — the close handler cleans up */ }
+            try {
+              socket.ping();
+            } catch {
+              /* socket dying — the close handler cleans up */
+            }
           }
         }, TERMINAL_WS_PING_MS);
         pingTimer.unref?.();
@@ -334,12 +358,23 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
           // the pty. A generous cap still allows large pastes.
           if (raw.length > MAX_TERMINAL_INPUT_BYTES) return;
           let msg: { t?: string; d?: string; c?: number; r?: number };
-          try { msg = JSON.parse(raw.toString()); } catch { return; }
+          try {
+            msg = JSON.parse(raw.toString());
+          } catch {
+            return;
+          }
           if (msg.t === "i" && typeof msg.d === "string") terminalManager.write(id, msg.d);
-          else if (msg.t === "r" && typeof msg.c === "number" && typeof msg.r === "number") terminalManager.resize(id, msg.c, msg.r);
+          else if (msg.t === "r" && typeof msg.c === "number" && typeof msg.r === "number")
+            terminalManager.resize(id, msg.c, msg.r);
         });
-        socket.on("close", () => { clearInterval(pingTimer); sub.unsubscribe(); });
-        socket.on("error", () => { clearInterval(pingTimer); sub.unsubscribe(); });
+        socket.on("close", () => {
+          clearInterval(pingTimer);
+          sub.unsubscribe();
+        });
+        socket.on("error", () => {
+          clearInterval(pingTimer);
+          sub.unsubscribe();
+        });
       },
     );
   });

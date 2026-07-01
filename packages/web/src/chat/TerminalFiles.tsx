@@ -83,7 +83,9 @@ export function TerminalFiles({
             if (e.clipboardData.files.length) onUpload(e.clipboardData.files);
           }}
         >
-          {files.length === 0 && <div className="rc-tf__empty">No files yet. Upload one, or ask claude to send you a file.</div>}
+          {files.length === 0 && (
+            <div className="rc-tf__empty">No files yet. Upload one, or ask claude to send you a file.</div>
+          )}
           <div className="rc-tf__grid">
             {files.map((f) => (
               <div key={f.id} className="rc-tf__item" title={f.name}>

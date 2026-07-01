@@ -80,7 +80,8 @@ test.skipIf(!hasTmux)(
     // 5) Resize is honored by the live session.
     tp.resize(90, 24);
     const resized = await waitFor(
-      () => tmux("display-message", "-p", "-t", TMUX_NAME, "#{window_width}x#{window_height}").stdout.trim() === "90x24",
+      () =>
+        tmux("display-message", "-p", "-t", TMUX_NAME, "#{window_width}x#{window_height}").stdout.trim() === "90x24",
       4000,
     );
     expect(resized).toBe(true);

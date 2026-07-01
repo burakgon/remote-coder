@@ -46,7 +46,8 @@ export interface TerminalManagerDeps {
   env?: NodeJS.ProcessEnv;
 }
 
-const clampDim = (n: number | undefined, fallback: number): number => Math.max(1, Math.trunc(n ?? fallback) || fallback);
+const clampDim = (n: number | undefined, fallback: number): number =>
+  Math.max(1, Math.trunc(n ?? fallback) || fallback);
 
 export class TerminalManager {
   private readonly records = new Map<string, Record_>();
@@ -62,7 +63,12 @@ export class TerminalManager {
   create(opts: { id: string; cwd: string; claudeArgs?: string[]; cols?: number; rows?: number }): TerminalMeta {
     const now = this.deps.now();
     const meta: TerminalMeta = {
-      id: opts.id, cwd: opts.cwd, mode: "terminal", status: "running", createdAt: now, lastActivityAt: now,
+      id: opts.id,
+      cwd: opts.cwd,
+      mode: "terminal",
+      status: "running",
+      createdAt: now,
+      lastActivityAt: now,
     };
     const claudeArgs = [...(opts.claudeArgs ?? [])];
     // Give the terminal's claude the remote-coder MCP (send_image/send_file), same as chat sessions: write
@@ -70,11 +76,21 @@ export class TerminalManager {
     const mcpConfigPath = this.writeMcpConfig(opts.id);
     if (mcpConfigPath) claudeArgs.push("--mcp-config", mcpConfigPath);
     this.records.set(opts.id, {
-      meta, claudeArgs, cols: clampDim(opts.cols, 80), rows: clampDim(opts.rows, 24), subs: new Set(), mcpConfigPath,
+      meta,
+      claudeArgs,
+      cols: clampDim(opts.cols, 80),
+      rows: clampDim(opts.rows, 24),
+      subs: new Set(),
+      mcpConfigPath,
     });
     this.deps.store.upsert({
-      id: opts.id, cwd: opts.cwd, mode: "terminal", dangerouslySkip: false,
-      status: "running", createdAt: now, lastActivityAt: now,
+      id: opts.id,
+      cwd: opts.cwd,
+      mode: "terminal",
+      dangerouslySkip: false,
+      status: "running",
+      createdAt: now,
+      lastActivityAt: now,
     });
     return meta;
   }
@@ -127,8 +143,12 @@ export class TerminalManager {
     rec.subs.add(sub);
     if (!rec.proc) {
       const proc = new TerminalProcess({
-        sessionId: id, cwd: rec.meta.cwd, claudeBin: this.deps.claudeBin,
-        claudeArgs: rec.claudeArgs, cols: rec.cols, rows: rec.rows,
+        sessionId: id,
+        cwd: rec.meta.cwd,
+        claudeBin: this.deps.claudeBin,
+        claudeArgs: rec.claudeArgs,
+        cols: rec.cols,
+        rows: rec.rows,
         ...(this.deps.env ? { env: this.deps.env } : {}),
         ...(this.deps.ptySpawn ? { ptySpawn: this.deps.ptySpawn } : {}),
         ...(this.deps.runTmux ? { runTmux: this.deps.runTmux } : {}),
@@ -232,7 +252,10 @@ export class TerminalManager {
   rehydrate(opts: { liveTmuxNames: string[] }): void {
     const live = new Set(opts.liveTmuxNames);
     const storedTerminalIds = new Set(
-      this.deps.store.list().filter((s) => s.mode === "terminal").map((s) => s.id),
+      this.deps.store
+        .list()
+        .filter((s) => s.mode === "terminal")
+        .map((s) => s.id),
     );
     for (const s of this.deps.store.list()) {
       if (s.mode !== "terminal") continue;
@@ -242,8 +265,18 @@ export class TerminalManager {
       }
       if (this.records.has(s.id)) continue;
       this.records.set(s.id, {
-        meta: { id: s.id, cwd: s.cwd, mode: "terminal", status: "running", createdAt: s.createdAt, lastActivityAt: s.lastActivityAt },
-        claudeArgs: [], cols: 80, rows: 24, subs: new Set(),
+        meta: {
+          id: s.id,
+          cwd: s.cwd,
+          mode: "terminal",
+          status: "running",
+          createdAt: s.createdAt,
+          lastActivityAt: s.lastActivityAt,
+        },
+        claudeArgs: [],
+        cols: 80,
+        rows: 24,
+        subs: new Set(),
       });
     }
     for (const name of opts.liveTmuxNames) {

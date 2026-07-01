@@ -367,8 +367,6 @@ describe("App — session list refresh + select-doesn't-reorder", () => {
   });
 });
 
-
-
 // ---------------------------------------------------------------------------------------------
 // APP BADGE: the home-screen badge reflects the "needs you" count (awaiting sessions), set via the
 // feature-detected navigator.setAppBadge and cleared at 0.
@@ -501,5 +499,3 @@ describe("App notification deep-link (?session=)", () => {
 // login → empty list → new-session wizard (directory picker) → chat → streamed text →
 // permission prompt → answer over WS → result clears the prompt. Proves every screen connects.
 // ---------------------------------------------------------------------------------------------
-
-

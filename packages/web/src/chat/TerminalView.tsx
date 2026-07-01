@@ -210,7 +210,14 @@ export function TerminalView({
         onControl: (json) => {
           if (disposed) return;
           try {
-            const msg = JSON.parse(json) as { t?: string; id?: string; name?: string; path?: string; isImage?: boolean; caption?: string };
+            const msg = JSON.parse(json) as {
+              t?: string;
+              id?: string;
+              name?: string;
+              path?: string;
+              isImage?: boolean;
+              caption?: string;
+            };
             if (msg.t === "attach" && typeof msg.path === "string") {
               const item: TermFile = {
                 id: msg.id ?? msg.path,
@@ -337,7 +344,10 @@ export function TerminalView({
     const buf = term.buffer.active;
     const lines: string[] = [];
     for (let i = 0; i < buf.length; i++) lines.push(buf.getLine(i)?.translateToString(true) ?? "");
-    return lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
+    return lines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/\s+$/, "");
   };
   // Select: TOGGLE a scrim of the buffer as plain, natively-selectable text (long-press to select → OS copy
   // menu). Reliable because it's ordinary HTML text, not the live xterm (which swallows touch on mobile).
@@ -394,8 +404,22 @@ export function TerminalView({
             aria-label="Scroll the terminal with two fingers. Tap to dismiss."
             onClick={() => setShowScrollHint(false)}
           >
-            <svg className="rc-term-hint__gesture" width="22" height="26" viewBox="0 0 22 26" fill="none" aria-hidden="true">
-              <path d="M7 6l4-3.5 4 3.5M7 20l4 3.5 4-3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
+            <svg
+              className="rc-term-hint__gesture"
+              width="22"
+              height="26"
+              viewBox="0 0 22 26"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M7 6l4-3.5 4 3.5M7 20l4 3.5 4-3.5"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.5"
+              />
               <g className="rc-term-hint__fingers">
                 <circle cx="8" cy="13" r="2.6" fill="currentColor" />
                 <circle cx="14" cy="13" r="2.6" fill="currentColor" />

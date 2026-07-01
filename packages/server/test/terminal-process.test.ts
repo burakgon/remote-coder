@@ -23,8 +23,13 @@ test("start: dedicated socket, server config chained before new-session running 
   const spawn = vi.fn(() => pty);
   const runTmux = vi.fn();
   const tp = new TerminalProcess({
-    sessionId: "abc", cwd: "/work", claudeBin: "/bin/claude",
-    cols: 100, rows: 30, ptySpawn: spawn as never, runTmux,
+    sessionId: "abc",
+    cwd: "/work",
+    claudeBin: "/bin/claude",
+    cols: 100,
+    rows: 30,
+    ptySpawn: spawn as never,
+    runTmux,
     env: { ...process.env, TMUX: "/tmp/x,1,0", TMUX_PANE: "%1" },
   });
   const seen: string[] = [];
@@ -61,14 +66,21 @@ test("write + resize forward; resize clamps; stop(kill) kills the session on the
   const { pty, calls } = fakePty();
   const runTmux = vi.fn();
   const tp = new TerminalProcess({
-    sessionId: "z", cwd: "/w", claudeBin: "claude", ptySpawn: (() => pty) as never, runTmux,
+    sessionId: "z",
+    cwd: "/w",
+    claudeBin: "claude",
+    ptySpawn: (() => pty) as never,
+    runTmux,
   });
   tp.start();
   tp.write("ls\n");
   tp.resize(80, 24);
   tp.resize(0, -5); // degenerate → clamped to >=1
   expect(calls.write).toEqual(["ls\n"]);
-  expect(calls.resize).toEqual([[80, 24], [1, 1]]);
+  expect(calls.resize).toEqual([
+    [80, 24],
+    [1, 1],
+  ]);
 
   tp.stop({ kill: true });
   expect(runTmux).toHaveBeenCalledWith(["-L", TMUX_SOCKET, "kill-session", "-t", "rc-z"]);
@@ -77,7 +89,13 @@ test("write + resize forward; resize clamps; stop(kill) kills the session on the
 
 test("exit is re-emitted", () => {
   const { pty } = fakePty();
-  const tp = new TerminalProcess({ sessionId: "e", cwd: "/w", claudeBin: "claude", ptySpawn: (() => pty) as never, runTmux: () => {} });
+  const tp = new TerminalProcess({
+    sessionId: "e",
+    cwd: "/w",
+    claudeBin: "claude",
+    ptySpawn: (() => pty) as never,
+    runTmux: () => {},
+  });
   const exits: number[] = [];
   tp.on("exit", (e) => exits.push(e.exitCode));
   tp.start();

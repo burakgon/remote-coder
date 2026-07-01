@@ -38,8 +38,12 @@ function makeFakePty(): FakePty {
   ee._writes = [];
   ee._resizes = [];
   ee._spawnArgs = [];
-  ee.write = (d: string) => { ee._writes.push(d); };
-  ee.resize = (c: number, r: number) => { ee._resizes.push([c, r]); };
+  ee.write = (d: string) => {
+    ee._writes.push(d);
+  };
+  ee.resize = (c: number, r: number) => {
+    ee._resizes.push([c, r]);
+  };
   ee.kill = () => {};
   ee.onData = (cb) => void ee.on("data", cb);
   ee.onExit = (cb) => void ee.on("exit", cb);

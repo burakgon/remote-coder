@@ -43,7 +43,8 @@ export function createTerminalSocket(opts: {
     sock.onmessage = (e: MessageEvent) => {
       // BINARY = raw pty output; TEXT (string) = a control frame (attachment JSON).
       if (e.data instanceof ArrayBuffer) opts.onData(new Uint8Array(e.data));
-      else if (typeof e.data === "object" && e.data !== null && "byteLength" in e.data) opts.onData(new Uint8Array(e.data));
+      else if (typeof e.data === "object" && e.data !== null && "byteLength" in e.data)
+        opts.onData(new Uint8Array(e.data));
       else if (typeof e.data === "string") opts.onControl?.(e.data);
     };
     sock.onerror = () => {
