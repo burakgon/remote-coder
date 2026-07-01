@@ -247,6 +247,15 @@ export function TerminalView({
     sockRef.current?.sendInput(keySequence(label, appMode));
     term?.focus();
   };
+  // Scroll claude's transcript. The claude TUI runs FULLSCREEN (alt-screen), so there is NO terminal
+  // scrollback to swipe — the past text lives only inside claude's own view. We send the keys its TUI
+  // binds: PgUp/PgDn scroll a half-viewport, Ctrl+End jumps to the latest + re-enables auto-follow. Keep
+  // focus so the on-screen keyboard stays up. (These modified/keypad codes are fixed — not DECCKM-dependent.)
+  const onScroll = (dir: "up" | "down" | "bottom") => {
+    const seq = dir === "up" ? "\x1b[5~" : dir === "down" ? "\x1b[6~" : "\x1b[1;5F";
+    sockRef.current?.sendInput(seq);
+    termRef.current?.focus();
+  };
   const onCtrlChord = (letter: string) => {
     sockRef.current?.sendInput(ctrlSeq(letter));
     setCtrlArmed(false);
@@ -321,6 +330,7 @@ export function TerminalView({
         onToggleCtrl={() => setCtrlArmed(!ctrlArmedRef.current)}
         onKey={onBarKey}
         onCtrlChord={onCtrlChord}
+        onScroll={onScroll}
         onPaste={canPaste ? onPaste : undefined}
       />
       <TerminalFiles
@@ -410,6 +420,16 @@ const terminalCss = `
   scrollbar-width: none;
 }
 .rc-termkeys::-webkit-scrollbar { display: none; }
+/* Scroll cluster pinned to the LEFT of the horizontally-scrollable key row so ▲/▼/⤓ are ALWAYS reachable
+   (position:sticky keeps it at the left edge while the other keys scroll under it; the solid bg + right
+   shadow occlude keys sliding beneath). These are the primary way to read claude's fullscreen transcript. */
+.rc-termkeys__scroll {
+  position: sticky; left: 0; z-index: 1; flex: 0 0 auto;
+  display: flex; gap: 6px; padding-right: 8px;
+  background: #11151c;
+  box-shadow: 8px 0 8px -6px rgba(0,0,0,0.55);
+}
+.rc-termkeys__scroll button { background: #26303f; }
 .rc-termkeys button {
   flex: 0 0 auto; min-width: 38px; height: 36px; padding: 0 11px; margin: 0;
   border: 1px solid #2a3340; border-radius: 8px;

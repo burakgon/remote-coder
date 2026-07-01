@@ -10,12 +10,15 @@ export function TerminalKeyBar({
   onToggleCtrl,
   onKey,
   onCtrlChord,
+  onScroll,
   onPaste,
 }: {
   ctrlArmed: boolean;
   onToggleCtrl: () => void;
   onKey: (label: string) => void;
   onCtrlChord: (letter: string) => void;
+  /** Scroll claude's fullscreen transcript: up/down = PgUp/PgDn, bottom = jump-to-latest (Ctrl+End). */
+  onScroll: (dir: "up" | "down" | "bottom") => void;
   onPaste?: () => void;
 }) {
   const keys = [
@@ -27,6 +30,20 @@ export function TerminalKeyBar({
   const keep = (e: React.PointerEvent) => e.preventDefault(); // don't steal focus from the terminal
   return (
     <div className="rc-termkeys" role="toolbar" aria-label="Terminal keys">
+      {/* Pinned scroll cluster (stays visible while the rest of the row scrolls) — reading claude's
+          fullscreen transcript back is otherwise near-impossible on a phone: there is no swipe-able
+          terminal scrollback (alt-screen), so these send the scroll keys claude's TUI understands. */}
+      <div className="rc-termkeys__scroll">
+        <button type="button" aria-label="Scroll up" title="Scroll up" onPointerDown={keep} onClick={() => onScroll("up")}>
+          ▲
+        </button>
+        <button type="button" aria-label="Scroll down" title="Scroll down" onPointerDown={keep} onClick={() => onScroll("down")}>
+          ▼
+        </button>
+        <button type="button" aria-label="Jump to latest" title="Jump to latest" onPointerDown={keep} onClick={() => onScroll("bottom")}>
+          ⤓
+        </button>
+      </div>
       <button
         type="button"
         aria-pressed={ctrlArmed}
