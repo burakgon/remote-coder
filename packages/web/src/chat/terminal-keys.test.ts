@@ -6,6 +6,8 @@ test("mode-independent keys emit fixed sequences", () => {
   expect(KEY_SEQUENCES.Tab).toBe("\t");
   expect(KEY_SEQUENCES.PageUp).toBe("\x1b[5~");
   expect(KEY_SEQUENCES.PageDown).toBe("\x1b[6~");
+  expect(KEY_SEQUENCES.ShiftTab).toBe("\x1b[Z"); // back-tab
+  expect(KEY_SEQUENCES.Delete).toBe("\x1b[3~"); // forward-delete
   // punctuation a phone keyboard hides passes through unchanged
   expect(KEY_SEQUENCES["|"]).toBe("|");
   expect(KEY_SEQUENCES["~"]).toBe("~");
@@ -49,6 +51,7 @@ test("ctrl maps a-z and the useful control chars to control bytes", () => {
   expect(ctrlSeq("[")).toBe("\x1b");
   expect(ctrlSeq("\\")).toBe("\x1c");
   expect(ctrlSeq("]")).toBe("\x1d");
+  expect(ctrlSeq("^")).toBe("\x1e");
   expect(ctrlSeq("/")).toBe("\x1f");
   expect(ctrlSeq("_")).toBe("\x1f");
   // non-single-char input is returned unchanged

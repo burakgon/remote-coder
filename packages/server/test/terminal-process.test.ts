@@ -40,7 +40,8 @@ test("start: dedicated socket, server config chained before new-session running 
   const joined = args.join(" ");
   expect(joined).toContain("set-option -g status off");
   expect(joined).toContain("set-option -s escape-time 0");
-  expect(joined).toContain("set-option -g remain-on-exit on");
+  expect(joined).toContain("set-option -g remain-on-exit off"); // claude exit ENDS the session (no frozen pane)
+  expect(joined).toContain("set-option -g mouse off"); // browser owns selection/scroll, not tmux
   // new-session tail is exact.
   const ns = args.indexOf("new-session");
   expect(ns).toBeGreaterThan(0);

@@ -3,6 +3,8 @@
 export const KEY_SEQUENCES: Record<string, string> = {
   Esc: "\x1b",
   Tab: "\t",
+  ShiftTab: "\x1b[Z", // back-tab (reverse focus / reverse-complete in TUIs)
+  Delete: "\x1b[3~", // forward-delete
   PageUp: "\x1b[5~",
   PageDown: "\x1b[6~",
   "|": "|",
@@ -44,6 +46,7 @@ export function ctrlSeq(ch: string): string {
   if (ch === "[") return "\x1b";
   if (ch === "\\") return "\x1c";
   if (ch === "]") return "\x1d";
+  if (ch === "^") return "\x1e"; // Ctrl-^ / Ctrl-6 → RS
   if (ch === "/" || ch === "_") return "\x1f";
   return ch;
 }

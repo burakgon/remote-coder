@@ -54,11 +54,17 @@ function tmuxConfigChain(): string[] {
   const sets: Array<[scope: string, name: string, value: string]> = [
     ["-g", "status", "off"],
     ["-s", "escape-time", "0"],
-    ["-g", "mouse", "on"],
+    // mouse OFF: with mouse on, tmux captures the browser's mouse events (SGR tracking), which breaks
+    // xterm.js native text-selection/copy and wheel-scroll. claude's TUI is keyboard-driven, so leaving
+    // mouse off lets the browser own selection + scrolling — the behavior a web terminal user expects.
+    ["-g", "mouse", "off"],
     ["-g", "focus-events", "on"],
     ["-g", "set-clipboard", "on"],
     ["-g", "default-terminal", "tmux-256color"],
-    ["-g", "remain-on-exit", "on"], // claude exiting leaves a restartable [exited] pane, not a dead session
+    // remain-on-exit OFF: if claude exits, END the tmux session instead of leaving a frozen, untypeable
+    // [exited] pane that nothing respawns. The server forwards the exit to the client (which shows a
+    // Restart/Close overlay); a Restart re-attaches and `new-session -A` then spawns a FRESH claude.
+    ["-g", "remain-on-exit", "off"],
   ];
   return sets.flatMap(([scope, name, value]) => ["set-option", scope, name, value, ";"]);
 }
@@ -128,12 +134,22 @@ export class TerminalProcess extends EventEmitter {
   }
 
   write(d: string): void {
-    this.pty?.write(d);
+    try {
+      this.pty?.write(d);
+    } catch {
+      // pty gone (claude exited / detached) — drop the write rather than crash the connection.
+    }
   }
 
   resize(c: number, r: number): void {
-    // Clamp: a transient 0/NaN from a pre-layout fit() would otherwise hit ioctl(TIOCSWINSZ) and can throw.
-    this.pty?.resize(Math.max(1, Math.trunc(c) || 1), Math.max(1, Math.trunc(r) || 1));
+    // Clamp BOTH ends: a transient 0/NaN from a pre-layout fit() or an absurd client value (e.g. 1e9) would
+    // otherwise hit ioctl(TIOCSWINSZ) and throw / allocate huge line buffers. 1000 is far beyond any viewport.
+    const clamp = (n: number): number => Math.min(1000, Math.max(1, Math.trunc(n) || 1));
+    try {
+      this.pty?.resize(clamp(c), clamp(r));
+    } catch {
+      // pty gone or rejected the dims — best-effort.
+    }
   }
 
   /** Detach (kill the pty client; tmux + claude keep running). `kill:true` also kills the tmux session. */

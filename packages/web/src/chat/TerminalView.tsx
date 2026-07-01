@@ -38,9 +38,12 @@ const THEME = {
  *  production always uses the default real socket. */
 export function TerminalView({
   sessionId,
+  onClose,
   createSocket = createTerminalSocket,
 }: {
   sessionId: string;
+  /** Close/stop the session (used by the "session ended" overlay's Close button). */
+  onClose?: () => void;
   createSocket?: CreateSocket;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -53,6 +56,14 @@ export function TerminalView({
     ctrlArmedRef.current = v;
     setCtrlArmedState(v);
   };
+  // Connection lifecycle → drives the reconnect/ended overlay. `restartKey` bump remounts the effect (fresh
+  // terminal + socket → reattach, which respawns a fresh claude for an ended session).
+  const [connState, setConnState] = useState<"connecting" | "open" | "reconnecting" | "ended">("connecting");
+  const [restartKey, setRestartKey] = useState(0);
+  const restart = () => {
+    setConnState("connecting");
+    setRestartKey((k) => k + 1);
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -60,17 +71,26 @@ export function TerminalView({
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
-      // The app's mono webfont for regular text; the Canvas renderer draws block-element glyphs (the logo)
-      // as font-independent vectors, so the font never affects them.
       fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
       theme: { ...THEME },
       allowProposedApi: true,
-      scrollback: 0, // tmux owns scrollback/altscreen; an outer xterm buffer just double-buffers confusingly
+      // A finite scrollback so claude's NORMAL-buffer output (long errors, git diffs, results taller than the
+      // viewport) stays scrollable. Its full-screen TUI uses the alt-screen (tmux owns that), unaffected.
+      scrollback: 1000,
     });
     termRef.current = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
+    // Stop mobile soft keyboards from mangling terminal input: no auto-capitalize/correct/complete/spellcheck
+    // on xterm's hidden input textarea (otherwise "ls" → "Ls", flags/paths get autocorrected).
+    const helper = host.querySelector<HTMLTextAreaElement>("textarea.xterm-helper-textarea");
+    if (helper) {
+      helper.setAttribute("autocapitalize", "off");
+      helper.setAttribute("autocorrect", "off");
+      helper.setAttribute("autocomplete", "off");
+      helper.setAttribute("spellcheck", "false");
+    }
 
     let disposed = false;
     let connected = false;
@@ -85,11 +105,22 @@ export function TerminalView({
     // the bar's "Ctrl" actually work for typed keys, not just the bar's buttons.
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
-      if (ctrlArmedRef.current && e.key.length === 1) {
+      if (e.isComposing || e.keyCode === 229) return true; // IME composition — never intercept
+      if (!ctrlArmedRef.current) return true;
+      // Ctrl is armed:
+      if (e.key === "Escape") {
+        setCtrlArmed(false); // cancel the arm and swallow the Esc
+        return false;
+      }
+      if (e.altKey || e.metaKey) return true; // don't hijack Alt/Meta combos
+      if (e.key.length === 1) {
         sockRef.current?.sendInput(ctrlSeq(e.key));
         setCtrlArmed(false);
         return false;
       }
+      // Armed but a non-printable key (Enter/Backspace/Arrow/Tab/…): DISARM and let it pass normally, so a
+      // stray arm never silently turns a later letter into a destructive control byte (e.g. Ctrl-L clear).
+      setCtrlArmed(false);
       return true;
     });
 
@@ -114,9 +145,22 @@ export function TerminalView({
       connected = true;
       const sock = createSocket({
         url: terminalWsUrl(sessionId, term.cols, term.rows),
-        onData: (bytes) => term.write(bytes),
+        onData: (bytes) => {
+          if (!disposed) term.write(bytes);
+        },
         onStatus: (s) => {
-          if (s === "open") refit();
+          if (disposed) return;
+          if (s === "open") {
+            setConnState("open");
+            // Clear any stale frame from a prior connection; tmux sends a full redraw on (re)attach, so the
+            // screen repaints cleanly instead of overlaying the old one.
+            term.reset();
+            refit();
+          } else if (s === "reconnecting") {
+            setConnState("reconnecting");
+          } else if (s === "ended") {
+            setConnState("ended");
+          }
         },
       });
       sockRef.current = sock;
@@ -131,11 +175,30 @@ export function TerminalView({
     document.fonts?.ready?.then(tick).catch(() => undefined);
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => tick()) : undefined;
     ro?.observe(host);
+    // Fallback: a host that mounts hidden (display:none tab / collapsed) has clientHeight 0 and the rAF
+    // bails; ResizeObserver doesn't fire for display:none→visible in some browsers. Poll until connected.
+    const poll = setInterval(() => {
+      if (disposed || connected) {
+        clearInterval(poll);
+        return;
+      }
+      tick();
+    }, 500);
+    // Re-fit + refocus (and connect if we hadn't yet) when the tab/app returns to the foreground.
+    const onVisible = () => {
+      if (!document.hidden && !disposed) {
+        tick();
+        term.focus();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
     term.focus();
 
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
       ro?.disconnect();
       offData.dispose();
       sockRef.current?.close();
@@ -143,7 +206,7 @@ export function TerminalView({
       sockRef.current = undefined;
       termRef.current = undefined;
     };
-  }, [sessionId, createSocket]);
+  }, [sessionId, createSocket, restartKey]);
 
   // Bar keys: emit the cursor-mode-correct bytes for the CURRENT terminal mode (arrows/Home/End), then keep
   // focus on the terminal so the on-screen keyboard stays up.
@@ -158,15 +221,53 @@ export function TerminalView({
     setCtrlArmed(false);
     termRef.current?.focus();
   };
+  // Mobile paste: xterm's own paste needs a physical Ctrl/Cmd-V a phone lacks, so the bar offers a Paste
+  // button that reads the clipboard and sends it as input. Best-effort (needs a secure context + permission).
+  const canPaste = typeof navigator !== "undefined" && !!navigator.clipboard?.readText;
+  const onPaste = () => {
+    navigator.clipboard
+      ?.readText?.()
+      .then((text) => {
+        if (text) sockRef.current?.sendInput(text);
+        termRef.current?.focus();
+      })
+      .catch(() => undefined);
+  };
 
   return (
     <div className="rc-terminal">
-      <div className="rc-terminal__host" ref={hostRef} />
+      <div className="rc-terminal__stage">
+        <div className="rc-terminal__host" ref={hostRef} role="group" aria-label="Terminal" />
+        {connState === "reconnecting" && (
+          <div className="rc-term-toast" role="status">
+            <span className="rc-term-toast__dot" aria-hidden="true" /> Reconnecting…
+          </div>
+        )}
+        {connState === "ended" && (
+          <div className="rc-term-ended" role="alertdialog" aria-label="Session ended">
+            <div className="rc-term-ended__card">
+              <div className="rc-term-ended__title">claude exited</div>
+              <div className="rc-term-ended__sub">The terminal session ended.</div>
+              <div className="rc-term-ended__actions">
+                <button type="button" className="rc-term-ended__primary" onClick={restart}>
+                  Restart
+                </button>
+                {onClose && (
+                  <button type="button" className="rc-term-ended__ghost" onClick={onClose}>
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       <TerminalKeyBar
         ctrlArmed={ctrlArmed}
         onToggleCtrl={() => setCtrlArmed(!ctrlArmedRef.current)}
         onKey={onBarKey}
         onCtrlChord={onCtrlChord}
+        onPaste={canPaste ? onPaste : undefined}
       />
       <style>{terminalCss}</style>
     </div>
@@ -178,10 +279,44 @@ const terminalCss = `
   display: flex; flex-direction: column; height: 100%; min-height: 0;
   background: #0b0e14;
 }
+/* The stage is the flex-fill region + the positioning context for the reconnect/ended overlays. */
+.rc-terminal__stage { position: relative; flex: 1 1 auto; min-height: 0; }
 .rc-terminal__host {
-  flex: 1 1 auto; min-height: 0;
+  position: absolute; inset: 0;
   overflow: hidden;
 }
+/* Reconnecting toast — a small pill, top-center, non-blocking. */
+.rc-term-toast {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: 999px;
+  background: #1b2230; border: 1px solid #2a3340; color: #cdd6e4;
+  font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.rc-term-toast__dot { width: 7px; height: 7px; border-radius: 999px; background: #e5c07b; animation: rc-term-pulse 1s ease-in-out infinite; }
+@keyframes rc-term-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+/* Session-ended overlay — a centered card scrimming the dead terminal, with Restart / Close. */
+.rc-term-ended {
+  position: absolute; inset: 0; z-index: 6;
+  display: grid; place-items: center;
+  background: rgba(11,14,20,0.72); backdrop-filter: blur(2px);
+}
+.rc-term-ended__card {
+  min-width: 220px; max-width: 90%; padding: 20px;
+  background: #11151c; border: 1px solid #2a3340; border-radius: 12px;
+  text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.rc-term-ended__title { font: 600 15px/1.3 "JetBrains Mono", ui-monospace, monospace; color: #cdd6e4; }
+.rc-term-ended__sub { margin-top: 4px; font-size: 12px; color: #5c6370; }
+.rc-term-ended__actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+.rc-term-ended__primary, .rc-term-ended__ghost {
+  min-height: 38px; padding: 0 16px; border-radius: 9px; cursor: pointer;
+  font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  touch-action: manipulation;
+}
+.rc-term-ended__primary { background: #e06c75; color: #11151c; border: 1px solid #e06c75; }
+.rc-term-ended__ghost { background: transparent; color: #cdd6e4; border: 1px solid #2a3340; }
 /* The padding lives on .xterm (NOT the host): FitAddon reads padding from the terminal element, so padding
    on the host was never subtracted from the grid math → the right column / bottom row got clipped ("shifted"). */
 .rc-terminal__host .xterm { height: 100%; box-sizing: border-box; padding: 6px; }

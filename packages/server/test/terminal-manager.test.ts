@@ -34,7 +34,7 @@ test("create persists a terminal row; attach spawns pty and fans data", () => {
   expect(store.get("s1")?.mode).toBe("terminal");
 
   const seen: string[] = [];
-  const sub = m.attach("s1", (d) => seen.push(d));
+  const sub = m.attach("s1", { onData: (d) => seen.push(d) });
   expect(sub).toBeDefined();
   ptys[0]!.emit("data", "redraw");
   expect(seen).toEqual(["redraw"]);
@@ -50,7 +50,7 @@ test("rehydrate marks stored terminal sessions whose tmux session is alive", () 
 test("stop kills and removes", () => {
   const { m } = mgr();
   m.create({ id: "x", cwd: "/w" });
-  m.attach("x", () => {});
+  m.attach("x", { onData: () => {} });
   m.stop("x");
   expect(m.get("x")).toBeUndefined();
 });
@@ -61,7 +61,7 @@ test("detaching the last subscriber stops the pty without killing the tmux sessi
   const tmuxCalls: string[][] = [];
   const m = new TerminalManager({ store, claudeBin: "claude", now: () => 1, ptySpawn: spawn as never, runTmux: (a) => tmuxCalls.push(a) });
   m.create({ id: "d1", cwd: "/w" });
-  const sub = m.attach("d1", () => {});
+  const sub = m.attach("d1", { onData: () => {} });
   sub!.unsubscribe();
   // detach must NOT kill the tmux session — tmux persists so a reconnect can re-attach
   expect(tmuxCalls.some((a) => a[0] === "kill-session")).toBe(false);

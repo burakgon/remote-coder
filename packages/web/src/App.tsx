@@ -727,7 +727,7 @@ export function App() {
                       onClose={() => closeSession(active.id)}
                     />
                     <div style={{ flex: 1, minHeight: 0 }}>
-                      <TerminalView sessionId={active.id} />
+                      <TerminalView sessionId={active.id} onClose={() => closeSession(active.id)} />
                     </div>
                   </div>
                 ) : (

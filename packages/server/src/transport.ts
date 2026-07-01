@@ -20,7 +20,7 @@ import {
   parseTranscript,
   transcriptToFrames,
 } from "./transcript.js";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { SessionManager } from "./session-manager.js";
 import type { ServerRuntimeConfig } from "./server-config.js";
 import type { SessionStore, StoreMode } from "./session-store.js";
@@ -50,6 +50,12 @@ import { openSessionStore } from "./session-store.js";
 /** Default reopen window: how many of the most-recent transcript turns GET /sessions/:id returns when
  * `?full=1` is absent. Keeps opening a large session fast; "load earlier" re-requests with `?full=1`. */
 const HISTORY_WINDOW = 200;
+
+/** Terminal WS guards. Input: cap a single frame so a client can't force a huge alloc / flood the pty (1MB
+ *  still allows large pastes). Output: if the client buffers more than this undrained, close (it reconnects
+ *  and tmux redraws) rather than grow Node's heap unbounded on a slow link. */
+const MAX_TERMINAL_INPUT_BYTES = 1_000_000;
+const MAX_TERMINAL_WS_BUFFER = 16_000_000;
 
 /**
  * Map a spawn/start failure from createSession/resumeSession into an ACTIONABLE HTTP response, so the
@@ -258,7 +264,13 @@ export function createServer(
       claudeBin: config.claude.claudeBin,
       now: () => Date.now(),
     });
-  if (terminalAvailable) terminalManager.rehydrate({ liveTmuxNames: listTmuxSessions() });
+  if (terminalAvailable) {
+    // Only rehydrate (which prunes store rows for dead sessions) when we have a DEFINITIVE live-session
+    // list. `undefined` = the tmux probe failed transiently → skip, so a flaky probe never wipes the
+    // user's resumable terminal sessions.
+    const liveTmuxNames = listTmuxSessions();
+    if (liveTmuxNames) terminalManager.rehydrate({ liveTmuxNames });
+  }
   const projectsDir = deps.projectsDir ?? defaultProjectsDir();
   // Per-idempotency-key in-flight lock: two simultaneous same-key POSTs must yield ONE session.
   const inFlight = new Map<string, Promise<SessionMeta>>();
@@ -459,14 +471,28 @@ export function createServer(
         const size = Number.isInteger(c) && c > 0 && Number.isInteger(r) && r > 0 ? { cols: c, rows: r } : undefined;
         const sub = terminalManager.attach(
           id,
-          (chunk) => {
-            if (socket.readyState !== socket.OPEN) return;
-            try {
-              socket.send(Buffer.from(chunk, "utf8")); // binary frame
-            } catch {
-              sub?.unsubscribe();
-              try { socket.close(); } catch { /* already gone */ }
-            }
+          {
+            onData: (chunk) => {
+              if (socket.readyState !== socket.OPEN) return;
+              // Backpressure: if the client can't drain (slow link, backgrounded tab) and we've buffered a
+              // runaway amount of pty output, close rather than grow Node's heap unbounded. The client
+              // reconnects and tmux redraws a clean screen, so no state is lost.
+              if (socket.bufferedAmount > MAX_TERMINAL_WS_BUFFER) {
+                try { socket.close(4400, "terminal backpressure"); } catch { /* already gone */ }
+                return;
+              }
+              try {
+                socket.send(Buffer.from(chunk, "utf8")); // binary frame
+              } catch {
+                sub?.unsubscribe();
+                try { socket.close(); } catch { /* already gone */ }
+              }
+            },
+            // claude exited (the manager ended the session) → tell the client so it shows Restart/Close
+            // instead of a frozen screen. 4410 = "ended" (do NOT auto-reconnect on this code).
+            onExit: () => {
+              try { socket.close(4410, "session ended"); } catch { /* already gone */ }
+            },
           },
           size,
         );
@@ -475,6 +501,9 @@ export function createServer(
           return;
         }
         socket.on("message", (raw: Buffer) => {
+          // Cap the frame size BEFORE toString()/parse so a client can't force a huge allocation or flood
+          // the pty. A generous cap still allows large pastes.
+          if (raw.length > MAX_TERMINAL_INPUT_BYTES) return;
           let msg: { t?: string; d?: string; c?: number; r?: number };
           try { msg = JSON.parse(raw.toString()); } catch { return; }
           if (msg.t === "i" && typeof msg.d === "string") terminalManager.write(id, msg.d);
@@ -503,6 +532,25 @@ export function createServer(
       }
       if (typeof body.cwd !== "string") {
         reply.code(400).send({ error: "cwd is required" });
+        return;
+      }
+      // Terminal sessions count toward the SAME live-session cap as chat (a tmux+claude pty is just as
+      // heavy) — otherwise terminal creates were an uncapped host-DoS hole.
+      const liveTerminals = terminalManager.list().filter((t) => t.status === "running").length;
+      if (config.maxSessions > 0 && hub.liveSessionCount() + liveTerminals >= config.maxSessions) {
+        reply.code(429).send({ error: sessionCapMessage });
+        return;
+      }
+      // Validate the cwd up-front (it's a real directory) so a bad path fails the CREATE with a clear error
+      // instead of silently failing later when the pty lazily spawns on first attach.
+      try {
+        const s = await stat(body.cwd);
+        if (!s.isDirectory()) {
+          reply.code(400).send({ error: `cwd is not a directory: ${body.cwd}` });
+          return;
+        }
+      } catch {
+        reply.code(400).send({ error: `cwd does not exist: ${body.cwd}` });
         return;
       }
       const id = randomUUID();
