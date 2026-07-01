@@ -9,5 +9,6 @@
     "moduleResolution": "Bundler",
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["src/screenshot"]
 }

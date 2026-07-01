@@ -4,9 +4,9 @@
 
 # Remote Coder
 
-### Claude Code on your machine — fully driven from your phone.
+### The real Claude Code — running on your machine, driven from your phone.
 
-A self-hosted web app that runs the **real `claude` CLI** with your Claude subscription and puts it in your pocket: start new sessions, answer every prompt, hand files back and forth, stop and rewind — without ever touching the terminal it runs in.
+A self-hosted app that runs the **actual `claude` CLI** on your Claude subscription and puts its **real terminal UI** in your pocket. Not a chat that reimplements Claude Code — a live terminal bridged straight to the `claude` TUI running on your machine. What you'd see at your desk, you now see on your phone: the same prompts, the same questions, the same subagents, the same everything.
 
 [![Stars](https://img.shields.io/github/stars/burakgon/remote-coder?style=flat-square&color=f77a44)](https://github.com/burakgon/remote-coder/stargazers)
 &nbsp;[![License: MIT](https://img.shields.io/badge/License-MIT-1c1c20?style=flat-square)](LICENSE)
@@ -17,9 +17,11 @@ A self-hosted web app that runs the **real `claude` CLI** with your Claude subsc
 
 <br/>
 
-<img src="docs/media/chat-mobile-top.png" alt="Remote Coder chat on a phone — streaming markdown, a syntax-highlighted code block and a coverage table" width="48%">
+<img src="docs/media/terminal-mobile.png" alt="Remote Coder on a phone — the real claude TUI streaming in a terminal, with the mobile key bar pinned below" width="31%">
 &nbsp;
-<img src="docs/media/question-mobile.png" alt="Answering one of Claude's multiple-choice questions from the phone, with code previews per option" width="48%">
+<img src="docs/media/keybar-mobile.png" alt="The Termux-style key bar and select-to-copy overlay that make a full-screen TUI usable by touch" width="31%">
+&nbsp;
+<img src="docs/media/sessions-mobile.png" alt="The sessions sheet — every session, which one needs you, and your subscription usage" width="31%">
 
 <br/><br/>
 
@@ -43,65 +45,69 @@ curl -fsSL https://raw.githubusercontent.com/burakgon/remote-coder/main/scripts/
 
 ## What it is
 
-You run a small server on your dev machine. It launches the **real Claude Code CLI** as a subprocess — on your own subscription, no API key — and serves a polished, installable app you open from your phone or any browser. Everything a terminal can't do from your pocket now works: streaming chat with markdown and code, **prompts you can actually answer**, files in both directions, multiple sessions, resume, stop, and rewind.
+You run a small server on your dev machine. It launches the **real Claude Code CLI** as a subprocess — on your own subscription, no API key — inside a persistent terminal, and serves a polished, installable app you open from your phone or any browser. The app is a **true terminal** (xterm.js) wired straight to that `claude` session, so you're not looking at a reinterpretation of Claude Code — you're looking at **Claude Code itself**, live, from anywhere.
+
+That framing is the whole point:
+
+- **Nothing is reimplemented, so nothing is lost.** Permission prompts, multiple-choice questions, subagent panels, slash commands, thinking, diffs — they all just work, because it's the genuine TUI, not a bespoke chat trying to keep up with it.
+- **It survives real life.** The session lives in `tmux` on your machine. Lock your phone, lose signal, close the app, switch networks — reconnect and it re-attaches exactly where it was, command still running.
+- **It's actually usable by thumb.** A full-screen terminal on a touchscreen is normally miserable; the hard part Remote Coder solves is the ergonomics — a Termux-style key bar, sticky Ctrl, two-finger scroll to read back, and tap-to-select copy.
 
 It's **host-native** (your machine, your files, your `~/.claude`), **secure by default** (a mandatory access token), and **MIT** licensed.
 
 ## Why it exists
 
-Anthropic ships first-party remote control and chat bots — but they can only **resume** a session that was already started *at the machine*, and the chat bots **can't answer Claude's permission prompts**. So the moment Claude needs a decision, you're stuck until you're back at your desk.
+Anthropic ships first-party remote control and chat bots — but `claude` remote-control can only **resume** a session that was already started *at the machine*, and the third-party chat bots **reinterpret** Claude Code into a messaging UI, so they drift, drop features, and can't answer its prompts. The moment Claude needs a decision, you're stuck until you're back at your desk.
 
-Remote Coder is the one that closes that gap:
+Remote Coder closes that gap by refusing to reinterpret anything — it just gives you the real terminal:
 
 |  | `claude remote-control` | Telegram / Discord bots | **Remote Coder** |
 |---|:---:|:---:|:---:|
 | Start a **brand-new** session remotely | resume only | ✗ | **✓** |
-| Approve / deny tool use from your phone | — | ✗ | **✓** |
-| Answer multiple-choice questions | — | partial | **✓** |
-| Claude sends you files & images inline | ✗ | Telegram only | **✓** |
-| Stop a turn · rewind code & chat | — | ✗ | **✓** |
-| Watch every subagent live · drill into each | — | ✗ | **✓** |
-| Context meter · know when to `/compact` | — | ✗ | **✓** |
+| The **real** Claude Code TUI, nothing reinterpreted | resume only | ✗ | **✓** |
+| Approve/deny tool use · answer questions, as at your desk | — | ✗ | **✓** |
+| Survives a dropped connection / closed app *(tmux)* | ✗ | ✗ | **✓** |
+| Files **to and from** the agent | ✗ | Telegram only | **✓** |
+| Run **several** sessions at once | — | ✗ | **✓** |
 | Installable app · self-hosted · MIT | — | — | **✓** |
 
 ## What you can do
 
-### A real chat, in your pocket
-Streaming responses with full markdown, syntax-highlighted code, tables, and collapsible tool steps. Manage many sessions at once from a live rail that shows you exactly which one needs you.
+### The real Claude Code, live in your pocket
+The app renders the actual `claude` fullscreen TUI in a real terminal — colors, box-drawing, the logo, the lot. When Claude asks to run a tool, you get **its own permission prompt**; when it asks a multiple-choice question, you get **its own picker**; when it dispatches **subagents**, you watch them exactly as you would under the textbox at your desk. There's no feature to fall behind on, because it *is* Claude Code.
 
 <div align="center">
-<img src="docs/media/chat-desktop.png" alt="Remote Coder on desktop — the session rail, the chat, and a syntax-highlighted code block" width="900">
+<img src="docs/media/desktop.png" alt="Remote Coder on desktop — the sessions rail beside a live claude terminal session" width="900">
 </div>
 
-### Answer Claude's prompts — from anywhere
-When Claude asks to run a tool you get a clean **Allow / Deny / Always-allow** card (destructive commands are flagged). When it asks a question you get real options — with an **“Other…”** free-text answer and **previews per choice** so you can *see* before you pick. This is the thing the chat bots can't do.
+### Made for thumbs, not just mirrored
+A TUI on a phone is only good if you can actually drive it. Remote Coder adds a **Termux-style key bar** (Esc, Tab, arrows, Home/End, PgUp/PgDn, `/ - | ~`, `^C`, `^D`, Paste) with a **sticky Ctrl** that turns your next keystroke into a control chord. **Two fingers scroll** back through the transcript, a pinned **Select** button opens a plain, selectable copy of the screen for the OS copy menu, and `--dangerously-skip-permissions` is a clearly-marked, **per-session** toggle when you want it.
 
 <div align="center">
-<img src="docs/media/wizard-mobile.png" alt="The git-aware directory picker for starting a new session" width="31%">
-<img src="docs/media/rewind-mobile.png" alt="The rewind sheet — restore code, rewind the conversation, or both" width="31%">
+<img src="docs/media/keybar-mobile.png" alt="The mobile key bar with sticky Ctrl, plus the select-text overlay for copying" width="31%">
+<img src="docs/media/newsession-mobile.png" alt="The git-aware directory picker for starting a brand-new session remotely" width="31%">
 <img src="docs/media/login-mobile.png" alt="The token login screen" width="31%">
 </div>
 
-### Files both ways · resume · stop · rewind
-Upload images and files, browse and download host files, and just ask Claude to **send you a chart or file** — it appears inline. **Resume** any past conversation, **stop** a turn mid-flight, and **rewind** to a checkpoint to undo the code, the conversation, or both — the tappable equivalent of Claude Code's `Esc Esc`.
+### Never lose your place
+Every session is a `tmux` session on your machine, and the terminal WebSocket **re-attaches** on reconnect. A locked phone, a subway tunnel, a killed app, a Wi-Fi→cellular hop — none of it interrupts the work. Come back and Claude is still there, still running, right where you left it.
 
-### Watch every subagent it spawns
-When Claude dispatches a **subagent**, it surfaces as a live **mission card** in the chat and a chip in the **agents tray** above the composer — each carrying its type, status, and what it's doing right now. Tap one to drill into its own **transcript**: the task it was handed, its tool calls and findings, its result, and its token/time cost. Parallel agents, nested agents — the same visibility the `claude` CLI gives you under the textbox, now in your pocket.
+### Files, both ways
+Upload images and files into a session, browse and download host files, and just ask Claude to **send you a file or image** — it lands in the session's **Files** panel to view full-size or download. Screenshots in, a generated chart out, all from the phone.
 
 <div align="center">
-<img src="docs/media/subagents-mobile.png" alt="Subagent mission cards in the chat and the agents tray above the composer — each with type, status, and live activity" width="48%">
-<img src="docs/media/subagent-view-mobile.png" alt="The subagent drill-in — its task, its transcript, and its result with token and time usage" width="48%">
+<img src="docs/media/files-mobile.png" alt="The Files panel — images and files exchanged with Claude, viewable full-size and downloadable" width="31%">
+<img src="docs/media/ota-mobile.png" alt="The in-app update banner and changelog panel with a one-tap Update now" width="31%">
 </div>
+
+### Many sessions, and you know which one needs you
+A live **sessions rail** (a bottom sheet on mobile, a permanent pane on desktop) lists every running `claude`, flags the ones **waiting on you**, and shows your **subscription usage** (the 5-hour and weekly limits) so you know how much runway is left. Start a new one anywhere via a **git-aware directory picker**.
 
 ### Built to live on your phone
-An installable **PWA** (Add to Home Screen, no app store), **Web Push** when a session finishes or needs you, and model + effort switches as first-class controls.
+An installable **PWA** (Add to Home Screen, no app store) and **Web Push** when a session finishes or needs a decision — so you can walk away and get pulled back only when it matters.
 
 ### Updates itself — one tap, no terminal
-When a new version lands on GitHub, the app shows an **update notice** with the **version and a grouped changelog**. Tap **Update now** and the server pulls, rebuilds, and restarts itself, then reconnects to the new version — no SSH, no `git pull`. A failed build leaves the running server untouched.
-
-<div align="center">
-<img src="docs/media/ota-mobile.png" alt="The in-app update banner and changelog panel — version, grouped changes (New / Fixes / Improvements), and a one-tap Update now" width="300">
-</div>
+When a new version lands on GitHub, the app shows an **update notice** with the version and a grouped changelog. Tap **Update now** and the server pulls, rebuilds, and restarts itself, then reconnects on the new version — no SSH, no `git pull`. A failed build leaves the running server untouched.
 
 ## Quickstart
 
@@ -111,7 +117,7 @@ When a new version lands on GitHub, the app shows an **update notice** with the 
 curl -fsSL https://raw.githubusercontent.com/burakgon/remote-coder/main/scripts/install.sh | bash
 ```
 
-It preflights Node/pnpm/`claude` and tells you exactly what's missing. Prefer to do it by hand? Read on.
+It preflights Node/pnpm/`claude`/`tmux` and tells you exactly what's missing. Prefer to do it by hand? Read on.
 
 ### Manual install
 
@@ -119,8 +125,9 @@ You need:
 
 - **Node ≥ 22.** Check with `node --version`.
 - **[pnpm](https://pnpm.io/).** The easiest way is `corepack enable` (ships with Node) — then `pnpm` just works in the repo. Otherwise `npm i -g pnpm`.
-- **Claude Code installed and logged in *on this machine*.** Run `claude` once in a terminal here and complete the login — there is **no remote login**, and a missing/unauthenticated `claude` is the #1 first-run failure (the app will tell you which it is, and `/diag` shows `claude.available`).
-- A working **native build of `better-sqlite3`.** `pnpm install` builds it; if your toolchain can't, the server still boots but **falls back to a non-durable in-memory store** (sessions vanish on every restart). It now logs a loud warning and `/diag` reports `storeMode: "memory-fallback"` — see [Troubleshooting](docs/troubleshooting.md).
+- **[tmux](https://github.com/tmux/tmux).** Each session runs inside tmux so it survives disconnects. `brew install tmux` (macOS) / `apt install tmux` (Debian/Ubuntu). Run it with a UTF-8 locale so Claude's box-drawing glyphs render.
+- **Claude Code installed and logged in *on this machine*.** Run `claude` once in a terminal here and complete the login — there is **no remote login**, and a missing/unauthenticated `claude` is the #1 first-run failure (the app tells you which it is, and `/diag` shows `claude.available`).
+- A working **native build of `better-sqlite3`.** `pnpm install` builds it; if your toolchain can't, the server still boots but **falls back to a non-durable in-memory store** (sessions vanish on every restart). It logs a loud warning and `/diag` reports `storeMode: "memory-fallback"` — see [Troubleshooting](docs/troubleshooting.md).
 
 ```bash
 git clone https://github.com/burakgon/remote-coder && cd remote-coder
@@ -133,7 +140,7 @@ It generates an access token and prints a ready-to-use link:
 
 ```
 Remote Coder is running.
-  Open this link to connect:
+  Access token generated and stored in the data dir. Open this link to connect:
     http://127.0.0.1:4280/?token=<token>
 ```
 
@@ -169,16 +176,14 @@ Open the printed `https://…` link on your phone, paste the token (or use the `
 | `NO_TOKEN` | _(unset)_ | `1` = tokenless dev mode. **Loopback binds only** — it refuses to start non-loopback. |
 | `FS_ROOT` | `$HOME` (then cwd) | Confine the file picker / fs endpoints to a subtree. **Does not sandbox the agent** (see Security). |
 | `MAX_UPLOAD_BYTES` | `26214400` | Upload size cap (25 MiB). |
-| `REMOTE_CODER_DATA_DIR` | `~/.config/remote-coder`¹ | SQLite DBs, token, VAPID keys, **logs** (mode 0700). |
+| `REMOTE_CODER_DATA_DIR` | `~/.config/remote-coder`¹ | SQLite DB, token, VAPID keys, **logs** (mode 0700). |
 | `REMOTE_CODER_PUBLIC_URL` | _(bind URL)_ | Your user-facing origin (the tunnel URL). **Set this** behind a tunnel: it's the click-target for push notifications and an allowed Origin. |
 | `TRUST_PROXY` | `false` | `1`/`true` = honor `X-Forwarded-For` behind a reverse proxy, so the per-client lockout/rate-limit key on the real client IP (not the proxy's). |
 | `REMOTE_CODER_ALLOWED_ORIGINS` | _(empty)_ | Comma-separated extra Origins the CSWSH guard allows (beyond same-origin/loopback/`PUBLIC_URL`). |
 | `REMOTE_CODER_RATE_LIMIT_RPM` | `600` | Sustained requests/minute per client. `0` **disables** the limiter. |
 | `REMOTE_CODER_RATE_LIMIT_BURST` | `120` | Instantaneous burst allowance (token-bucket). |
-| `REMOTE_CODER_MAX_SESSIONS` | `25` | Max concurrent **live** `claude` processes; new spawns get `429` at the cap. `0` = unbounded. |
+| `REMOTE_CODER_MAX_SESSIONS` | `25` | Max concurrent **live** `claude` sessions; new spawns get `429` at the cap. `0` = unbounded. |
 | `CLAUDE_BIN` | `claude` | Path/name of the Claude Code CLI to spawn (must be on the service's PATH). |
-| `CLAUDE_DEFAULT_MODEL` | _(CLI default)_ | Default model for new sessions. |
-| `CLAUDE_DEFAULT_EFFORT` | _(CLI default)_ | Default effort/thinking level for new sessions. |
 | `VAPID_SUBJECT` | `mailto:remote-coder@localhost` | `mailto:`/URL contact in the Web Push VAPID claim. |
 | `WEB_DIR` | _(bundled)_ | Override the path to the built PWA (`packages/web/dist`). |
 | `XDG_CONFIG_HOME` | _(unset)_ | When `REMOTE_CODER_DATA_DIR` is unset, the data dir is `$XDG_CONFIG_HOME/remote-coder`. |
@@ -202,7 +207,7 @@ Remote Coder is, by design, **remote code execution on your own machine** — th
 
 - **Single mandatory token** on every request and WebSocket — constant-time check, per-client lockout. It is a **single shared secret** (not per-user/per-device): anyone with it has full access. It **refuses to start** on a non-loopback bind without one. Rotate it anytime with `POST /token/rotate` (the old token is honored for a 60s grace, then rejected; the app re-stores the new one).
 - **HTTPS for anything remote** — a plain public port leaks the token. Always tunnel.
-- **The permission gate stays on** — you approve every tool from your phone. `--dangerously-skip-permissions` is per-session, **off by default**, and clearly marked.
+- **The permission gate stays on** — you approve every tool from the terminal, exactly as you would at your desk. `--dangerously-skip-permissions` is per-session, **off by default**, and clearly marked.
 - **⚠️ The agent is NOT sandboxed.** The `claude` subprocess runs as **you**, with your full machine access — it can run any command and touch any file your user can. `FS_ROOT` only scopes Remote Coder's *own* file-browser/upload/download endpoints; it does **not** confine what `claude` itself can read or write. Run this only on a machine you'd hand someone with your shell.
 - **Defense-in-depth controls** (all on by default, tunable — see the env table): a **cross-origin (CSWSH) guard** rejects a present, cross-origin, non-allow-listed `Origin` (`REMOTE_CODER_ALLOWED_ORIGINS`, `REMOTE_CODER_PUBLIC_URL`); a per-client **rate limiter** (`REMOTE_CODER_RATE_LIMIT_RPM`/`_BURST`, `0` disables); a **concurrency cap** on live sessions (`REMOTE_CODER_MAX_SESSIONS`); and `TRUST_PROXY` so those keys on the real client IP behind a proxy.
 
@@ -217,7 +222,7 @@ Remote Coder is, by design, **remote code execution on your own machine** — th
 
 If it's useful to you, a ⭐ genuinely helps other Claude Code users find it.
 
-Full-TypeScript pnpm monorepo — `protocol` · `server` · `web` · `cli`.
+Full-TypeScript pnpm monorepo — `server` · `web` · `cli`. The server bridges a terminal WebSocket to the `claude` TUI running under `tmux` (via `node-pty`); the web app is an installable React PWA built on `xterm.js`.
 
 ```bash
 pnpm install && pnpm build
