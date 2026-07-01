@@ -64,17 +64,10 @@ export function TerminalView({
     ctrlArmedRef.current = v;
     setCtrlArmedState(v);
   };
-  // Select mode: when ON, we stop xterm from consuming touch (which would forward it to claude as a mouse
-  // event) so the browser's NATIVE text selection takes over — on Android that is the OS's own long-press
-  // selection handles, the closest a web terminal gets to Termux. Ref drives the (once-attached) capture
-  // listeners; state drives the button highlight + the host's `--select` class.
-  const selectModeRef = useRef(false);
-  const [selectMode, setSelectModeState] = useState(false);
-  const setSelectMode = (v: boolean) => {
-    selectModeRef.current = v;
-    setSelectModeState(v);
-    if (!v) window.getSelection?.()?.removeAllRanges?.();
-  };
+  // "Select text" overlay: in-place native selection over the LIVE xterm doesn't work on mobile (xterm owns
+  // touch + claude's mouse mode eats it). Instead the Select button opens a scrim of the buffer as PLAIN,
+  // natively-selectable text — long-press selection + the OS copy menu just work there. `null` = closed.
+  const [selectText, setSelectText] = useState<string | null>(null);
   // Connection lifecycle → drives the reconnect/ended overlay. `restartKey` bump remounts the effect (fresh
   // terminal + socket → reattach, which respawns a fresh claude for an ended session).
   const [connState, setConnState] = useState<"connecting" | "open" | "reconnecting" | "ended">("connecting");
@@ -236,21 +229,48 @@ export function TerminalView({
     document.addEventListener("visibilitychange", onVisible);
     term.focus();
 
-    // SELECT MODE plumbing: while armed, swallow the pointer/touch BEFORE xterm sees it (capture phase +
-    // stopPropagation, never preventDefault) so the browser's native selection engages instead of xterm
-    // forwarding a mouse event to claude. A no-op when select mode is off.
-    const suppressForSelect = (e: Event) => {
-      if (selectModeRef.current) e.stopPropagation();
+    // TWO-FINGER vertical drag → scroll claude's transcript (PgUp/PgDn). Two fingers so it NEVER conflicts
+    // with one-finger tap/interact. Sends one scroll key per ~SCROLL_STEP px dragged; fingers DOWN reveal
+    // older text (PgUp), fingers UP go toward the latest (PgDn).
+    const SCROLL_STEP = 44;
+    const avgY = (t: TouchList) => ((t[0]?.clientY ?? 0) + (t[1]?.clientY ?? 0)) / 2;
+    let twoFingerY: number | null = null;
+    let scrollAccum = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        twoFingerY = avgY(e.touches);
+        scrollAccum = 0;
+      }
     };
-    const selectEvents = ["pointerdown", "mousedown", "touchstart", "touchmove"];
-    for (const ev of selectEvents) host.addEventListener(ev, suppressForSelect, true);
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || twoFingerY === null) return;
+      e.preventDefault(); // claim the gesture from the browser's own two-finger scroll/zoom
+      const y = avgY(e.touches);
+      scrollAccum += y - twoFingerY;
+      twoFingerY = y;
+      while (Math.abs(scrollAccum) >= SCROLL_STEP) {
+        const up = scrollAccum > 0;
+        sockRef.current?.sendInput(up ? "\x1b[5~" : "\x1b[6~");
+        scrollAccum += up ? -SCROLL_STEP : SCROLL_STEP;
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) twoFingerY = null;
+    };
+    host.addEventListener("touchstart", onTouchStart, { passive: true });
+    host.addEventListener("touchmove", onTouchMove, { passive: false });
+    host.addEventListener("touchend", onTouchEnd, { passive: true });
+    host.addEventListener("touchcancel", onTouchEnd, { passive: true });
 
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
-      for (const ev of selectEvents) host.removeEventListener(ev, suppressForSelect, true);
+      host.removeEventListener("touchstart", onTouchStart);
+      host.removeEventListener("touchmove", onTouchMove);
+      host.removeEventListener("touchend", onTouchEnd);
+      host.removeEventListener("touchcancel", onTouchEnd);
       ro?.disconnect();
       offData.dispose();
       sockRef.current?.close();
@@ -277,22 +297,26 @@ export function TerminalView({
     sockRef.current?.sendInput(seq);
     termRef.current?.focus();
   };
-  const onToggleSelect = () => setSelectMode(!selectModeRef.current);
-  // Copy to the clipboard: prefer a NATIVE browser selection (what select mode produces), then xterm's own
-  // selection, else fall back to the whole VISIBLE screen — so a Copy tap always yields something useful.
-  const onCopy = () => {
+  // Dump the terminal buffer (scrollback + visible) to plain text — the source for both Copy and the overlay.
+  const dumpBuffer = (): string => {
     const term = termRef.current;
+    if (!term) return "";
+    const buf = term.buffer.active;
+    const lines: string[] = [];
+    for (let i = 0; i < buf.length; i++) lines.push(buf.getLine(i)?.translateToString(true) ?? "");
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "");
+  };
+  // Copy: a NATIVE selection if the user made one, else xterm's own, else the whole buffer — so a Copy tap
+  // always yields something useful without needing a selection at all.
+  const onCopy = () => {
     const native = typeof window !== "undefined" ? (window.getSelection?.()?.toString() ?? "") : "";
-    const xtermSel = term?.getSelection() ?? "";
-    let text = native.trim() ? native : xtermSel.trim() ? xtermSel : "";
-    if (!text && term) {
-      const buf = term.buffer.active;
-      const rows: string[] = [];
-      for (let i = 0; i < term.rows; i++) rows.push(buf.getLine(buf.viewportY + i)?.translateToString(true) ?? "");
-      text = rows.join("\n").replace(/\s+$/, "");
-    }
+    const xtermSel = termRef.current?.getSelection() ?? "";
+    const text = native.trim() ? native : xtermSel.trim() ? xtermSel : dumpBuffer();
     if (text) void navigator.clipboard?.writeText?.(text).catch(() => undefined);
   };
+  // Select: open a scrim of the buffer as plain, natively-selectable text (long-press to select → OS copy
+  // menu). Reliable because it's ordinary HTML text, not the live xterm (which swallows touch on mobile).
+  const onOpenSelect = () => setSelectText(dumpBuffer() || " ");
   const onCtrlChord = (letter: string) => {
     sockRef.current?.sendInput(ctrlSeq(letter));
     setCtrlArmed(false);
@@ -337,12 +361,7 @@ export function TerminalView({
         filesCount={files.length}
       />
       <div className="rc-terminal__stage">
-        <div
-          className={`rc-terminal__host${selectMode ? " rc-terminal__host--select" : ""}`}
-          ref={hostRef}
-          role="group"
-          aria-label="Terminal"
-        />
+        <div className="rc-terminal__host" ref={hostRef} role="group" aria-label="Terminal" />
         {connState === "reconnecting" && (
           <div className="rc-term-toast" role="status">
             <span className="rc-term-toast__dot" aria-hidden="true" /> Reconnecting…
@@ -366,6 +385,28 @@ export function TerminalView({
             </div>
           </div>
         )}
+        {selectText !== null && (
+          <div className="rc-term-select" role="dialog" aria-label="Select text">
+            <div className="rc-term-select__bar">
+              <span className="rc-term-select__hint">Long-press to select · then Copy</span>
+              <button
+                type="button"
+                className="rc-term-select__btn"
+                onClick={() => {
+                  const s = typeof window !== "undefined" ? (window.getSelection?.()?.toString() ?? "") : "";
+                  const text = s.trim() ? s : selectText;
+                  if (text) void navigator.clipboard?.writeText?.(text).catch(() => undefined);
+                }}
+              >
+                Copy all
+              </button>
+              <button type="button" className="rc-term-select__btn" onClick={() => setSelectText(null)}>
+                Close
+              </button>
+            </div>
+            <pre className="rc-term-select__text">{selectText}</pre>
+          </div>
+        )}
       </div>
       <TerminalKeyBar
         ctrlArmed={ctrlArmed}
@@ -374,8 +415,7 @@ export function TerminalView({
         onCtrlChord={onCtrlChord}
         onScroll={onScroll}
         onCopy={onCopy}
-        selectMode={selectMode}
-        onToggleSelect={onToggleSelect}
+        onSelect={onOpenSelect}
         onPaste={canPaste ? onPaste : undefined}
       />
       <TerminalFiles
@@ -453,15 +493,31 @@ const terminalCss = `
 .rc-terminal__host .xterm, .rc-terminal__host .xterm * { letter-spacing: normal; }
 /* xterm.css hardcodes the viewport background to #000; match the theme so there's no black seam on resize. */
 .rc-terminal__host .xterm-viewport { background-color: #0b0e14 !important; }
-/* SELECT MODE: let the browser's NATIVE selection work on the rendered rows. xterm sets user-select:none to
-   drive its OWN selection overlay; we override so long-press selection + the native copy menu engage on touch
-   (on Android that's the OS's own selection handles — the closest to Termux). An inset ring signals it's on. */
-.rc-terminal__host--select { box-shadow: inset 0 0 0 2px #3b82f6cc; }
-.rc-terminal__host--select .xterm-screen { cursor: text; }
-.rc-terminal__host--select .xterm-rows,
-.rc-terminal__host--select .xterm-rows * {
-  -webkit-user-select: text !important;
-  user-select: text !important;
+/* "Select text" overlay: a scrim over the terminal showing the buffer as PLAIN, natively-selectable text so
+   long-press selection + the OS copy menu work (the live xterm swallows touch on mobile). */
+.rc-term-select {
+  position: absolute; inset: 0; z-index: 7;
+  display: flex; flex-direction: column;
+  background: #0b0e14; /* opaque so the live terminal underneath never repaints over the selectable text */
+}
+.rc-term-select__bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid #1e2530; background: #11151c;
+}
+.rc-term-select__hint { flex: 1 1 auto; min-width: 0; color: #5c6370; font-size: 12px; }
+.rc-term-select__btn {
+  flex: 0 0 auto; height: 34px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid #2a3340; background: #1b2230; color: #cdd6e4;
+  font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  touch-action: manipulation;
+}
+.rc-term-select__text {
+  flex: 1 1 auto; margin: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  overflow: auto; -webkit-overflow-scrolling: touch;
+  color: #cdd6e4; background: #0b0e14;
+  font: 13px/1.45 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word;
+  -webkit-user-select: text; user-select: text;
 }
 
 /* Termux-style extra-keys row: a horizontally scrollable, touch-friendly key strip pinned below the
@@ -494,8 +550,7 @@ const terminalCss = `
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .rc-termkeys button:active { background: #2a3340; }
-.rc-termkeys .rc-termkeys__ctrl.is-on,
-.rc-termkeys__sel.is-on { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.rc-termkeys .rc-termkeys__ctrl.is-on { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 /* The on-screen key bar exists for devices WITHOUT a physical keyboard. Hide it only where the PRIMARY
    pointer is a mouse/trackpad (a real desktop) — keyed off INPUT TYPE, not width, so a FOLDABLE phone
    (wide when unfolded but still touch, even with an S-Pen as a secondary pointer) keeps the keys. */

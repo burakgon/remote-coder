@@ -12,8 +12,7 @@ export function TerminalKeyBar({
   onCtrlChord,
   onScroll,
   onCopy,
-  selectMode,
-  onToggleSelect,
+  onSelect,
   onPaste,
 }: {
   ctrlArmed: boolean;
@@ -22,12 +21,10 @@ export function TerminalKeyBar({
   onCtrlChord: (letter: string) => void;
   /** Scroll claude's fullscreen transcript: up/down = PgUp/PgDn, bottom = jump-to-latest (Ctrl+End). */
   onScroll: (dir: "up" | "down" | "bottom") => void;
-  /** Copy the current selection (or the visible screen) to the clipboard. */
+  /** Copy the current selection (or the whole buffer) to the clipboard. */
   onCopy: () => void;
-  /** Whether native text-selection mode is armed (drives the toggle highlight). */
-  selectMode: boolean;
-  /** Toggle native text-selection mode (suppresses xterm touch so the browser's own selection works). */
-  onToggleSelect: () => void;
+  /** Open the "select text" overlay — a plain, natively-selectable copy of the buffer. */
+  onSelect: () => void;
   onPaste?: () => void;
 }) {
   const keys = [
@@ -55,14 +52,7 @@ export function TerminalKeyBar({
         <button type="button" aria-label="Copy screen or selection" title="Copy screen (or selection)" onPointerDown={keep} onClick={onCopy}>
           Copy
         </button>
-        <button
-          type="button"
-          aria-pressed={selectMode}
-          title="Select text — tap to arm, then long-press to select; tap Copy"
-          className={selectMode ? "rc-termkeys__sel is-on" : "rc-termkeys__sel"}
-          onPointerDown={keep}
-          onClick={onToggleSelect}
-        >
+        <button type="button" aria-label="Select text" title="Select text (long-press to select, then Copy)" onPointerDown={keep} onClick={onSelect}>
           Select
         </button>
       </div>
