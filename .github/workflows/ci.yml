@@ -18,9 +18,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # pnpm 11.9.0 requires Node >= 22.13 (it imports the built-in node:sqlite). On Node 20 the
-          # setup step crashed with ERR_UNKNOWN_BUILTIN_MODULE before any build/test ran.
-          node-version: 22
+          # Node 24 (current LTS) — kept on the SAME major as the prod host so "green on CI" means
+          # "runs on prod". pnpm 11.9.0 needs Node >= 22.13 (it imports the built-in node:sqlite); 24
+          # satisfies that. (Node 20 crashed setup with ERR_UNKNOWN_BUILTIN_MODULE before anything ran.)
+          node-version: 24
           cache: pnpm
 
       # better-sqlite3 is a native dep gated by pnpm's build allowlist
