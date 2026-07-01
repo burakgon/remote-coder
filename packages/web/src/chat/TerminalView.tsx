@@ -76,23 +76,27 @@ export function TerminalView({
   const [files, setFiles] = useState<TermFile[]>([]);
   const [filesOpen, setFilesOpen] = useState(false);
   const [uploadError, setUploadError] = useState<string | undefined>();
-  // One-time discoverability hint for the (non-obvious) two-finger scroll gesture. Touch devices only —
-  // desktop scrolls with the wheel/trackpad natively — and shown ONCE ever (localStorage). Auto-dismisses.
+  // Discoverability hint for the (non-obvious) two-finger scroll gesture. Touch devices only — desktop
+  // scrolls with the wheel/trackpad natively. Shows on EVERY terminal open UNTIL the user's first two-finger
+  // scroll marks it "learned" (then never again), capped at 6 opens so someone who never scrolls isn't
+  // nagged forever. Auto-dismisses each time.
   const [showScrollHint, setShowScrollHint] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
-    let seen = false;
+    let learned = false;
+    let shows = 0;
     try {
-      seen = window.localStorage?.getItem("rc-scroll-hint-v1") === "1";
+      learned = window.localStorage?.getItem("rc-scroll-hint-learned") === "1";
+      shows = Number(window.localStorage?.getItem("rc-scroll-hint-shows") ?? 0) || 0;
     } catch {
       /* storage blocked (private mode) — just show it */
     }
-    if (!coarse || seen) return;
+    if (!coarse || learned || shows >= 6) return;
     const show = window.setTimeout(() => setShowScrollHint(true), 700);
     const hide = window.setTimeout(() => setShowScrollHint(false), 6000);
     try {
-      window.localStorage?.setItem("rc-scroll-hint-v1", "1");
+      window.localStorage?.setItem("rc-scroll-hint-shows", String(shows + 1));
     } catch {
       /* ignore */
     }
@@ -261,6 +265,18 @@ export function TerminalView({
     const avgY = (t: TouchList) => ((t[0]?.clientY ?? 0) + (t[1]?.clientY ?? 0)) / 2;
     let twoFingerY: number | null = null;
     let scrollAccum = 0;
+    // The first real two-finger scroll = the user LEARNED the gesture → dismiss the hint + never show again.
+    let scrollLearned = false;
+    const markScrollLearned = () => {
+      if (scrollLearned) return;
+      scrollLearned = true;
+      setShowScrollHint(false);
+      try {
+        window.localStorage?.setItem("rc-scroll-hint-learned", "1");
+      } catch {
+        /* ignore */
+      }
+    };
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         twoFingerY = avgY(e.touches);
@@ -274,6 +290,7 @@ export function TerminalView({
       scrollAccum += y - twoFingerY;
       twoFingerY = y;
       while (Math.abs(scrollAccum) >= SCROLL_STEP) {
+        markScrollLearned();
         const up = scrollAccum > 0;
         sockRef.current?.sendInput(up ? "\x1b[5~" : "\x1b[6~");
         scrollAccum += up ? -SCROLL_STEP : SCROLL_STEP;
