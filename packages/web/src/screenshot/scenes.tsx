@@ -12,54 +12,16 @@ import { TerminalFiles } from "../chat/TerminalFiles";
 import { UpdatePanel } from "../update/UpdatePanel";
 import { LoginScreen } from "../auth/LoginScreen";
 import type { SessionMeta, UsageInfo, VersionInfo, DirListing } from "../types/server";
+// REAL captured claude Code TUI frames (tmux `capture-pane -e` of an actual session fixing a bug with TDD),
+// replayed byte-for-byte into the real xterm terminal — so the shots show the genuine TUI, not a mock.
+import claudeMobile from "./claude-mobile.ansi?raw";
+import claudeDesktop from "./claude-desktop.ansi?raw";
 
 const NOW = 1_735_732_800_000; // fixed clock so relative times are deterministic
 
-// ── a believable claude Code session, rendered into the real xterm terminal ──────────────────────────────
-const C = {
-  coral: (s: string) => `\x1b[38;2;247;124;68m${s}\x1b[0m`,
-  dim: (s: string) => `\x1b[38;2;140;140;150m${s}\x1b[0m`,
-  green: (s: string) => `\x1b[38;2;152;195;121m${s}\x1b[0m`,
-  red: (s: string) => `\x1b[38;2;224;108;117m${s}\x1b[0m`,
-  box: (s: string) => `\x1b[38;2;92;92;104m${s}\x1b[0m`,
-};
-const NL = "\r\n";
-const TRANSCRIPT = [
-  C.dim("~/dev/acme-api") + "  " + C.dim("·") + "  " + C.dim("claude v2.1.187"),
-  "",
-  C.coral("> ") + "the /orders route 500s on empty",
-  "  carts — find and fix it",
-  "",
-  C.coral("⏺") + " Tracing it. Reproducing first.",
-  "",
-  C.coral("⏺") + " " + C.dim("Read(src/routes/orders.ts)"),
-  "  " + C.dim("⎿  84 lines"),
-  "",
-  C.coral("⏺") + " The total is summed before the",
-  "  empty-cart guard, so " + C.dim("items[0]"),
-  "  throws when the cart is empty.",
-  "",
-  C.coral("⏺") + " " + C.dim("Update(src/routes/orders.ts)"),
-  "  " + C.green("+  if (!cart.items.length)"),
-  "  " + C.green("+    return res.json({ total: 0 })"),
-  "  " + C.red("-  const p = cart.items[0].price"),
-  "",
-  C.coral("⏺") + " " + C.dim("Bash(npm test -- orders)"),
-  "  " + C.green("⎿  PASS  7 passed, 0 failed"),
-  "",
-  C.coral("⏺") + " Fixed — empty carts now return",
-  "  " + C.dim("{ total: 0 }") + " with a 200. Tests green.",
-  "",
-  "",
-  C.box("╭──────────────────────────────╮"),
-  C.box("│") + " " + C.dim("> add a rate limit next") + "      " + C.box("│"),
-  C.box("╰──────────────────────────────╯"),
-  C.dim("  opus 4.8 · 24% context left"),
-].join(NL);
-
-function mockSocket(text: string) {
-  const bytes = new TextEncoder().encode(text);
-  // Matches the createTerminalSocket shape TerminalView calls; feeds the baked frame once "open".
+function mockSocket(frame: string) {
+  // LF → CRLF so xterm returns to column 0 on each newline (a raw capture uses bare \n → stair-steps).
+  const bytes = new TextEncoder().encode(frame.replace(/\r?\n/g, "\r\n"));
   return (opts: { onData: (b: Uint8Array) => void; onStatus?: (s: string) => void }) => {
     setTimeout(() => {
       opts.onStatus?.("open");
@@ -151,8 +113,8 @@ const FILES = [
   { id: "f6", name: "before-after.png", path: "/before-after.png", isImage: true, source: "received" as const },
 ];
 
-const terminal = (session: SessionMeta = SESSION) => (
-  <TerminalView session={session} createSocket={mockSocket(TRANSCRIPT) as never} onShowSessions={() => {}} needsYou={1} onClose={() => {}} />
+const terminal = (frame: string, session: SessionMeta = SESSION) => (
+  <TerminalView session={session} createSocket={mockSocket(frame) as never} onShowSessions={() => {}} needsYou={1} onClose={() => {}} />
 );
 
 const list = (
@@ -174,10 +136,10 @@ const list = (
 );
 
 export const SCENES: Record<string, () => ReactElement> = {
-  terminal: () => <div style={{ height: "100vh" }}>{terminal()}</div>,
+  terminal: () => <div style={{ height: "100vh" }}>{terminal(claudeMobile)}</div>,
   desktop: () => (
     <AppLayout sessionList={list} sessionsOpen={false} conversationActive onHideSessions={() => {}}>
-      {terminal()}
+      {terminal(claudeDesktop)}
     </AppLayout>
   ),
   sessions: () => (
