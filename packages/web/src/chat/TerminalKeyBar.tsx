@@ -36,16 +36,10 @@ export function TerminalKeyBar({
   const keep = (e: React.PointerEvent) => e.preventDefault(); // don't steal focus from the terminal
   return (
     <div className="rc-termkeys" role="toolbar" aria-label="Terminal keys">
-      {/* Pinned scroll cluster (stays visible while the rest of the row scrolls) — reading claude's
-          fullscreen transcript back is otherwise near-impossible on a phone: there is no swipe-able
-          terminal scrollback (alt-screen), so these send the scroll keys claude's TUI understands. */}
+      {/* Pinned cluster (stays visible while the rest of the row scrolls): jump-to-latest, Copy, and the
+          Select-text overlay. Scrolling itself is a TWO-FINGER drag on the terminal (see TerminalView) —
+          the ▲/▼ scroll buttons were removed once that worked, to save space. */}
       <div className="rc-termkeys__scroll">
-        <button type="button" aria-label="Scroll up" title="Scroll up" onPointerDown={keep} onClick={() => onScroll("up")}>
-          ▲
-        </button>
-        <button type="button" aria-label="Scroll down" title="Scroll down" onPointerDown={keep} onClick={() => onScroll("down")}>
-          ▼
-        </button>
         <button type="button" aria-label="Jump to latest" title="Jump to latest" onPointerDown={keep} onClick={() => onScroll("bottom")}>
           ⤓
         </button>
