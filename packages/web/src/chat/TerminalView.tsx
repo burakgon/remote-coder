@@ -64,6 +64,17 @@ export function TerminalView({
     ctrlArmedRef.current = v;
     setCtrlArmedState(v);
   };
+  // Select mode: when ON, we stop xterm from consuming touch (which would forward it to claude as a mouse
+  // event) so the browser's NATIVE text selection takes over — on Android that is the OS's own long-press
+  // selection handles, the closest a web terminal gets to Termux. Ref drives the (once-attached) capture
+  // listeners; state drives the button highlight + the host's `--select` class.
+  const selectModeRef = useRef(false);
+  const [selectMode, setSelectModeState] = useState(false);
+  const setSelectMode = (v: boolean) => {
+    selectModeRef.current = v;
+    setSelectModeState(v);
+    if (!v) window.getSelection?.()?.removeAllRanges?.();
+  };
   // Connection lifecycle → drives the reconnect/ended overlay. `restartKey` bump remounts the effect (fresh
   // terminal + socket → reattach, which respawns a fresh claude for an ended session).
   const [connState, setConnState] = useState<"connecting" | "open" | "reconnecting" | "ended">("connecting");
@@ -225,11 +236,21 @@ export function TerminalView({
     document.addEventListener("visibilitychange", onVisible);
     term.focus();
 
+    // SELECT MODE plumbing: while armed, swallow the pointer/touch BEFORE xterm sees it (capture phase +
+    // stopPropagation, never preventDefault) so the browser's native selection engages instead of xterm
+    // forwarding a mouse event to claude. A no-op when select mode is off.
+    const suppressForSelect = (e: Event) => {
+      if (selectModeRef.current) e.stopPropagation();
+    };
+    const selectEvents = ["pointerdown", "mousedown", "touchstart", "touchmove"];
+    for (const ev of selectEvents) host.addEventListener(ev, suppressForSelect, true);
+
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
+      for (const ev of selectEvents) host.removeEventListener(ev, suppressForSelect, true);
       ro?.disconnect();
       offData.dispose();
       sockRef.current?.close();
@@ -255,6 +276,22 @@ export function TerminalView({
     const seq = dir === "up" ? "\x1b[5~" : dir === "down" ? "\x1b[6~" : "\x1b[1;5F";
     sockRef.current?.sendInput(seq);
     termRef.current?.focus();
+  };
+  const onToggleSelect = () => setSelectMode(!selectModeRef.current);
+  // Copy to the clipboard: prefer a NATIVE browser selection (what select mode produces), then xterm's own
+  // selection, else fall back to the whole VISIBLE screen — so a Copy tap always yields something useful.
+  const onCopy = () => {
+    const term = termRef.current;
+    const native = typeof window !== "undefined" ? (window.getSelection?.()?.toString() ?? "") : "";
+    const xtermSel = term?.getSelection() ?? "";
+    let text = native.trim() ? native : xtermSel.trim() ? xtermSel : "";
+    if (!text && term) {
+      const buf = term.buffer.active;
+      const rows: string[] = [];
+      for (let i = 0; i < term.rows; i++) rows.push(buf.getLine(buf.viewportY + i)?.translateToString(true) ?? "");
+      text = rows.join("\n").replace(/\s+$/, "");
+    }
+    if (text) void navigator.clipboard?.writeText?.(text).catch(() => undefined);
   };
   const onCtrlChord = (letter: string) => {
     sockRef.current?.sendInput(ctrlSeq(letter));
@@ -300,7 +337,12 @@ export function TerminalView({
         filesCount={files.length}
       />
       <div className="rc-terminal__stage">
-        <div className="rc-terminal__host" ref={hostRef} role="group" aria-label="Terminal" />
+        <div
+          className={`rc-terminal__host${selectMode ? " rc-terminal__host--select" : ""}`}
+          ref={hostRef}
+          role="group"
+          aria-label="Terminal"
+        />
         {connState === "reconnecting" && (
           <div className="rc-term-toast" role="status">
             <span className="rc-term-toast__dot" aria-hidden="true" /> Reconnecting…
@@ -331,6 +373,9 @@ export function TerminalView({
         onKey={onBarKey}
         onCtrlChord={onCtrlChord}
         onScroll={onScroll}
+        onCopy={onCopy}
+        selectMode={selectMode}
+        onToggleSelect={onToggleSelect}
         onPaste={canPaste ? onPaste : undefined}
       />
       <TerminalFiles
@@ -408,6 +453,16 @@ const terminalCss = `
 .rc-terminal__host .xterm, .rc-terminal__host .xterm * { letter-spacing: normal; }
 /* xterm.css hardcodes the viewport background to #000; match the theme so there's no black seam on resize. */
 .rc-terminal__host .xterm-viewport { background-color: #0b0e14 !important; }
+/* SELECT MODE: let the browser's NATIVE selection work on the rendered rows. xterm sets user-select:none to
+   drive its OWN selection overlay; we override so long-press selection + the native copy menu engage on touch
+   (on Android that's the OS's own selection handles — the closest to Termux). An inset ring signals it's on. */
+.rc-terminal__host--select { box-shadow: inset 0 0 0 2px #3b82f6cc; }
+.rc-terminal__host--select .xterm-screen { cursor: text; }
+.rc-terminal__host--select .xterm-rows,
+.rc-terminal__host--select .xterm-rows * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
 
 /* Termux-style extra-keys row: a horizontally scrollable, touch-friendly key strip pinned below the
    terminal, with a safe-area inset so it clears the iOS home indicator / sits above the on-screen keyboard. */
@@ -439,7 +494,8 @@ const terminalCss = `
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .rc-termkeys button:active { background: #2a3340; }
-.rc-termkeys .rc-termkeys__ctrl.is-on { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.rc-termkeys .rc-termkeys__ctrl.is-on,
+.rc-termkeys__sel.is-on { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 /* The on-screen key bar exists for devices WITHOUT a physical keyboard. Hide it only where the PRIMARY
    pointer is a mouse/trackpad (a real desktop) — keyed off INPUT TYPE, not width, so a FOLDABLE phone
    (wide when unfolded but still touch, even with an S-Pen as a secondary pointer) keeps the keys. */
