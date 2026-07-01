@@ -273,13 +273,17 @@ export function TerminalView({
       }
       tick();
     }, 500);
-    // Focus the terminal AND heal the iOS compositor freeze a focus can trigger: raising the on-screen
-    // keyboard right as the terminal mounts can leave the SCREEN painted on the prior frame (the sessions
-    // list) even though the DOM + input already switched — "klavye çıkıyor ama ekran değişmiyor". Arm the
-    // viewport repaint-heal so the keyboard-show recomposites, and kick one directly once the keyboard has
-    // had time to rise (belt-and-suspenders, in case no visualViewport 'resize' fires in standalone iOS).
+    // On TOUCH devices, do NOT auto-focus the terminal on mount/foreground. Focusing raises the on-screen
+    // keyboard right as the session-select layout swap happens, and THAT coincidence is what freezes iOS's
+    // compositor on the stale (list) frame — "klavye çıkıyor ama ekran değişmiyor". It recurs worst post-OTA
+    // (hardRefresh clears caches → the font re-downloads → the first terminal paint is slow → the freeze
+    // settles LATE and the repaint-heal burst misses it). Removing the auto-focus removes the trigger: the
+    // user taps the terminal to type, and a direct tap opens the keyboard on a STABLE layout, which never
+    // freezes. Desktop has no soft keyboard, so it keeps auto-focus for immediate typing. healPaintBurst
+    // still runs (arm + kicks) as a safety net for the layout swap itself.
+    const coarsePointer = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)")?.matches;
     const focusAndHealPaint = () => {
-      term.focus();
+      if (!coarsePointer) term.focus();
       healPaintBurst();
     };
     // Re-fit + refocus (and connect if we hadn't yet) when the tab/app returns to the foreground.
