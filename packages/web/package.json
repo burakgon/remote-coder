@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:shot": "vite build --config vite.screenshot.config.ts",
-    "screenshot": "pnpm run build:shot && node scripts/app-screenshot.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"

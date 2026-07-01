@@ -2,54 +2,32 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { Mono } from "../ui/Mono";
 import { Icon } from "../ui/Icon";
-import { SegmentedToggle } from "../ui/SegmentedToggle";
 import { useFocusTrap } from "../ui/useFocusTrap";
 import { DirectoryPicker } from "../picker/DirectoryPicker";
-import { ResumePicker } from "./ResumePicker";
 import { pushRecentDir } from "../picker/recents";
 import { loadDefaults, EFFORTS, PERMISSION_MODES } from "../settings/defaults";
 import { ModelSelect } from "../settings/ModelSelect";
 import type { ApiClient } from "../api/client";
 import type { ModelInfo, SessionMeta } from "../types/server";
 
-type WizardMode = "new" | "resume";
-
 export interface NewSessionWizardProps {
-  api: Pick<ApiClient, "listDir" | "createSession" | "getResumable">;
+  api: Pick<ApiClient, "listDir" | "createSession">;
   recents: string[];
-  /** Wall clock (ms) for the resume list's relative-time labels — passed in so the wizard stays free
-   * of Date.now() (the app owns the tick). Defaults to Date.now() at mount when omitted. */
+  /** Wall clock (ms) — passed in so the wizard stays free of Date.now() (the app owns the tick).
+   * Defaults to Date.now() at mount when omitted. */
   now?: number;
-  /** Which segment the new/resume toggle starts on. Defaults to "new" (the directory picker); the
-   * in-chat `/resume` slash command opens straight to "resume". */
-  initialMode?: WizardMode;
   /** Account models from GET /models. Empty → free-text fallback (today's behavior). */
   models?: ModelInfo[];
-  /** True when the server can spawn PTY-backed terminal sessions (GET /version `terminalAvailable`).
-   * Gates the NEW flow's Chat/Terminal kind toggle — hidden entirely when the feature is unavailable. */
-  terminalAvailable?: boolean;
   onCreated: (session: SessionMeta) => void;
   onClose: () => void;
 }
 
-/** What kind of session the NEW flow creates. Distinct from the wizard's New/Resume `mode`. */
-type SessionKind = "chat" | "terminal";
-
-export function NewSessionWizard({
-  api,
-  recents,
-  now,
-  initialMode = "new",
-  models = [],
-  terminalAvailable = false,
-  onCreated,
-  onClose,
-}: NewSessionWizardProps) {
+/**
+ * Start a new TERMINAL session: pick a directory, then choose the session's defaults (effort, model,
+ * permission mode, extra dirs, dangerously-skip). Terminal is the only session mode.
+ */
+export function NewSessionWizard({ api, recents, now, models = [], onCreated, onClose }: NewSessionWizardProps) {
   const seeded = loadDefaults();
-  const [mode, setMode] = useState<WizardMode>(initialMode);
-  // The NEW flow's session kind (chat vs a PTY-backed terminal). Separate from `mode` (new/resume) —
-  // do NOT conflate the two. Defaults to "chat"; only surfaced when `terminalAvailable`.
-  const [kind, setKind] = useState<SessionKind>("chat");
   const [cwd, setCwd] = useState<string | undefined>();
   const [effort, setEffort] = useState<string>(seeded.effort);
   const [model, setModel] = useState(seeded.model ?? "");
@@ -58,26 +36,10 @@ export function NewSessionWizard({
   const [addDirs, setAddDirs] = useState<string[]>([]);
   const [dirDraft, setDirDraft] = useState("");
   const [dangerouslySkip, setDangerouslySkip] = useState(seeded.dangerouslySkip);
-  // RESUME has its OWN skip toggle, default OFF — NOT seeded from the global new-session default. Inheriting
-  // the default meant a safe past session could come back with --dangerously-skip-permissions just because
-  // the user's default is "skip"; resume is an explicit per-session opt-in instead.
-  const [resumeDangerSkip, setResumeDangerSkip] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const dialogRef = useRef<HTMLDivElement>(null);
   const nowMs = now ?? Date.now();
-
-  const toggle = (
-    <SegmentedToggle<WizardMode>
-      label="New session or resume"
-      value={mode}
-      onChange={setMode}
-      options={[
-        { value: "new", label: "New session", icon: <Icon name="plus" size={15} /> },
-        { value: "resume", label: "Resume", icon: <Icon name="history" size={15} /> },
-      ]}
-    />
-  );
 
   // Real modal semantics for the settings step: focus its first control on entry, trap Tab
   // within it, and restore focus on close. Inert while the picker (step 1) owns the viewport —
@@ -101,69 +63,12 @@ export function NewSessionWizard({
     if (e.target === e.currentTarget) onClose();
   }
 
-  // Resume mode — a list of past conversations to pick up where they left off. Resuming creates a
-  // session (idempotent server-side) seeded from the transcript; the caller adds it + selects it, and
-  // the prior conversation replays on WS connect.
-  if (mode === "resume") {
-    return (
-      <ResumePicker
-        getResumable={api.getResumable}
-        scopeCwd={cwd}
-        now={nowMs}
-        topSlot={
-          <>
-            {toggle}
-            {/* Resume can be dangerous-skip too — but an EXPLICIT opt-in (default OFF), not seeded from the
-                new-session default. Self-styled (the resume branch renders the picker without the wizard CSS). */}
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--sp-2)",
-                minHeight: "var(--tap-min)",
-                fontSize: "var(--fs-sm)",
-                color: resumeDangerSkip ? "var(--err)" : "var(--text)",
-              }}
-            >
-              <input
-                type="checkbox"
-                aria-label="dangerously skip permissions"
-                checked={resumeDangerSkip}
-                onChange={(e) => setResumeDangerSkip(e.target.checked)}
-                style={{ width: 20, height: 20, accentColor: "var(--err)" }}
-              />
-              <span>Dangerously skip permissions (RCE risk)</span>
-            </label>
-          </>
-        }
-        onCancel={onClose}
-        onResume={async (resumeSessionId) => {
-          // Pass the RESUME-specific skip toggle (explicit opt-in, default off) so a resumed session can
-          // skip permissions WITHOUT inheriting the global new-session default. Deliberately DON'T send
-          // effort/model here — the resume pane has no control for them, so sending the defaults would
-          // silently downgrade a high-effort conversation; the resumed session keeps its own settings.
-          const session = await api.createSession({ resumeSessionId, dangerouslySkip: resumeDangerSkip });
-          onCreated(session);
-        }}
-      />
-    );
-  }
-
-  // Step 1 — the directory picker (the headline). It owns the whole viewport. The new/resume toggle
-  // sits at the very top of its header so resume is a discoverable first-class peer.
+  // Step 1 — the directory picker (the headline). It owns the whole viewport.
   if (!cwd) {
-    return (
-      <DirectoryPicker
-        listDir={api.listDir}
-        recents={recents}
-        onPick={(path) => setCwd(path)}
-        onCancel={onClose}
-        topSlot={toggle}
-      />
-    );
+    return <DirectoryPicker listDir={api.listDir} recents={recents} onPick={(path) => setCwd(path)} onCancel={onClose} />;
   }
 
-  // Step 2 — defaults for the new session. Live-change of these lands in Plan 5.
+  // Step 2 — defaults for the new session.
   function addDir(path: string) {
     const p = path.trim();
     if (!p) return;
@@ -184,9 +89,7 @@ export function NewSessionWizard({
         // Only send a non-default mode (default is the server's implicit baseline). Skip overrides it anyway.
         permissionMode: permMode !== "default" ? permMode : undefined,
         addDirs: addDirs.length > 0 ? addDirs : undefined,
-        // The session kind (chat | terminal). Only meaningful when the toggle was shown; "chat" is the
-        // server's implicit baseline so a chat session needn't send it, but doing so is harmless.
-        mode: kind === "terminal" ? "terminal" : undefined,
+        mode: "terminal",
       });
       pushRecentDir(cwd);
       onCreated(session);
@@ -195,6 +98,9 @@ export function NewSessionWizard({
       setBusy(false);
     }
   }
+
+  // nowMs is currently unused by the terminal-only flow but kept in the signature so callers stay stable.
+  void nowMs;
 
   return (
     <div
@@ -230,23 +136,6 @@ export function NewSessionWizard({
               Change
             </button>
           </div>
-
-          {/* Session kind — Chat (the Claude conversation) vs Terminal (a PTY-backed claude TUI). Only
-              shown when the server reports the terminal feature is available. */}
-          {terminalAvailable && (
-            <div className="rc-wizard__field">
-              <span className="rc-wizard__field-label">Session type</span>
-              <SegmentedToggle<SessionKind>
-                label="Chat or terminal session"
-                value={kind}
-                onChange={setKind}
-                options={[
-                  { value: "chat", label: "Chat", icon: <Icon name="send" size={15} /> },
-                  { value: "terminal", label: "Terminal", icon: <Icon name="terminal" size={15} /> },
-                ]}
-              />
-            </div>
-          )}
 
           <label className="rc-wizard__field">
             <span className="rc-wizard__field-label">Effort</span>

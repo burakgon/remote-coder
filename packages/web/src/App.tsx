@@ -11,10 +11,8 @@ import { sortSessionsByActivity } from "./session/order";
 import { sessionIdFromLocation } from "./session/deep-link";
 import { NewSessionWizard } from "./session/NewSessionWizard";
 import { loadRecentDirs } from "./picker/recents";
-import { ChatView } from "./chat/ChatView";
 import { TerminalView } from "./chat/TerminalView";
 import { SettingsPanel } from "./settings/SettingsPanel";
-import { ClaudeAuthDialog } from "./settings/ClaudeAuthDialog";
 import { loadDefaults, saveDefaults } from "./settings/defaults";
 import { enablePush, disablePush, currentPushState } from "./pwa/push";
 import { applyAppBadge, badgeCount } from "./pwa/badge";
@@ -124,8 +122,6 @@ export function App() {
   // the rail header and the landing top bar. Rendered with no `session`, so it shows only the global
   // sections. Push state is read once (the opt-in itself is a deliberate tap).
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
-  // Claude sign-in dialog (the `/login` slash command + the "Sign in" button on a 401 auth-error turn).
-  const [authOpen, setAuthOpen] = useState(false);
   // Read the saved defaults once PER OPEN (not on every render while the panel is up) — the panel only
   // seeds its draft from the first value anyway.
   const globalDefaults = useMemo(() => loadDefaults(), [globalSettingsOpen]);
@@ -142,9 +138,6 @@ export function App() {
       mounted = false;
     };
   }, [globalSettingsOpen]);
-  // Which segment the wizard's New/Resume toggle opens on. The normal +/New affordances open "new"
-  // (the directory picker); the in-chat `/resume` slash command opens straight to "resume".
-  const [wizardMode, setWizardMode] = useState<"new" | "resume">("new");
   const [sessionsOpen, setSessionsOpen] = useState(false);
   // OTA self-update UI state. The banner is dismissible PER SESSION (a page reload re-shows it if the
   // update is still pending). The panel is the "What's new" / confirm sheet. `updateStatus` is the
@@ -160,18 +153,8 @@ export function App() {
   const [clientStale, setClientStale] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
 
-  // Open the new-session wizard on a chosen tab. The default `+`/"New session" affordances open the
-  // directory picker; `/resume` from the chat composer opens the resume picker.
-  const openWizard = (mode: "new" | "resume" = "new") => {
-    setWizardMode(mode);
-    setWizardOpen(true);
-  };
-  // A client-action slash command was picked in the composer: `/resume` opens the wizard's resume tab;
-  // `/login` opens the Claude sign-in dialog (re-authenticate an expired server login).
-  const onSlashCommand = (name: string) => {
-    if (name === "/resume") openWizard("resume");
-    else if (name === "/login") setAuthOpen(true);
-  };
+  // Open the new-session wizard (directory picker → settings). Terminal is the only session mode.
+  const openWizard = () => setWizardOpen(true);
   const online = useOnline();
 
   // The rail's relative-time labels ("2m", "1h") need a clock. The component stays pure (no
@@ -553,7 +536,7 @@ export function App() {
         setActive(id);
         setSessionsOpen(false);
       }}
-      onNew={() => openWizard("new")}
+      onNew={() => openWizard()}
       onClose={closeSession}
       // viewWireState is intentionally NOT passed: SessionList subscribes to `views` itself and derives
       // each row's wire state, so a streaming frame re-renders only the rail — not this whole App shell.
@@ -713,28 +696,14 @@ export function App() {
               // recoverable error in the chat pane instead of taking the whole app down to a gray screen —
               // the rail stays usable, and switching sessions resets it.
               <ErrorBoundary key={active.id} variant="compact" label="this conversation">
-                {active.mode === "terminal" ? (
-                  // TerminalView owns its full chrome: the chat top-bar (mobile menu → sessions sheet,
-                  // session name, close, and the Files panel button) + the terminal + the mobile key bar.
-                  <TerminalView
-                    session={active}
-                    onShowSessions={() => setSessionsOpen(true)}
-                    needsYou={awaitingCount(sessions)}
-                    onClose={() => closeSession(active.id)}
-                  />
-                ) : (
-                  <ChatView
-                    session={active}
-                    api={api}
-                    token={token}
-                    onSlashCommand={onSlashCommand}
-                    onClose={closeSession}
-                    onShowSessions={() => setSessionsOpen(true)}
-                    onReauth={() => setAuthOpen(true)}
-                    needsYou={awaitingCount(sessions)}
-                    models={models}
-                  />
-                )}
+                {/* Terminal is the only session mode. TerminalView owns its full chrome: the top-bar
+                    (mobile menu → sessions sheet, session name, close, Files panel) + terminal + key bar. */}
+                <TerminalView
+                  session={active}
+                  onShowSessions={() => setSessionsOpen(true)}
+                  needsYou={awaitingCount(sessions)}
+                  onClose={() => closeSession(active.id)}
+                />
               </ErrorBoundary>
             ) : (
               // No matching session (e.g. a stale deep-link id). There's no ChatHeader here, so keep
@@ -816,7 +785,7 @@ export function App() {
                 The single coral primary — a FLAT coral fill, dark ink label. No glow. */}
               <button
                 type="button"
-                onClick={() => openWizard("new")}
+                onClick={() => openWizard()}
                 aria-label="New session"
                 style={{
                   display: "inline-flex",
@@ -845,9 +814,7 @@ export function App() {
           api={api}
           recents={loadRecentDirs()}
           now={now}
-          initialMode={wizardMode}
           models={models}
-          terminalAvailable={updateInfo?.terminalAvailable}
           onClose={() => setWizardOpen(false)}
           onCreated={(session) => {
             // addSession is idempotent (no-op if the id already exists) and an immutable store update, so
@@ -886,7 +853,6 @@ export function App() {
           onClose={() => setGlobalSettingsOpen(false)}
         />
       )}
-      {authOpen && <ClaudeAuthDialog api={api} onClose={() => setAuthOpen(false)} />}
       {updatePanelOpen && updateInfo && (
         <UpdatePanel
           info={updateInfo}

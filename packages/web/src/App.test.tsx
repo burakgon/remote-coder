@@ -4,7 +4,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { saveToken, loadToken } from "./auth/token-store";
 import { useStore } from "./store/store";
-import type { OutboundFrame, SessionMeta } from "./types/server";
+import type { SessionMeta } from "./types/server";
+
+// TerminalView bridges xterm.js (needs a real canvas / matchMedia), which jsdom lacks. These App-shell
+// tests only care about the rail/selection/landing chrome, not the terminal internals, so stub it.
+vi.mock("./chat/TerminalView", () => ({
+  TerminalView: (props: { session: { id: string }; onShowSessions?: () => void; onClose?: () => void }) => (
+    <div data-testid="terminal-view">
+      {/* The real TerminalView renders these via ChatHeader; the shell tests reach for them. */}
+      <button type="button" aria-label="Show sessions" onClick={props.onShowSessions}>
+        menu
+      </button>
+      <button type="button" aria-label="Close session" onClick={props.onClose}>
+        close
+      </button>
+      <span>terminal:{props.session.id}</span>
+    </div>
+  ),
+}));
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -363,133 +380,7 @@ describe("App — session list refresh + select-doesn't-reorder", () => {
   });
 });
 
-// A WebSocket stub that reaches OPEN and captures outbound frames per session id (parsed from the
-// connect URL). Lets us assert exactly which permission decisions ChatView sends for which session.
-const wsSends: { sessionId: string; frame: OutboundFrame }[] = [];
-class CapturingWebSocket {
-  static readonly CONNECTING = 0;
-  static readonly OPEN = 1;
-  static readonly CLOSING = 2;
-  static readonly CLOSED = 3;
-  readonly OPEN = CapturingWebSocket.OPEN;
-  readyState = CapturingWebSocket.OPEN; // open immediately so send() forwards
-  onopen: (() => void) | null = null;
-  onmessage: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  readonly sessionId: string;
-  constructor(url: string) {
-    // URL shape: ws://host/sessions/<id>/ws?token=...
-    this.sessionId = url.match(/\/sessions\/([^/]+)\/ws/)?.[1] ?? "";
-    queueMicrotask(() => this.onopen?.());
-  }
-  send(data: string) {
-    wsSends.push({ sessionId: this.sessionId, frame: JSON.parse(data) as OutboundFrame });
-  }
-  close() {}
-}
 
-describe("App — auto-allow rules are scoped per session (no cross-session leak)", () => {
-  const sessionA: SessionMeta = {
-    id: "a",
-    cwd: "/home/u/proj-a",
-    dangerouslySkip: false,
-    status: "running",
-    createdAt: 1,
-  };
-  const sessionB: SessionMeta = {
-    id: "b",
-    cwd: "/home/u/proj-b",
-    dangerouslySkip: false,
-    status: "running",
-    createdAt: 2,
-  };
-
-  let realWS: typeof WebSocket;
-  beforeEach(() => {
-    wsSends.length = 0;
-    realWS = globalThis.WebSocket;
-    globalThis.WebSocket = CapturingWebSocket as unknown as typeof WebSocket;
-    // Route REST: GET /sessions → both sessions; GET /sessions/<id> → empty history for that session.
-    fetchMock.mockImplementation((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (/\/sessions$/.test(url)) return Promise.resolve(jsonResponse({ sessions: [sessionA, sessionB] }));
-      const m = url.match(/\/sessions\/([^/?]+)/);
-      if (m) {
-        const session = m[1] === "a" ? sessionA : sessionB;
-        return Promise.resolve(jsonResponse({ session, history: [] }));
-      }
-      return Promise.resolve(jsonResponse({}, 404));
-    });
-  });
-  afterEach(() => {
-    globalThis.WebSocket = realWS;
-  });
-
-  async function settle() {
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-  }
-
-  function pushPermission(sessionId: string, requestId: string, toolName: string, seq: number) {
-    act(() => {
-      useStore.getState().applyFrame(sessionId, {
-        seq,
-        kind: "permission",
-        payload: { requestId, kind: "can_use_tool", toolName, toolInput: { file_path: "/tmp/x" } },
-      });
-    });
-  }
-
-  it("an 'Always allow <tool>' rule set in session A does NOT auto-allow the same tool in session B", async () => {
-    saveToken("good-token");
-    render(<App />);
-    await screen.findByRole("button", { name: /show sessions/i });
-
-    // Activate session A and let its ChatView mount + load (empty) history. The ChatHeader's
-    // LiveWire carries an aria-label naming the active session — a unique marker of which session's
-    // ChatView is mounted (the rail's per-row LiveWire has no label).
-    act(() => useStore.getState().setActive("a"));
-    await settle();
-    expect(screen.getByLabelText(/^session proj-a/i)).toBeInTheDocument();
-
-    // In A: a Write permission arrives; register the per-session "Always allow Write" rule.
-    pushPermission("a", "a-r1", "Write", 99);
-    await screen.findByRole("region", { name: /permission request/i });
-    await userEvent.click(screen.getByRole("button", { name: /always allow write/i }));
-    // A answered its own request allow, and the auto-allow indicator is visible in A.
-    expect(wsSends).toContainEqual({
-      sessionId: "a",
-      frame: { type: "permission", requestId: "a-r1", decision: "allow" },
-    });
-    expect(screen.getByText(/auto-allow/i)).toBeInTheDocument();
-
-    // Switch the active session to B — this must remount ChatView (key by session id) with fresh
-    // per-instance auto-allow/answered state, NOT reuse A's component instance.
-    act(() => useStore.getState().setActive("b"));
-    await settle();
-    expect(screen.getByLabelText(/^session proj-b/i)).toBeInTheDocument();
-    // B starts with no auto-allow rules (the indicator from A must be gone).
-    expect(screen.queryByText(/auto-allow/i)).not.toBeInTheDocument();
-
-    // In B: a Write permission arrives for the SAME tool. It must PROMPT (not be silently allowed).
-    pushPermission("b", "b-r1", "Write", 99);
-    const region = await screen.findByRole("region", { name: /permission request/i });
-    expect(region).toBeInTheDocument();
-    expect(screen.getByText("Write")).toBeInTheDocument();
-
-    // Critically: no auto-allow decision was ever sent for B's request — the gate held.
-    expect(wsSends).not.toContainEqual({
-      sessionId: "b",
-      frame: { type: "permission", requestId: "b-r1", decision: "allow" },
-    });
-    // No PERMISSION frame was sent on B at all (the gate held). B's socket may carry benign `visibility`
-    // foreground-gating frames — those are expected and not a leaked decision, so filter to permissions.
-    expect(wsSends.filter((s) => s.sessionId === "b" && s.frame.type === "permission")).toHaveLength(0);
-  });
-});
 
 // ---------------------------------------------------------------------------------------------
 // APP BADGE: the home-screen badge reflects the "needs you" count (awaiting sessions), set via the
@@ -624,190 +515,4 @@ describe("App notification deep-link (?session=)", () => {
 // permission prompt → answer over WS → result clears the prompt. Proves every screen connects.
 // ---------------------------------------------------------------------------------------------
 
-// A controllable fake WebSocket so the test can push frames into the chat view.
-class FakeWS {
-  static last: FakeWS | undefined;
-  url: string;
-  readyState = 1;
-  OPEN = 1;
-  onopen: (() => void) | null = null;
-  onmessage: ((e: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  sent: string[] = [];
-  constructor(url: string) {
-    this.url = url;
-    FakeWS.last = this;
-    setTimeout(() => this.onopen?.(), 0);
-  }
-  send(data: string) {
-    this.sent.push(data);
-  }
-  close() {
-    this.readyState = 3;
-    this.onclose?.();
-  }
-  push(frame: unknown) {
-    act(() => this.onmessage?.({ data: JSON.stringify(frame) }));
-  }
-}
 
-const flowSession: SessionMeta = {
-  id: "sess-1",
-  cwd: "/home/u/proj",
-  dangerouslySkip: false,
-  status: "running",
-  createdAt: 1,
-};
-
-describe("App full flow", () => {
-  let flowFetch: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    localStorage.clear();
-    useStore.setState({ token: undefined, sessions: [], activeSessionId: undefined, views: {} });
-    FakeWS.last = undefined;
-    vi.stubGlobal("WebSocket", FakeWS as unknown as typeof WebSocket);
-    flowFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      if (url.endsWith("/sessions") && method === "GET") return jsonResponse({ sessions: [] });
-      if (url.endsWith("/sessions") && method === "POST") return jsonResponse({ session: flowSession }, 201);
-      if (url.includes("/fs/list")) return jsonResponse({ path: "/home/u", entries: [] });
-      if (url.includes(`/sessions/${flowSession.id}`) && !url.includes("/stop")) {
-        return jsonResponse({ session: flowSession, history: [] });
-      }
-      return jsonResponse({ error: "not found" }, 404);
-    });
-    vi.stubGlobal("fetch", flowFetch);
-  });
-
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("logs in, lists sessions, starts a new session, and renders streamed + permission frames", async () => {
-    render(<App />);
-
-    // 1) Login (tokenless dev path).
-    await userEvent.click(await screen.findByRole("button", { name: /without a token/i }));
-
-    // 2) Empty session list → open the wizard.
-    await userEvent.click(await screen.findByRole("button", { name: /new session/i }));
-
-    // 3) Directory picker → use the current dir → settings → start.
-    await userEvent.click(await screen.findByRole("button", { name: /use this directory/i }));
-    await userEvent.click(await screen.findByRole("button", { name: /start session/i }));
-
-    // 4) The chat view for the created session renders (header shows the cwd).
-    await waitFor(() => expect(screen.getByText("/home/u/proj")).toBeInTheDocument());
-
-    // 5) Push a streamed text delta over the socket → it renders live.
-    await waitFor(() => expect(FakeWS.last).toBeDefined());
-    FakeWS.last!.push({
-      seq: 1,
-      kind: "event",
-      payload: {
-        type: "stream_event",
-        event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Working on it" } },
-      },
-    });
-    await waitFor(() => expect(screen.getByText(/working on it/i)).toBeInTheDocument());
-
-    // 6) Push a permission frame → the iris awaiting-you prompt appears → answer Allow over WS.
-    FakeWS.last!.push({
-      seq: 2,
-      kind: "permission",
-      payload: {
-        requestId: "req-1",
-        kind: "hook_callback",
-        toolName: "Write",
-        toolInput: { file_path: "/home/u/proj/a.txt" },
-      },
-    });
-    const region = await screen.findByRole("region", { name: /permission request/i });
-    await userEvent.click(within(region).getByRole("button", { name: /^allow$/i }));
-    expect(FakeWS.last!.sent.some((s) => s.includes("req-1") && s.includes("allow"))).toBe(true);
-
-    // 7) A result frame clears the prompt.
-    FakeWS.last!.push({
-      seq: 3,
-      kind: "result",
-      payload: { type: "result", result: "Created the file", permissionDenials: [] },
-    });
-    await waitFor(() => expect(screen.queryByRole("region", { name: /permission request/i })).not.toBeInTheDocument());
-    // The turn-end marker renders as a quiet "done" (it no longer re-prints the result text, which
-    // duplicated the assistant message — "Created the file" was that copy).
-    expect(screen.getByText("done")).toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------------------------
-// `/resume` slash command (client action): typing `/resume` in the chat composer opens the
-// new-session wizard on its RESUME tab — a client-side UI action, NOT text sent to claude.
-// ---------------------------------------------------------------------------------------------
-describe("App — /resume slash command opens the resume picker", () => {
-  const activeSession: SessionMeta = {
-    id: "live-1",
-    cwd: "/home/u/proj",
-    dangerouslySkip: false,
-    status: "running",
-    createdAt: 1,
-  };
-
-  let realWS: typeof WebSocket;
-  beforeEach(() => {
-    realWS = globalThis.WebSocket;
-    class NoopWS {
-      static readonly OPEN = 1;
-      readyState = 1;
-      onopen: (() => void) | null = null;
-      onmessage: (() => void) | null = null;
-      onclose: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      constructor() {
-        queueMicrotask(() => this.onopen?.());
-      }
-      send() {}
-      close() {}
-    }
-    globalThis.WebSocket = NoopWS as unknown as typeof WebSocket;
-    fetchMock.mockImplementation((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (/\/resumable/.test(url)) {
-        return Promise.resolve(
-          jsonResponse({
-            sessions: [
-              { sessionId: "r-1", cwd: "/home/u/proj", summary: "Earlier work", lastActivity: 1, messageCount: 5 },
-            ],
-          }),
-        );
-      }
-      if (/\/sessions$/.test(url)) return Promise.resolve(jsonResponse({ sessions: [activeSession] }));
-      const m = url.match(/\/sessions\/([^/?]+)/);
-      if (m) return Promise.resolve(jsonResponse({ session: activeSession, history: [] }));
-      return Promise.resolve(jsonResponse({}, 404));
-    });
-  });
-  afterEach(() => {
-    globalThis.WebSocket = realWS;
-  });
-
-  it("typing /resume in the composer opens the wizard on the Resume tab (no message sent to claude)", async () => {
-    saveToken("good-token");
-    render(<App />);
-    await screen.findByRole("button", { name: /show sessions/i });
-    act(() => useStore.getState().setActive("live-1"));
-
-    // Type the slash command and pick /resume from the menu (targeted by its hint — the bare
-    // "/resume" text also appears as the textarea value once fully typed).
-    const box = await screen.findByLabelText(/message claude/i);
-    await userEvent.type(box, "/resume");
-    await userEvent.click(screen.getByText(/resume a past session/i));
-
-    // The resume picker opened (client-side action) with its tab selected — NOT the directory picker.
-    expect(await screen.findByRole("dialog", { name: /resume a past session/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /resume/i })).toHaveAttribute("aria-checked", "true");
-    expect(await screen.findByText("Earlier work")).toBeInTheDocument();
-    // The composer cleared — the slash text was never sent to claude.
-    expect(box.textContent).toBe("");
-  });
-});
