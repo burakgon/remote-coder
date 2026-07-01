@@ -51,7 +51,8 @@ function requestReloadForNewVersion(): void {
     // under the user — losing unsent composer text / an in-flight answer — for no gain. Re-arm if skipped
     // so a later genuine version bump can still schedule one.
     const serverLabel = useStore.getState().updateInfo?.current;
-    if (isClientStale(BUILD_SHA, serverLabel)) window.location.reload();
+    // replace(href), not reload(): see main.tsx — an in-place reload() can freeze iOS standalone's compositor.
+    if (isClientStale(BUILD_SHA, serverLabel)) window.location.replace(window.location.href);
     else reloadScheduled = false;
   }, 10_000);
 }

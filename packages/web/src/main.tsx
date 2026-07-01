@@ -24,7 +24,10 @@ if (typeof navigator !== "undefined" && navigator.serviceWorker) {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (reloading || !hadController) return;
     reloading = true;
-    window.location.reload();
+    // replace(href), NOT reload(): an in-place reload() in an iOS standalone PWA can leave the compositor
+    // frozen — the DOM updates + input keeps working, but the screen stops repainting until the app is
+    // reopened. A replace() navigation swaps onto the new bundle without triggering that freeze.
+    window.location.replace(window.location.href);
   });
 }
 registerSW({ immediate: true });

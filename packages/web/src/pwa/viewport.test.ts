@@ -89,3 +89,31 @@ test("installViewportSync resets scroll + re-syncs on pageshow (iOS post-reload 
 
   dispose();
 });
+
+test("installViewportSync kicks a repaint (opacity blip on #root) to un-freeze iOS's compositor", () => {
+  const root = document.createElement("div");
+  root.id = "root";
+  document.body.appendChild(root);
+  let rafCb: (() => void) | undefined;
+  const fakeWin = {
+    document: document,
+    innerHeight: 844,
+    visualViewport: undefined,
+    requestAnimationFrame: (cb: () => void) => {
+      rafCb = cb;
+      return 1;
+    },
+    cancelAnimationFrame: vi.fn(),
+    scrollTo: vi.fn(),
+    setTimeout: () => 0, // never disarm during the test
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  } as unknown as Window;
+
+  installViewportSync(fakeWin); // the initial apply() kicks the blip while armed
+  expect(root.style.opacity).toBe("0.9999");
+  rafCb?.(); // next frame clears it — imperceptible
+  expect(root.style.opacity).toBe("");
+
+  document.body.removeChild(root);
+});

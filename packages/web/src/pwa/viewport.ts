@@ -34,6 +34,24 @@ export function installViewportSync(win: Window = window): () => void {
   const rootEl = win.document.documentElement;
   const vv = win.visualViewport ?? undefined;
   let raf = 0;
+  // iOS standalone PWA can leave the COMPOSITOR frozen after an in-place OTA navigation: the DOM updates and
+  // input still works, but the SCREEN stops repainting — you tap a session, the terminal mounts + the keyboard
+  // rises, yet the screen stays on the stale landing frame until the app is reopened. An opacity blip on #root
+  // forces a recomposite; unlike a display toggle it never blurs the focused terminal. Kicked on pageshow and
+  // on viewport changes for a short window after load — exactly when the frozen frame + the first keyboard-show
+  // land — then disarmed so there's no steady-state cost.
+  let repaintArmed = true;
+  win.setTimeout?.(() => {
+    repaintArmed = false;
+  }, 15_000);
+  const kickRepaint = (): void => {
+    const el = win.document.getElementById("root");
+    if (!el) return;
+    el.style.opacity = "0.9999";
+    win.requestAnimationFrame(() => {
+      el.style.opacity = "";
+    });
+  };
   const apply = (): void => {
     raf = 0;
     rootEl.style.setProperty("--app-height", `${appHeightPx(vv, win.innerHeight)}px`);
@@ -42,6 +60,7 @@ export function installViewportSync(win: Window = window): () => void {
     // while the keyboard is open; restore the real inset otherwise. Consumers read var(--kb-safe-bottom).
     const kbOpen = !!vv && win.innerHeight - vv.height > 120;
     rootEl.style.setProperty("--kb-safe-bottom", kbOpen ? "0px" : "env(safe-area-inset-bottom, 0px)");
+    if (repaintArmed) kickRepaint();
   };
   const schedule = (): void => {
     // Coalesce the burst of resize/scroll events the keyboard animation fires into one write per frame.
@@ -49,16 +68,16 @@ export function installViewportSync(win: Window = window): () => void {
     raf = win.requestAnimationFrame(apply);
   };
   const onShow = (): void => {
-    // iOS standalone PWA: after an IN-PLACE reload (the OTA path calls window.location.reload()), the
-    // layout/visual viewport can stay DESYNCED — the UI paints correctly but touch hit-testing lands offset,
-    // so nothing is tappable until the app is reopened. Resetting any phantom document scroll + re-syncing
-    // the height realigns hit-testing. `pageshow` fires on the initial load, a reload, AND a bfcache restore,
+    // After an in-place OTA navigation the page can come back hit-test-desynced OR paint-frozen (see above).
+    // Reset any phantom document scroll (realigns hit-testing), kick a repaint (un-freezes the compositor),
+    // and re-sync the height. `pageshow` fires on the initial load, a reload/replace, AND a bfcache restore,
     // so this heals "first open after OTA" without a manual reopen.
     try {
       win.scrollTo(0, 0);
     } catch {
       /* no scrollTo (jsdom) — ignore */
     }
+    kickRepaint();
     schedule();
   };
   apply(); // set immediately so the very first paint is already keyboard-aware
