@@ -76,6 +76,31 @@ export function TerminalView({
   const [files, setFiles] = useState<TermFile[]>([]);
   const [filesOpen, setFilesOpen] = useState(false);
   const [uploadError, setUploadError] = useState<string | undefined>();
+  // One-time discoverability hint for the (non-obvious) two-finger scroll gesture. Touch devices only —
+  // desktop scrolls with the wheel/trackpad natively — and shown ONCE ever (localStorage). Auto-dismisses.
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    let seen = false;
+    try {
+      seen = window.localStorage?.getItem("rc-scroll-hint-v1") === "1";
+    } catch {
+      /* storage blocked (private mode) — just show it */
+    }
+    if (!coarse || seen) return;
+    const show = window.setTimeout(() => setShowScrollHint(true), 700);
+    const hide = window.setTimeout(() => setShowScrollHint(false), 6000);
+    try {
+      window.localStorage?.setItem("rc-scroll-hint-v1", "1");
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(hide);
+    };
+  }, []);
   const restart = () => {
     setConnState("connecting");
     setRestartKey((k) => k + 1);
@@ -345,6 +370,23 @@ export function TerminalView({
       />
       <div className="rc-terminal__stage">
         <div className="rc-terminal__host" ref={hostRef} role="group" aria-label="Terminal" />
+        {showScrollHint && (
+          <button
+            type="button"
+            className="rc-term-hint"
+            aria-label="Scroll the terminal with two fingers. Tap to dismiss."
+            onClick={() => setShowScrollHint(false)}
+          >
+            <svg className="rc-term-hint__gesture" width="22" height="26" viewBox="0 0 22 26" fill="none" aria-hidden="true">
+              <path d="M7 6l4-3.5 4 3.5M7 20l4 3.5 4-3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
+              <g className="rc-term-hint__fingers">
+                <circle cx="8" cy="13" r="2.6" fill="currentColor" />
+                <circle cx="14" cy="13" r="2.6" fill="currentColor" />
+              </g>
+            </svg>
+            <span>Scroll with two fingers</span>
+          </button>
+        )}
         {connState === "reconnecting" && (
           <div className="rc-term-toast" role="status">
             <span className="rc-term-toast__dot" aria-hidden="true" /> Reconnecting…
@@ -439,6 +481,26 @@ const terminalCss = `
 }
 .rc-term-toast__dot { width: 7px; height: 7px; border-radius: 999px; background: var(--warn); animation: rc-term-pulse 1s ease-in-out infinite; }
 @keyframes rc-term-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+/* One-time two-finger-scroll hint — a small coral-accented pill, bottom-center, whose two "fingers" bob to
+   demonstrate the motion. Fades in, holds, fades out over ~5s; tap dismisses early. Shown once ever. */
+.rc-term-hint {
+  position: absolute; left: 50%; bottom: 14px; z-index: 6;
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 14px 8px 11px; border-radius: 999px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--coral); color: var(--text);
+  font: 600 12.5px/1 var(--font-body); text-align: left;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+  animation: rc-hint-life 5300ms ease both;
+}
+.rc-term-hint__gesture { color: var(--coral); flex: none; }
+.rc-term-hint__fingers { animation: rc-hint-bob 1.5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes rc-hint-bob { 0%, 100% { transform: translateY(-2.5px); } 50% { transform: translateY(2.5px); } }
+@keyframes rc-hint-life {
+  0% { opacity: 0; transform: translate(-50%, 10px); }
+  9%, 88% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 6px); }
+}
+@media (prefers-reduced-motion: reduce) { .rc-term-hint__fingers { animation: none; } }
 /* Session-ended overlay — a centered card scrimming the dead terminal, with Restart / Close. */
 .rc-term-ended {
   position: absolute; inset: 0; z-index: 6;
