@@ -77,5 +77,10 @@ export async function hardRefresh(): Promise<void> {
   } catch {
     // best-effort: reload anyway below
   }
-  if (typeof window !== "undefined") window.location.reload();
+  // replace(href), NOT reload(): this runs AUTOMATICALLY on the stale-bundle self-heal (App.tsx), and an
+  // in-place reload() in iOS Safari/standalone can leave the compositor frozen — the DOM updates + input
+  // works, but the screen stops repainting while the "old version" banner is up. A replace() navigation
+  // swaps onto the fresh bundle without that freeze. (The SW/caches are already dropped above, so it re-
+  // fetches from origin regardless.)
+  if (typeof window !== "undefined") window.location.replace(window.location.href);
 }
