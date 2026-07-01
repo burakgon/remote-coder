@@ -13,11 +13,11 @@ import type { SessionMeta } from "../types/server";
 
 /** A full dark theme so xterm never falls back to default ANSI colors / a black viewport seam. */
 const THEME = {
-  background: "#0b0e14",
+  background: "#0a0a0b",
   foreground: "#cdd6e4",
   cursor: "#cdd6e4",
   cursorAccent: "#0b0e14",
-  selectionBackground: "#2a3340",
+  selectionBackground: "#2b2b31",
   black: "#11151c",
   red: "#e06c75",
   green: "#98c379",
@@ -420,7 +420,7 @@ export function TerminalView({
 const terminalCss = `
 .rc-terminal {
   display: flex; flex-direction: column; height: 100%; min-height: 0;
-  background: #0b0e14;
+  background: var(--bg);
 }
 /* The stage is the flex-fill region + the positioning context for the reconnect/ended overlays. */
 .rc-terminal__stage { position: relative; flex: 1 1 auto; min-height: 0; }
@@ -433,38 +433,38 @@ const terminalCss = `
   position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5;
   display: flex; align-items: center; gap: 7px;
   padding: 5px 11px; border-radius: 999px;
-  background: #1b2230; border: 1px solid #2a3340; color: #cdd6e4;
+  background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text);
   font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
-.rc-term-toast__dot { width: 7px; height: 7px; border-radius: 999px; background: #e5c07b; animation: rc-term-pulse 1s ease-in-out infinite; }
+.rc-term-toast__dot { width: 7px; height: 7px; border-radius: 999px; background: var(--warn); animation: rc-term-pulse 1s ease-in-out infinite; }
 @keyframes rc-term-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 /* Session-ended overlay — a centered card scrimming the dead terminal, with Restart / Close. */
 .rc-term-ended {
   position: absolute; inset: 0; z-index: 6;
   display: grid; place-items: center;
-  background: rgba(11,14,20,0.72); backdrop-filter: blur(2px);
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(2px);
 }
 .rc-term-ended__card {
   min-width: 220px; max-width: 90%; padding: 20px;
-  background: #11151c; border: 1px solid #2a3340; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
   text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
 }
-.rc-term-ended__title { font: 600 15px/1.3 "JetBrains Mono", ui-monospace, monospace; color: #cdd6e4; }
-.rc-term-ended__sub { margin-top: 4px; font-size: 12px; color: #5c6370; }
+.rc-term-ended__title { font: 600 15px/1.3 "JetBrains Mono", ui-monospace, monospace; color: var(--text); }
+.rc-term-ended__sub { margin-top: 4px; font-size: 12px; color: var(--text-faint); }
 .rc-term-ended__actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
 .rc-term-ended__primary, .rc-term-ended__ghost {
   min-height: 38px; padding: 0 16px; border-radius: 9px; cursor: pointer;
   font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   touch-action: manipulation;
 }
-.rc-term-ended__primary { background: #e06c75; color: #11151c; border: 1px solid #e06c75; }
-.rc-term-ended__ghost { background: transparent; color: #cdd6e4; border: 1px solid #2a3340; }
+.rc-term-ended__primary { background: var(--coral); color: var(--on-accent); border: 1px solid var(--coral); }
+.rc-term-ended__ghost { background: transparent; color: var(--text); border: 1px solid var(--border-strong); }
 /* Upload error toast — tap to dismiss. */
 .rc-term-uploaderr {
   position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 8;
   max-width: 88%; padding: 8px 14px; border-radius: 10px; cursor: pointer;
-  background: #3a2226; border: 1px solid #e06c75; color: #f0c4c8;
+  background: rgba(217,164,65,0.12); border: 1px solid var(--warn); color: var(--warn);
   font: 500 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 /* The padding lives on .xterm (NOT the host): FitAddon reads padding from the terminal element, so padding
@@ -474,29 +474,29 @@ const terminalCss = `
    character grid must never have (it drifts the columns) — matters for the DOM fallback renderer. */
 .rc-terminal__host .xterm, .rc-terminal__host .xterm * { letter-spacing: normal; }
 /* xterm.css hardcodes the viewport background to #000; match the theme so there's no black seam on resize. */
-.rc-terminal__host .xterm-viewport { background-color: #0b0e14 !important; }
+.rc-terminal__host .xterm-viewport { background-color: var(--bg) !important; }
 /* "Select text" overlay: a scrim over the terminal showing the buffer as PLAIN, natively-selectable text so
    long-press selection + the OS copy menu work (the live xterm swallows touch on mobile). */
 .rc-term-select {
   position: absolute; inset: 0; z-index: 7;
   display: flex; flex-direction: column;
-  background: #0b0e14; /* opaque so the live terminal underneath never repaints over the selectable text */
+  background: var(--bg); /* opaque so the live terminal underneath never repaints over the selectable text */
 }
 .rc-term-select__bar {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-bottom: 1px solid #1e2530; background: #11151c;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--surface);
 }
-.rc-term-select__hint { flex: 1 1 auto; min-width: 0; color: #5c6370; font-size: 12px; }
+.rc-term-select__hint { flex: 1 1 auto; min-width: 0; color: var(--text-faint); font-size: 12px; }
 .rc-term-select__btn {
   flex: 0 0 auto; height: 34px; padding: 0 14px; border-radius: 8px; cursor: pointer;
-  border: 1px solid #2a3340; background: #1b2230; color: #cdd6e4;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
   font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   touch-action: manipulation;
 }
 .rc-term-select__text {
-  flex: 1 1 auto; margin: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  flex: 1 1 auto; margin: 0; padding: 10px 12px calc(10px + var(--kb-safe-bottom, env(safe-area-inset-bottom, 0px)));
   overflow: auto; -webkit-overflow-scrolling: touch;
-  color: #cdd6e4; background: #0b0e14;
+  color: var(--text); background: var(--bg);
   font: 13px/1.45 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   white-space: pre-wrap; word-break: break-word;
   -webkit-user-select: text; user-select: text;
@@ -507,8 +507,8 @@ const terminalCss = `
 .rc-termkeys {
   flex: 0 0 auto;
   display: flex; gap: 6px; align-items: center;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
-  background: #11151c; border-top: 1px solid #1e2530;
+  padding: 6px 8px calc(6px + var(--kb-safe-bottom, env(safe-area-inset-bottom, 0px)));
+  background: var(--surface); border-top: 1px solid var(--border);
   overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
@@ -519,21 +519,21 @@ const terminalCss = `
 .rc-termkeys__scroll {
   position: sticky; left: 0; z-index: 1; flex: 0 0 auto;
   display: flex; gap: 6px; padding-right: 8px;
-  background: #11151c;
+  background: var(--surface);
   box-shadow: 8px 0 8px -6px rgba(0,0,0,0.55);
 }
-.rc-termkeys__scroll button { background: #26303f; }
+.rc-termkeys__scroll button { background: var(--surface-2); }
 .rc-termkeys button {
   flex: 0 0 auto; min-width: 38px; height: 36px; padding: 0 11px; margin: 0;
-  border: 1px solid #2a3340; border-radius: 8px;
-  background: #1b2230; color: #cdd6e4;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-2); color: var(--text);
   font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   white-space: nowrap; cursor: pointer; user-select: none;
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
-.rc-termkeys button:active { background: #2a3340; }
+.rc-termkeys button:active { background: var(--surface-3); }
 .rc-termkeys .rc-termkeys__ctrl.is-on,
-.rc-termkeys__sel.is-on { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.rc-termkeys__sel.is-on { background: var(--coral); color: var(--on-accent); border-color: var(--coral); }
 /* The on-screen key bar exists for devices WITHOUT a physical keyboard. Hide it only where the PRIMARY
    pointer is a mouse/trackpad (a real desktop) — keyed off INPUT TYPE, not width, so a FOLDABLE phone
    (wide when unfolded but still touch, even with an S-Pen as a secondary pointer) keeps the keys. */

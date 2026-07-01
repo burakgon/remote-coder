@@ -37,6 +37,11 @@ export function installViewportSync(win: Window = window): () => void {
   const apply = (): void => {
     raf = 0;
     rootEl.style.setProperty("--app-height", `${appHeightPx(vv, win.innerHeight)}px`);
+    // When the on-screen keyboard is UP, the shell is sized to the visual viewport so the key bar already
+    // sits ABOVE the keyboard — the bottom safe-area inset then becomes dead space ("the gap"). Zero it out
+    // while the keyboard is open; restore the real inset otherwise. Consumers read var(--kb-safe-bottom).
+    const kbOpen = !!vv && win.innerHeight - vv.height > 120;
+    rootEl.style.setProperty("--kb-safe-bottom", kbOpen ? "0px" : "env(safe-area-inset-bottom, 0px)");
   };
   const schedule = (): void => {
     // Coalesce the burst of resize/scroll events the keyboard animation fires into one write per frame.

@@ -18,6 +18,7 @@ test("appHeightPx never returns below 1px", () => {
 
 afterEach(() => {
   document.documentElement.style.removeProperty("--app-height");
+  document.documentElement.style.removeProperty("--kb-safe-bottom");
   vi.restoreAllMocks();
 });
 
@@ -45,11 +46,15 @@ test("installViewportSync writes --app-height and updates on a visualViewport re
 
   const dispose = installViewportSync(fakeWin);
   expect(document.documentElement.style.getPropertyValue("--app-height")).toBe("844px");
+  // Keyboard closed (innerHeight === vv.height): the real safe-area inset is kept.
+  expect(document.documentElement.style.getPropertyValue("--kb-safe-bottom")).toBe("env(safe-area-inset-bottom, 0px)");
 
   // Simulate the keyboard opening: visual viewport shrinks, resize fires.
   vv.height = 380;
   listeners.resize?.();
   expect(document.documentElement.style.getPropertyValue("--app-height")).toBe("380px");
+  // Keyboard up: the bottom inset is zeroed so the key bar has no dead gap beneath it.
+  expect(document.documentElement.style.getPropertyValue("--kb-safe-bottom")).toBe("0px");
 
   dispose();
 });

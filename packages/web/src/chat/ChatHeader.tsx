@@ -40,8 +40,8 @@ const midDot: CSSProperties = { fontFamily: "var(--font-mono)", color: "var(--te
 // A neutral icon tile (spec .ib) that brightens to text on hover — NEUTRAL, no coral. Sized to the 44px
 // touch minimum; the glyph inside stays compact. Shared by the search / MCP / settings header buttons.
 const iconTileStyle: CSSProperties = {
-  width: "var(--tap-min)",
-  height: "var(--tap-min)",
+  width: "36px",
+  height: "36px",
   flex: "none",
   display: "grid",
   placeItems: "center",
@@ -83,7 +83,7 @@ export function ChatHeader({
         gap: "10px",
         // Compact, flat top bar (spec .bar): a single hairline border-bottom, no glass, no float.
         // Sits flush against the chat — small + precise, neutral status.
-        padding: "calc(11px + env(safe-area-inset-top, 0px)) 16px 11px",
+        padding: "calc(6px + env(safe-area-inset-top, 0px)) 14px 6px",
         borderBottom: "1px solid var(--border)",
         background: "var(--bg)",
       }}
