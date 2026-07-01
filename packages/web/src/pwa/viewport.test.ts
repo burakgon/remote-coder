@@ -58,3 +58,34 @@ test("installViewportSync writes --app-height and updates on a visualViewport re
 
   dispose();
 });
+
+test("installViewportSync resets scroll + re-syncs on pageshow (iOS post-reload hit-test realign)", () => {
+  const winListeners: Record<string, () => void> = {};
+  const vv = { height: 844, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  const scrollTo = vi.fn();
+  const fakeWin = {
+    document: document,
+    innerHeight: 844,
+    visualViewport: vv,
+    requestAnimationFrame: (cb: () => void) => {
+      cb();
+      return 1;
+    },
+    cancelAnimationFrame: vi.fn(),
+    scrollTo,
+    addEventListener: (ev: string, cb: () => void) => {
+      winListeners[ev] = cb;
+    },
+    removeEventListener: vi.fn(),
+  } as unknown as Window;
+
+  const dispose = installViewportSync(fakeWin);
+  // Stale the value so we can prove pageshow re-applies it (a real post-reload desync leaves it wrong).
+  document.documentElement.style.setProperty("--app-height", "1px");
+  vv.height = 800;
+  winListeners.pageshow?.();
+  expect(scrollTo).toHaveBeenCalledWith(0, 0);
+  expect(document.documentElement.style.getPropertyValue("--app-height")).toBe("800px");
+
+  dispose();
+});

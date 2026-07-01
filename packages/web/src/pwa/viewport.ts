@@ -48,12 +48,26 @@ export function installViewportSync(win: Window = window): () => void {
     if (raf) return;
     raf = win.requestAnimationFrame(apply);
   };
+  const onShow = (): void => {
+    // iOS standalone PWA: after an IN-PLACE reload (the OTA path calls window.location.reload()), the
+    // layout/visual viewport can stay DESYNCED — the UI paints correctly but touch hit-testing lands offset,
+    // so nothing is tappable until the app is reopened. Resetting any phantom document scroll + re-syncing
+    // the height realigns hit-testing. `pageshow` fires on the initial load, a reload, AND a bfcache restore,
+    // so this heals "first open after OTA" without a manual reopen.
+    try {
+      win.scrollTo(0, 0);
+    } catch {
+      /* no scrollTo (jsdom) — ignore */
+    }
+    schedule();
+  };
   apply(); // set immediately so the very first paint is already keyboard-aware
   if (vv) {
     vv.addEventListener("resize", schedule);
     vv.addEventListener("scroll", schedule);
   }
   win.addEventListener("orientationchange", schedule);
+  win.addEventListener("pageshow", onShow);
   return () => {
     if (raf) win.cancelAnimationFrame(raf);
     if (vv) {
@@ -61,5 +75,6 @@ export function installViewportSync(win: Window = window): () => void {
       vv.removeEventListener("scroll", schedule);
     }
     win.removeEventListener("orientationchange", schedule);
+    win.removeEventListener("pageshow", onShow);
   };
 }
