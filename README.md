@@ -19,7 +19,7 @@ A self-hosted app that runs the **actual `claude` CLI** on your Claude subscript
 
 <img src="docs/media/terminal-mobile.png" alt="Remote Coder on a phone — the real claude TUI streaming in a terminal, with the mobile key bar pinned below" width="31%">
 &nbsp;
-<img src="docs/media/keybar-mobile.png" alt="The Termux-style key bar and select-to-copy overlay that make a full-screen TUI usable by touch" width="31%">
+<img src="docs/media/startup-mobile.png" alt="A fresh Claude Code session opening in the terminal on a phone — the real TUI's welcome screen" width="31%">
 &nbsp;
 <img src="docs/media/sessions-mobile.png" alt="The sessions sheet — every session, which one needs you, and your subscription usage" width="31%">
 

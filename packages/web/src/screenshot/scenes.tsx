@@ -16,6 +16,7 @@ import type { SessionMeta, UsageInfo, VersionInfo, DirListing } from "../types/s
 // replayed byte-for-byte into the real xterm terminal — so the shots show the genuine TUI, not a mock.
 import claudeMobile from "./claude-mobile.ansi?raw";
 import claudeDesktop from "./claude-desktop.ansi?raw";
+import claudeStart from "./claude-mobile-start.ansi?raw";
 
 const NOW = 1_735_732_800_000; // fixed clock so relative times are deterministic
 
@@ -184,6 +185,17 @@ const list = (
 
 export const SCENES: Record<string, () => ReactElement> = {
   terminal: () => <div style={{ height: "100vh" }}>{terminal(claudeMobile)}</div>,
+  startup: () => (
+    <div style={{ height: "100vh" }}>
+      <TerminalView
+        session={SESSION}
+        createSocket={mockSocket(claudeStart) as never}
+        onShowSessions={() => {}}
+        needsYou={0}
+        onClose={() => {}}
+      />
+    </div>
+  ),
   desktop: () => (
     <AppLayout sessionList={list} sessionsOpen={false} conversationActive onHideSessions={() => {}}>
       {terminal(claudeDesktop)}

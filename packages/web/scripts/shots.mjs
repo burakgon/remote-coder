@@ -22,6 +22,7 @@ const BASE = `http://localhost:${PORT}`;
 const IPHONE = devices["iPhone 13 Pro"];
 const SHOTS = [
   { name: "terminal-mobile", scene: "terminal", mobile: true, wait: 2200 },
+  { name: "startup-mobile", scene: "startup", mobile: true, wait: 2200 },
   {
     name: "keybar-mobile",
     scene: "terminal",
