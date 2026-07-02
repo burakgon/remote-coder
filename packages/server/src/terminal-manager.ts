@@ -279,10 +279,16 @@ export class TerminalManager {
         subs: new Set(),
       });
     }
-    for (const name of opts.liveTmuxNames) {
-      if (!name.startsWith("rc-")) continue;
-      const id = name.slice(3);
-      if (!storedTerminalIds.has(id)) this.killTmux(id); // orphan → reap
+    // Orphan-reap ONLY with a durable store. In "memory-fallback" (better-sqlite3 didn't load) the store is
+    // EMPTY after a restart, so EVERY live rc-* session looks like an orphan — reaping would then destroy
+    // ALL running terminals on any restart (incl. OTA), e.g. after a native-module ABI break. Leaking a
+    // genuinely-orphaned tmux session is far better than killing every live one, so skip reaping here.
+    if (this.deps.store.mode !== "memory-fallback") {
+      for (const name of opts.liveTmuxNames) {
+        if (!name.startsWith("rc-")) continue;
+        const id = name.slice(3);
+        if (!storedTerminalIds.has(id)) this.killTmux(id); // orphan → reap
+      }
     }
   }
 

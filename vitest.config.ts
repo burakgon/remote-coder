@@ -1,19 +1,28 @@
 import { defineConfig } from "vitest/config";
 
+// Vitest 4 dropped `vitest.workspace.ts` support in favour of `test.projects`. Without this the root
+// `pnpm test` (and CI's Test step) silently ran ONLY the node suite (server/cli/protocol) and skipped
+// EVERY web test — a client regression shipped green. `projects` restores the single-command run of BOTH
+// suites, each with its own environment/plugins; `pnpm -C packages/web test` still works standalone.
 export default defineConfig({
   test: {
-    include: ["packages/*/test/**/*.test.ts"],
-    environment: "node",
-    // The WS/integration tests spawn a `node` mock subprocess per session. Running the test
-    // FILES in parallel (the default) makes those handshakes/round-trips compete for the same
-    // spawn/IO budget, so under full-suite load a WS turn intermittently never delivers its
-    // output ("no result over ws"). Serialising the files removes that contention and
-    // makes the suite reliably green (verified across repeated full runs); tests WITHIN a file
-    // still run as written. The suite is small, so the serial cost is minor.
-    fileParallelism: false,
-    // Headroom over the longest in-test reject budget (10s) so the harness never kills a
-    // subprocess-driven WS turn before its own deadline fires.
-    testTimeout: 15000,
-    hookTimeout: 15000,
+    projects: [
+      {
+        test: {
+          name: "node",
+          include: ["packages/*/test/**/*.test.ts"],
+          environment: "node",
+          // The WS/integration tests spawn a `node` mock subprocess per session. Running the test FILES in
+          // parallel makes those handshakes compete for the same spawn/IO budget, so under full-suite load a
+          // WS turn intermittently never delivers ("no result over ws"). Serialising the files removes that
+          // contention (tests WITHIN a file still run as written); the suite is small, so the cost is minor.
+          fileParallelism: false,
+          testTimeout: 15000,
+          hookTimeout: 15000,
+        },
+      },
+      // The web suite keeps its own jsdom env + react plugin + __BUILD_SHA__ stub (packages/web/vitest.config.ts).
+      "./packages/web/vitest.config.ts",
+    ],
   },
 });

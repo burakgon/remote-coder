@@ -7,6 +7,7 @@ export default defineConfig({
   define: { __BUILD_SHA__: JSON.stringify("dev") },
   plugins: [react()],
   test: {
+    name: "web",
     globals: true,
     environment: "jsdom",
     setupFiles: ["./test/setup.ts"],
