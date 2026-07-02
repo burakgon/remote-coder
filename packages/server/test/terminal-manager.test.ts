@@ -1,7 +1,7 @@
 // packages/server/test/terminal-manager.test.ts
 import { EventEmitter } from "node:events";
 import { afterEach, expect, test, vi } from "vitest";
-import { TerminalManager, looksBusy } from "../src/terminal-manager.js";
+import { TerminalManager } from "../src/terminal-manager.js";
 import { openSessionStore } from "../src/session-store.js";
 
 function fakePtyFactory() {
@@ -87,8 +87,8 @@ test("pushControl fans a JSON control message (attachment) to attached subscribe
   expect(m.pushControl("unknown-id", { t: "attach" })).toBe(false); // no such session
 });
 
-/** A manager wired with awaiting notifiers + a tiny idle window, on fake timers. */
-function awaitMgr(idleMs = 50) {
+/** A manager wired with the away-from-desk + finished notifiers, on fake timers. */
+function awaitMgr() {
   const store = openSessionStore({ dbPath: ":memory:" });
   const { spawn, ptys } = fakePtyFactory();
   const awaiting: string[] = [];
@@ -100,57 +100,35 @@ function awaitMgr(idleMs = 50) {
     now: () => ++t,
     ptySpawn: spawn as never,
     runTmux: () => {},
-    awaitIdleMs: idleMs,
     onAwaiting: (id) => awaiting.push(id),
     onFinished: (id) => finished.push(id),
   });
-  return { m, ptys, awaiting, finished, idleMs };
+  return { m, ptys, awaiting, finished };
 }
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-test("awaiting: pty going output-idle after a burst flips awaiting true; input/output clears it", () => {
-  vi.useFakeTimers();
-  const { m, ptys, idleMs } = awaitMgr();
+test("awaiting: setAwaiting(true) marks it; fresh pty output clears it (claude resumed)", () => {
+  const { m, ptys } = awaitMgr();
   m.create({ id: "a", cwd: "/w" });
   m.attach("a", { onData: () => {} });
-  ptys[0]!.emit("data", "some output"); // a burst arms the idle timer
-  expect(m.get("a")?.awaiting).toBe(false);
-  vi.advanceTimersByTime(idleMs + 1);
-  expect(m.get("a")?.awaiting).toBe(true); // idle after the burst → awaiting
-
-  ptys[0]!.emit("data", "more output"); // fresh output → active again
-  expect(m.get("a")?.awaiting).toBe(false);
-  vi.advanceTimersByTime(idleMs + 1);
+  m.setAwaiting("a", true); // claude's Stop hook fired → it's waiting on you
   expect(m.get("a")?.awaiting).toBe(true);
-
-  m.write("a", "x"); // user input → not awaiting
+  ptys[0]!.emit("data", "more output"); // claude produced output again → active, not waiting
   expect(m.get("a")?.awaiting).toBe(false);
 });
 
-test("awaiting: NOT flagged while claude is busy (recent output shows 'esc to interrupt'); flips once it clears", () => {
-  vi.useFakeTimers();
-  const { m, ptys, awaiting, idleMs } = awaitMgr();
+test("isAttached reflects whether a client is connected", () => {
+  const { m } = awaitMgr();
   m.create({ id: "a", cwd: "/w" });
-  m.attach("a", { onData: () => {} });
-  // A working turn whose spinner then goes quiet: the last screen still shows the interrupt hint → busy.
-  ptys[0]!.emit("data", "\x1b[2m✳ Cerebrating… (esc to interrupt · 12s)\x1b[0m");
-  vi.advanceTimersByTime(idleMs + 1);
-  expect(m.get("a")?.awaiting).toBe(false); // busy, not "needs you"
-  expect(awaiting).toEqual([]); // and no push
-  // Turn finishes: a big prompt repaint pushes the stale hint out of the tail → the next quiet window flags it.
-  ptys[0]!.emit("data", "│ > ".padStart(3000, "."));
-  vi.advanceTimersByTime(idleMs + 1);
-  expect(m.get("a")?.awaiting).toBe(true);
-});
-
-test("looksBusy: detects the interrupt hint in the tail, ANSI- and case-tolerant", () => {
-  expect(looksBusy(undefined)).toBe(false);
-  expect(looksBusy("normal output\n│ > ")).toBe(false);
-  expect(looksBusy("\x1b[2mspinning (esc to interrupt · 3s)\x1b[0m")).toBe(true);
-  expect(looksBusy("ESC TO INTERRUPT")).toBe(true);
+  expect(m.isAttached("a")).toBe(false);
+  const sub = m.attach("a", { onData: () => {} });
+  expect(m.isAttached("a")).toBe(true);
+  sub!.unsubscribe();
+  expect(m.isAttached("a")).toBe(false);
+  expect(m.isAttached("nope")).toBe(false);
 });
 
 test("reattach to a still-running session forces a tmux redraw (size wiggle) so a fresh xterm isn't blank", () => {
@@ -168,41 +146,21 @@ test("reattach to a still-running session forces a tmux redraw (size wiggle) so 
   vi.useRealTimers();
 });
 
-test("awaiting: onAwaiting is NOT fired while a client watches, but IS fired when the last one detaches", () => {
-  vi.useFakeTimers();
-  const { m, ptys, awaiting, idleMs } = awaitMgr();
+test("walk-away ping: detaching the last client WHILE awaiting fires onAwaiting (you left it waiting)", () => {
+  const { m, awaiting } = awaitMgr();
   m.create({ id: "a", cwd: "/w" });
   const sub = m.attach("a", { onData: () => {} });
-  ptys[0]!.emit("data", "output");
-  vi.advanceTimersByTime(idleMs + 1);
-  expect(m.get("a")?.awaiting).toBe(true);
+  m.setAwaiting("a", true); // claude's Stop hook fired while you were watching
   expect(awaiting).toEqual([]); // someone is watching → no push, just the flag
-
-  sub!.unsubscribe(); // walked away while claude was waiting → now fire the away-from-desk ping
-  expect(awaiting).toEqual(["a"]);
-});
-
-test("awaiting: the idle timer fires onAwaiting only when no client is attached", () => {
-  vi.useFakeTimers();
-  const { m, ptys, awaiting, idleMs } = awaitMgr();
-  m.create({ id: "a", cwd: "/w" });
-  // Attach (to spawn the pty + capture the data handler), emit output, then detach BEFORE the idle window.
-  const sub = m.attach("a", { onData: () => {} });
-  ptys[0]!.emit("data", "output");
-  sub!.unsubscribe(); // detaches; awaiting still false, idle timer still pending
-  expect(awaiting).toEqual([]);
-  vi.advanceTimersByTime(idleMs + 1); // fires with subs.size === 0 → push
-  expect(m.get("a")?.awaiting).toBe(true);
+  sub!.unsubscribe(); // walked away while it was waiting → now fire the away-from-desk ping
   expect(awaiting).toEqual(["a"]);
 });
 
 test("onFinished fires when claude exits, and an ended session is not awaiting", () => {
-  vi.useFakeTimers();
-  const { m, ptys, finished, idleMs } = awaitMgr();
+  const { m, ptys, finished } = awaitMgr();
   m.create({ id: "a", cwd: "/w" });
   m.attach("a", { onData: () => {} });
-  ptys[0]!.emit("data", "output");
-  vi.advanceTimersByTime(idleMs + 1);
+  m.setAwaiting("a", true);
   expect(m.get("a")?.awaiting).toBe(true);
   ptys[0]!.emit("exit", { exitCode: 0 });
   expect(finished).toEqual(["a"]);

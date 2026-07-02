@@ -2,7 +2,14 @@
 import { writeFileSync, chmodSync, unlinkSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { TerminalProcess, tmuxSessionName, type PtySpawn } from "./terminal-process.js";
-import { buildMcpConfigDocument, mcpConfigPathFor } from "./config.js";
+import {
+  buildMcpConfigDocument,
+  mcpConfigPathFor,
+  buildHooksSettingsDocument,
+  hooksSettingsPathFor,
+  hookAuthPathFor,
+  hookAuthFileContent,
+} from "./config.js";
 import type { AttachSpawnOptions } from "./config.js";
 import type { SessionStore } from "./session-store.js";
 
@@ -14,9 +21,11 @@ export interface TerminalMeta {
   createdAt: number;
   lastActivityAt: number;
   /**
-   * Best-effort "claude has gone quiet and is likely waiting for you" flag (the pty went output-idle for a
-   * few seconds after a burst — see {@link TerminalManager}). Surfaced in GET /sessions so the web
-   * SessionList can badge it. Conservative: false unless we're fairly sure; a missed true is fine.
+   * "claude finished its turn and is waiting on YOU." Set DETERMINISTICALLY by claude's own `Stop` hook (and
+   * the ask_user flow), cleared by its `UserPromptSubmit` hook + any fresh pty output — see
+   * config.buildHooksSettingsDocument. Replaces the old terminal-output-idle scraping, which couldn't tell
+   * "generating / waiting on a background agent" from "waiting for you" and fired false positives. Surfaced in
+   * GET /sessions so the web can badge it.
    */
   awaiting: boolean;
 }
@@ -42,19 +51,16 @@ interface Record_ {
   subs: Set<TermSub>;
   /** Per-session 0600 MCP config file path (so the terminal's claude gets send_image/send_file); cleaned on stop. */
   mcpConfigPath?: string;
+  /** Per-session 0600 files for claude's Stop/UserPromptSubmit hooks: the settings doc (passed as --settings)
+   *  and the auth-header file the hook curls read (-H '@file'). Both cleaned on stop. */
+  hooksConfigPath?: string;
+  hookAuthPath?: string;
   /**
    * Bounded, in-memory buffer of `attach` control frames (files/images claude sent) so a client that
    * (re)connects LATER still sees files that arrived while it was away — pushControl only reaches clients
    * attached at send-time. Replayed to each newly-attached client. Not durable across a server restart.
    */
   attachments: unknown[];
-  /** Pending output-idle timer for the awaiting heuristic (unref'd; cleared on input/output/exit/stop). */
-  awaitTimer?: NodeJS.Timeout;
-  /**
-   * Rolling tail (~2KB) of the most recent pty output, kept ONLY to tell "claude is waiting for you" apart
-   * from "claude is still working" when output goes quiet — see {@link looksBusy}. Not fanned out / stored.
-   */
-  recentOutput?: string;
 }
 
 export interface TerminalManagerDeps {
@@ -72,43 +78,10 @@ export interface TerminalManagerDeps {
   onAwaiting?: (id: string) => void;
   /** Best-effort notifier fired when a session's claude exits (the "done" ping). Same never-throw contract. */
   onFinished?: (id: string) => void;
-  /**
-   * How long the pty must stay output-idle after a burst before we mark `awaiting` (the "claude finished a
-   * turn / is at a prompt" heuristic). Injectable so tests can use a tiny value; defaults to
-   * {@link TERMINAL_AWAIT_IDLE_MS}.
-   */
-  awaitIdleMs?: number;
 }
-
-/**
- * Default output-idle window before a running session MAY be marked `awaiting` (see above). A little longer
- * than a reflex so a brief pause mid-turn doesn't flap — the {@link looksBusy} guard does the heavy lifting
- * against false positives; this just avoids flagging the instant output stutters.
- */
-export const TERMINAL_AWAIT_IDLE_MS = 6000;
 
 /** Cap the per-session replay buffer of attachment frames so a long-lived session can't grow unbounded. */
 const MAX_ATTACHMENT_BUFFER = 50;
-
-/** Strip CSI escape sequences (colour / cursor moves) so claude's rendered TUI can be text-matched — each
- *  becomes a space so adjacent tokens can't merge. Marker detection, not a full terminal parser. */
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, " ");
-}
-
-/**
- * True when claude's RECENT output shows it is still WORKING (a turn in progress), not waiting on the user.
- * The reliable tell is the "esc to interrupt" hint claude Code prints ONLY while a turn runs — generating, or
- * a tool (even a long one whose animated spinner has gone quiet, which is exactly when the output-idle timer
- * would otherwise fire a false "needs you"). We check the TAIL (~last screen) so a stale hint already replaced
- * by the prompt redraw doesn't count. Absent → claude is at rest: an input prompt or a y/n permission ask,
- * i.e. genuinely awaiting you. Exported for unit tests.
- */
-export function looksBusy(recent: string | undefined): boolean {
-  if (!recent) return false;
-  return stripAnsi(recent).slice(-900).toLowerCase().includes("esc to interrupt");
-}
 
 const clampDim = (n: number | undefined, fallback: number): number =>
   Math.max(1, Math.trunc(n ?? fallback) || fallback);
@@ -140,6 +113,10 @@ export class TerminalManager {
     // the per-session 0600 config file and pass its path. Degrade gracefully (no attachments) on any failure.
     const mcpConfigPath = this.writeMcpConfig(opts.id);
     if (mcpConfigPath) claudeArgs.push("--mcp-config", mcpConfigPath);
+    // Deterministic "needs you": claude's own Stop/UserPromptSubmit hooks tell us when it's waiting on the
+    // user vs still working (a background agent / a tool) — no fragile terminal scraping. Degrade gracefully.
+    const hooks = this.writeHooksConfig(opts.id);
+    if (hooks) claudeArgs.push("--settings", hooks.configPath);
     this.records.set(opts.id, {
       meta,
       claudeArgs,
@@ -147,6 +124,8 @@ export class TerminalManager {
       rows: clampDim(opts.rows, 24),
       subs: new Set(),
       mcpConfigPath,
+      hooksConfigPath: hooks?.configPath,
+      hookAuthPath: hooks?.authPath,
       attachments: [],
     });
     this.deps.store.upsert({
@@ -174,11 +153,33 @@ export class TerminalManager {
     }
   }
 
+  /** Write the per-session 0600 hooks settings + auth-header files; returns their paths (or undefined → spawn
+   *  without hooks, so claude just won't emit the Stop/UserPromptSubmit "needs you" signals). The auth file
+   *  holds `Authorization: Bearer <token>` so the hook curls read it via `-H '@file'` (token never in argv). */
+  private writeHooksConfig(id: string): { configPath: string; authPath: string } | undefined {
+    if (!this.attachConfig) return undefined;
+    try {
+      const dir = this.attachConfig.dataDir;
+      const authPath = hookAuthPathFor(dir, id);
+      writeFileSync(authPath, hookAuthFileContent(this.attachConfig.token), { mode: 0o600 });
+      chmodSync(authPath, 0o600);
+      const configPath = hooksSettingsPathFor(dir, id);
+      writeFileSync(configPath, JSON.stringify(buildHooksSettingsDocument(id, this.attachConfig, authPath)), {
+        mode: 0o600,
+      });
+      chmodSync(configPath, 0o600);
+      return { configPath, authPath };
+    } catch {
+      return undefined; // graceful degrade — terminal still works, just without hook-driven "needs you"
+    }
+  }
+
   /**
-   * Delete stale per-session `mcp-config-<id>.json` files — the 0600 files hold the access token. A file is
-   * stale when no live session owns its id: leaked by a crash, an orphan-reap, a rehydrated record (which
-   * carries no mcpConfigPath, so stop() never unlinks its file), or a token rotation. Call at boot AFTER
-   * rehydrate + setAttachConfig so `records` reflects the surviving sessions. No-op without an attach config.
+   * Delete stale per-session 0600 files that hold the access token — `mcp-config-<id>.json`, `hooks-<id>.json`,
+   * and `hook-auth-<id>`. A file is stale when no live session owns its id: leaked by a crash, an orphan-reap,
+   * a rehydrated record (which carries no such paths, so stop() never unlinks its files), or a token rotation.
+   * Call at boot AFTER rehydrate + setAttachConfig so `records` reflects the surviving sessions. No-op without
+   * an attach config.
    */
   sweepStaleMcpConfigs(): number {
     if (!this.attachConfig) return 0;
@@ -192,7 +193,7 @@ export class TerminalManager {
     const liveIds = new Set(this.records.keys());
     let removed = 0;
     for (const name of names) {
-      const m = /^mcp-config-(.+)\.json$/.exec(name);
+      const m = /^(?:mcp-config-|hooks-)(.+)\.json$/.exec(name) ?? /^(?:hook-auth-)(.+)$/.exec(name);
       if (!m || liveIds.has(m[1]!)) continue;
       try {
         unlinkSync(join(dir, name));
@@ -247,68 +248,25 @@ export class TerminalManager {
   }
 
   /**
-   * Explicitly set a session's `awaiting` flag. Used by the ask flow (claude is BLOCKED on the user, so it
-   * is definitely awaiting) — distinct from the output-idle heuristic. Setting true cancels any pending
-   * idle timer so it can't later flip the flag back on redundantly; setting false clears both. A missing
-   * session is a no-op. Does NOT fire {@link TerminalManagerDeps.onAwaiting} — the caller owns that push.
+   * Set a session's `awaiting` flag ("claude finished its turn and is waiting on YOU"). Driven by claude's
+   * `Stop` hook (→ true) and `UserPromptSubmit` hook (→ false), plus the ask_user flow (→ true). Deterministic:
+   * no timers, no terminal scraping. A missing session is a no-op. Does NOT fire the away-from-desk push — the
+   * hook route (and the ask route) own that, so they can gate it on {@link isAttached}.
    */
   setAwaiting(id: string, value: boolean): void {
     const rec = this.records.get(id);
-    if (!rec) return;
-    if (value) {
-      this.clearAwaitTimer(rec);
-      rec.meta.awaiting = true;
-    } else {
-      this.clearAwaiting(rec);
-    }
+    if (rec) rec.meta.awaiting = value;
   }
 
-  /** Clear a record's pending output-idle timer (if any). */
-  private clearAwaitTimer(rec: Record_): void {
-    if (rec.awaitTimer) {
-      clearTimeout(rec.awaitTimer);
-      rec.awaitTimer = undefined;
-    }
-  }
-
-  /** Clear the awaiting flag AND any pending idle timer (user is active / session ended). */
+  /** Clear the awaiting flag (user is active / session ended). */
   private clearAwaiting(rec: Record_): void {
-    this.clearAwaitTimer(rec);
     rec.meta.awaiting = false;
   }
 
-  /**
-   * (Re)arm the output-idle timer: after `awaitIdleMs` of NO further output, flip a RUNNING session to
-   * awaiting (claude likely finished a turn / is at a prompt) and — only if no client is attached (the user
-   * is away) — fire onAwaiting for a push. Conservative on purpose: continuous output (streaming, a spinner)
-   * keeps resetting this so we never falsely ping mid-work. unref'd so it never keeps the process alive.
-   */
-  private armAwaitTimer(id: string, rec: Record_): void {
-    this.clearAwaitTimer(rec);
-    const idleMs = this.deps.awaitIdleMs ?? TERMINAL_AWAIT_IDLE_MS;
-    const timer = setTimeout(() => {
-      rec.awaitTimer = undefined;
-      if (rec.meta.status !== "running" || rec.meta.awaiting) return;
-      // FALSE-POSITIVE GUARD (the "it says needs-you for the WRONG things" fix): output stopped, but if
-      // claude's recent screen still shows the "esc to interrupt" hint, it is BUSY — generating, or running a
-      // long tool whose spinner went quiet — NOT waiting on you. Re-check later instead of flagging. When
-      // claude actually finishes it redraws the prompt (no interrupt hint) → the next quiet window flags it.
-      if (looksBusy(rec.recentOutput)) {
-        this.armAwaitTimer(id, rec);
-        return;
-      }
-      rec.meta.awaiting = true;
-      // Away-from-desk: only PUSH when nobody is watching. The flag still flips for the SessionList badge.
-      if (rec.subs.size === 0) {
-        try {
-          this.deps.onAwaiting?.(id);
-        } catch {
-          /* a push must NEVER break the terminal */
-        }
-      }
-    }, idleMs);
-    if (typeof timer.unref === "function") timer.unref();
-    rec.awaitTimer = timer;
+  /** Whether a session currently has ≥1 attached client (a live browser WS). The hook route uses this so the
+   *  away-from-desk push fires ONLY when nobody is watching. */
+  isAttached(id: string): boolean {
+    return (this.records.get(id)?.subs.size ?? 0) > 0;
   }
 
   /**
@@ -376,13 +334,10 @@ export class TerminalManager {
         ...(this.deps.runTmux ? { runTmux: this.deps.runTmux } : {}),
       });
       proc.on("data", (chunk) => {
-        // Fresh output → claude is active again: clear any awaiting state and (re)arm the output-idle
-        // detector so a subsequent quiet window flips awaiting back on. Best-effort, before fan-out.
+        // Fresh output → claude is active again, so it's not waiting on you. (The AUTHORITATIVE "waiting"
+        // signal is claude's Stop hook, which fires after output stops; this just clears it the instant claude
+        // resumes — e.g. an autonomous loop.) Best-effort, before fan-out.
         rec.meta.awaiting = false;
-        // Keep a small tail of what claude just rendered so the idle detector can tell "waiting for you" from
-        // "still working" (a long tool whose spinner went quiet) — see looksBusy in armAwaitTimer.
-        rec.recentOutput = ((rec.recentOutput ?? "") + chunk).slice(-2048);
-        this.armAwaitTimer(id, rec);
         // Snapshot + per-sub try/catch: one wedged client's throw must not drop the frame for the others.
         for (const s of [...rec.subs]) {
           try {
@@ -478,12 +433,13 @@ export class TerminalManager {
 
   stop(id: string): void {
     const rec = this.records.get(id);
-    if (rec) this.clearAwaitTimer(rec); // don't leak the pending idle timer for a killed session
     if (rec?.proc) rec.proc.stop({ kill: true });
     else this.killTmux(id);
-    if (rec?.mcpConfigPath) {
+    // Best-effort: don't leak the per-session 0600 files (they hold the token) after close.
+    for (const p of [rec?.mcpConfigPath, rec?.hooksConfigPath, rec?.hookAuthPath]) {
+      if (!p) continue;
       try {
-        unlinkSync(rec.mcpConfigPath); // best-effort: don't leak the 0600 config (with the token) after close
+        unlinkSync(p);
       } catch {
         /* already gone */
       }

@@ -264,3 +264,42 @@ test("POST /ask and /ask/answer are token-gated (401 without auth)", async () =>
   const answer = await current.app.inject({ method: "POST", url: "/sessions/s1/ask/answer", payload: { askId: "x" } });
   expect(answer.statusCode).toBe(401);
 });
+
+test("POST /hook?event=stop marks awaiting + pushes when nobody is watching; 404 for unknown session", async () => {
+  current = makeServer();
+  const id = "hk1";
+  current.terminalManager.create({ id, cwd: root });
+
+  const unknown = await current.app.inject({ method: "POST", url: "/sessions/nope/hook?event=stop", headers: auth });
+  expect(unknown.statusCode).toBe(404);
+
+  const stop = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=stop`, headers: auth });
+  expect(stop.statusCode).toBe(200);
+  expect(current.terminalManager.get(id)?.awaiting).toBe(true);
+  expect(pushed.map((p) => p.kind)).toContain("awaiting"); // nobody watching → away-from-desk push
+});
+
+test("POST /hook?event=stop does NOT push while a client is watching (badge only)", async () => {
+  current = makeServer();
+  const id = "hk2";
+  current.terminalManager.create({ id, cwd: root });
+  const watcher = collectControl(current, id); // a client is attached
+  const res = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=stop`, headers: auth });
+  expect(res.statusCode).toBe(200);
+  expect(current.terminalManager.get(id)?.awaiting).toBe(true); // flag still flips (for the badge)
+  expect(pushed).toEqual([]); // ...but no push — you're right there watching
+  watcher.stop();
+});
+
+test("POST /hook?event=submit clears awaiting; an unknown event is 400", async () => {
+  current = makeServer();
+  const id = "hk3";
+  current.terminalManager.create({ id, cwd: root });
+  current.terminalManager.setAwaiting(id, true);
+  const submit = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=submit`, headers: auth });
+  expect(submit.statusCode).toBe(200);
+  expect(current.terminalManager.get(id)?.awaiting).toBe(false);
+
+  const bad = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=whoops`, headers: auth });
+  expect(bad.statusCode).toBe(400);
+});
