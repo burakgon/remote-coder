@@ -146,6 +146,13 @@ export function App() {
   // SESSION-SCOPED settings — the same SettingsPanel, but seeded with the ACTIVE session so it shows the
   // "This session" block. Opened from the chat header's gear (ChatHeader → TerminalView `onOpenSettings`).
   const [sessionSettingsOpen, setSessionSettingsOpen] = useState(false);
+  // iOS-Safari compositor fix: gate the (heavy) terminal mount so that, when SWITCHING sessions, xterm is
+  // built a couple frames AFTER the session-select layout swap has painted — not synchronously in the same
+  // commit that closes the sessions sheet. Mounting xterm mid-transition blocks the main thread and freezes
+  // iOS's compositor on the stale frame (worst on the cold first select — "ekran siyah / liste takılı").
+  // Starts true so initial load / a restored session / tests mount immediately (no sheet transition there);
+  // onSelect drops it to false for the switch, then a double-rAF flips it back once the swap has painted.
+  const [terminalMountReady, setTerminalMountReady] = useState(true);
   // Read the saved defaults once PER OPEN of EITHER settings surface (not on every render while a panel is
   // up) — the panel only seeds its draft from the first value anyway.
   const settingsDefaults = useMemo(() => loadDefaults(), [globalSettingsOpen, sessionSettingsOpen]);
@@ -657,12 +664,22 @@ export function App() {
         setSessionsOpen(false);
       }}
       onSelect={(id) => {
+        // Defer the heavy xterm remount ONLY on touch (where the freeze lives) and ONLY when actually
+        // switching sessions. On desktop / jsdom (fine pointer) mount immediately — no transition freeze
+        // there, and it keeps the shell tests synchronous.
+        const coarse = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)")?.matches;
+        const deferMount = coarse && id !== activeSessionId;
+        // iOS: drop the terminal to a black placeholder for ~2 frames so the sheet-close + layout swap paints
+        // on a LIGHT frame; the heavy xterm remount then happens on a stable, already-painted layout instead
+        // of blocking the main thread mid-transition (the compositor freeze — "ekran siyah / liste takılı").
+        if (deferMount) setTerminalMountReady(false);
         setActive(id);
         setSessionsOpen(false);
-        // iOS: un-freeze the compositor across the sheet-close → terminal-focus transition (covers the case
-        // where the SAME session is re-selected and the terminal doesn't remount, so TerminalView's own heal
-        // wouldn't re-fire). Harmless no-op elsewhere.
+        // Safety-net repaint kick across the transition (covers same-session re-select where nothing remounts).
         healPaintBurst();
+        if (deferMount) {
+          requestAnimationFrame(() => requestAnimationFrame(() => setTerminalMountReady(true)));
+        }
       }}
       onNew={() => openWizard()}
       onNewHere={(cwd) => {
@@ -909,16 +926,23 @@ export function App() {
               // the rail stays usable, and switching sessions resets it.
               <ErrorBoundary key={active.id} variant="compact" label="this conversation">
                 {/* Terminal is the only session mode. TerminalView owns its full chrome: the top-bar
-                    (mobile menu → sessions sheet, session name, close, Files panel) + terminal + key bar. */}
-                <TerminalView
-                  session={active}
-                  onShowSessions={() => setSessionsOpen(true)}
-                  needsYou={awaitingCount(sessions)}
-                  onClose={() => closeSession(active.id)}
-                  // The chat header's gear opens the SESSION-SCOPED settings panel (rendered below with
-                  // the active session). ChatHeader/TerminalView surface the gear when this is provided.
-                  onOpenSettings={() => setSessionSettingsOpen(true)}
-                />
+                    (mobile menu → sessions sheet, session name, close, Files panel) + terminal + key bar.
+                    Gated by terminalMountReady so a session SWITCH defers the heavy xterm mount past the
+                    select transition's paint (iOS compositor freeze fix) — a black placeholder holds the
+                    box for ~2 frames so the layout is stable when the terminal actually mounts. */}
+                {terminalMountReady ? (
+                  <TerminalView
+                    session={active}
+                    onShowSessions={() => setSessionsOpen(true)}
+                    needsYou={awaitingCount(sessions)}
+                    onClose={() => closeSession(active.id)}
+                    // The chat header's gear opens the SESSION-SCOPED settings panel (rendered below with
+                    // the active session). ChatHeader/TerminalView surface the gear when this is provided.
+                    onOpenSettings={() => setSessionSettingsOpen(true)}
+                  />
+                ) : (
+                  <div aria-hidden style={{ flex: "1 1 auto", minHeight: 0, background: "#0a0a0b" }} />
+                )}
               </ErrorBoundary>
             ) : (
               // No matching session (e.g. a stale deep-link id). There's no ChatHeader here, so keep
