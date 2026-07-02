@@ -1,7 +1,8 @@
 // packages/server/src/terminal-manager.ts
 import { writeFileSync, chmodSync, unlinkSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { TerminalProcess, tmuxSessionName, type PtySpawn } from "./terminal-process.js";
+import { TerminalProcess, tmuxSessionName, TMUX_SOCKET, type PtySpawn } from "./terminal-process.js";
+import { classifyPaneStatus, capturePane } from "./pane-status.js";
 import {
   buildMcpConfigDocument,
   mcpConfigPathFor,
@@ -89,6 +90,12 @@ export interface TerminalManagerDeps {
    * are). Same never-throw contract.
    */
   onFinished?: (id: string, wasAttached: boolean) => void;
+  /**
+   * Capture a tmux session's CURRENT rendered pane as plain text (READ-ONLY). Injected for tests; in
+   * production it defaults to a real `capture-pane -p` on {@link TMUX_SOCKET}. Drives {@link refreshActivity},
+   * the universal (hook-free) working-vs-awaiting classifier.
+   */
+  capturePane?: (sessionName: string) => Promise<string>;
 }
 
 /** Cap the per-session replay buffer of attachment frames so a long-lived session can't grow unbounded. */
@@ -99,6 +106,10 @@ const clampDim = (n: number | undefined, fallback: number): number =>
 
 export class TerminalManager {
   private readonly records = new Map<string, Record_>();
+  /** Sessions with an OPEN ask_user question (the /ask long-poll is holding). An open question IS "needs you",
+   *  so refreshActivity pins these to `awaiting` and never lets the rendered pane (which may show a spinner
+   *  while claude blocks on the MCP tool) downgrade them to "working". Set by the transport's ask routes. */
+  private readonly askPending = new Set<string>();
   private attachConfig?: AttachSpawnOptions;
   constructor(private readonly deps: TerminalManagerDeps) {}
 
@@ -290,6 +301,57 @@ export class TerminalManager {
     let n = 0;
     for (const rec of this.records.values()) if (rec.meta.awaiting) n += 1;
     return n;
+  }
+
+  /** Mark/unmark a session as having an OPEN ask_user question (the /ask long-poll). Called by the transport's
+   *  /ask (→ true) and /ask/answer + timeout + cancel (→ false). Keeps {@link refreshActivity} from letting the
+   *  pane override an explicit "needs you" while claude blocks on the ask MCP tool. */
+  setAskPending(id: string, pending: boolean): void {
+    if (pending) this.askPending.add(id);
+    else this.askPending.delete(id);
+  }
+
+  /**
+   * Re-derive every RUNNING session's `awaiting` flag from its LIVE rendered tmux pane (`capture-pane`) — the
+   * single, UNIVERSAL source of truth for "is claude busy, or is it my turn?". Works for EVERY session (no
+   * per-session hooks needed → correct for sessions created before hooks existed) and works while the browser is
+   * DETACHED (it reads tmux directly). Called on a ~2.5s timer from start.ts. Read-only: it can never disturb a
+   * live session.
+   *
+   * Precedence: an OPEN ask_user question ({@link askPending}) pins the session to `awaiting` regardless of the
+   * pane. Otherwise {@link classifyPaneStatus} decides. A capture that returns "" (tmux hiccup) leaves the last
+   * flag untouched so the status never flaps to a wrong value on a transient miss.
+   *
+   * Fires {@link TerminalManagerDeps.onAwaiting} (the away-from-desk push) on a false→true transition when no
+   * client is attached — so the "needs you" nudge is universal too, not just for hook-capable sessions. When a
+   * hook already set `awaiting=true`, the pane agrees and there's no transition here → no double push.
+   */
+  async refreshActivity(): Promise<void> {
+    const capture =
+      this.deps.capturePane ?? ((name: string) => capturePane({ socket: TMUX_SOCKET, sessionName: name }));
+    await Promise.all(
+      [...this.records.entries()].map(async ([id, rec]) => {
+        if (rec.meta.status !== "running") return;
+        let target: "working" | "awaiting";
+        if (this.askPending.has(id)) {
+          target = "awaiting"; // an open question is your turn — never let the pane downgrade it
+        } else {
+          const pane = await capture(tmuxSessionName(id));
+          if (!pane) return; // capture failed/empty → keep the last known flag (don't flap on a transient miss)
+          target = classifyPaneStatus(pane);
+        }
+        const nowAwaiting = target === "awaiting";
+        const wasAwaiting = rec.meta.awaiting;
+        rec.meta.awaiting = nowAwaiting;
+        if (nowAwaiting && !wasAwaiting && rec.subs.size === 0) {
+          try {
+            this.deps.onAwaiting?.(id);
+          } catch {
+            /* a push failure must never break the monitor */
+          }
+        }
+      }),
+    );
   }
 
   /**

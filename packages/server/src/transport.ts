@@ -286,6 +286,7 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
 
   /** Resolve every pending ask for a session as cancelled (session closed / gone) so no /ask request hangs. */
   const cancelPendingAsks = (sessionId: string): void => {
+    terminalManager.setAskPending(sessionId, false);
     const forSession = pendingAsksBySession.get(sessionId);
     if (!forSession) return;
     pendingAsksBySession.delete(sessionId);
@@ -731,6 +732,7 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
         takePendingAsk(sessionId, askId);
         terminalManager.pushControl(sessionId, { t: "ask-cancel", askId });
         terminalManager.setAwaiting(sessionId, false);
+        terminalManager.setAskPending(sessionId, false);
         resolve({ cancelled: true });
       }, ASK_TIMEOUT_MS);
       if (typeof timer.unref === "function") timer.unref();
@@ -746,6 +748,7 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
       // but only PUSH the phone when NOBODY is watching (same gate as the Stop hook — you're right there
       // otherwise and just saw the question overlay appear).
       terminalManager.setAwaiting(sessionId, true);
+      terminalManager.setAskPending(sessionId, true); // pin awaiting until answered — the pane monitor must not override
       if (!terminalManager.isAttached(sessionId)) {
         dispatchPush({ kind: "ask", sessionId, detail: firstQuestionText(questions) });
       }
@@ -773,6 +776,7 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     }
     clearTimeout(pending.timer);
     terminalManager.setAwaiting(sessionId, false);
+    terminalManager.setAskPending(sessionId, false);
     pending.resolve(cancelled ? { cancelled: true } : { answers: answers ?? {} });
     reply.code(200).send({ ok: true });
   });
