@@ -774,16 +774,16 @@ export function TerminalView({
           }}
         >
           <div className="rc-paste__card">
+            {/* A natural-language COMPOSE box (a prompt for claude), NOT the terminal — so keep the FULL iOS
+                keyboard: dictation / voice typing, the QuickType predictive bar, and autocorrect. Suppressing
+                autocorrect/spellcheck the way we must on xterm's own helper textarea ALSO hides the mic +
+                QuickType, which the user needs here — so use browser defaults (all of those on). */}
             <textarea
               ref={pasteRef}
               className="rc-paste__input"
               placeholder="Type or paste text, then Send…"
               autoFocus
               rows={4}
-              autoCapitalize="off"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck={false}
             />
             <div className="rc-paste__row">
               <button type="button" className="rc-paste__btn" onClick={() => setPasteOpen(false)}>
