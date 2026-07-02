@@ -36,6 +36,12 @@ jobs:
           pnpm approve-builds better-sqlite3 esbuild || true
           pnpm rebuild better-sqlite3 || true
 
+      # tmux is REQUIRED for the real-tmux integration test (the only test that proves tmuxConfigChain()
+      # actually parses). Without it that test silently skips (skipIf(!hasTmux)) and a malformed chain could
+      # reach prod green. Install it + hard-assert it's present so the test always runs.
+      - name: Install tmux (real-tmux integration test)
+        run: sudo apt-get update && sudo apt-get install -y tmux && tmux -V
+
       - name: Verify better-sqlite3 native binding built
         run: pnpm -C packages/server exec node -e "const D=require('better-sqlite3'); const db=new D(':memory:'); db.exec('create table t(x)'); db.prepare('insert into t values (1)').run(); if (db.prepare('select x from t').get().x !== 1) process.exit(1); console.log('better-sqlite3 native binding OK');"
 
@@ -88,3 +94,8 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      # Advisory only (|| true): surface known dependency vulnerabilities in the log without failing the build
+      # on a transient advisory. Dependabot (.github/dependabot.yml) opens the actual bump PRs.
+      - name: Audit dependencies (advisory)
+        run: pnpm audit --prod || true
