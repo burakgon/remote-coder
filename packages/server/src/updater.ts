@@ -39,6 +39,20 @@ export const RUNNING_BUILD: string = typeof __SERVER_BUILD_SHA__ === "string" ? 
 /** The official repo this updater will pull from — the detached script refuses any other origin. */
 export const EXPECTED_REMOTE_SUBSTRING = "github.com/burakgon/remote-coder";
 
+/**
+ * EXACT-match a git remote URL against the official repo. A substring match (the old guard) also passed
+ * `…/remote-coder-attacker.git` and `https://evil.com/github.com/burakgon/remote-coder`, weakening a check
+ * that gates an RCE-by-design update. Parse instead: strip a trailing `.git`, then require github.com +
+ * the exact owner/repo path across the https, scp (`git@host:owner/repo`), and ssh URL forms.
+ */
+export function isExpectedRemote(remoteUrl: string): boolean {
+  const url = remoteUrl.trim().replace(/\.git$/i, "");
+  return (
+    /^https?:\/\/(?:[^@/]+@)?github\.com\/burakgon\/remote-coder$/i.test(url) || // https (optional creds)
+    /^(?:ssh:\/\/)?[^@\s]+@github\.com[:/]burakgon\/remote-coder$/i.test(url) // scp-like or ssh://
+  );
+}
+
 /** Cache TTL for the `git fetch` + behind-count check. The app polls /version on open + ~every 3m;
  * this guards against hammering the network — a check inside this window reuses the last result. Kept
  * short (2m) so a freshly pushed update is detected promptly instead of lingering behind a stale cache. */
@@ -374,7 +388,7 @@ export class Updater {
   private async hasExpectedRemote(root: string): Promise<boolean> {
     const res = await this.deps.runGit(["config", "--get", "remote.origin.url"], { cwd: root });
     if (res.code !== 0) return false;
-    return res.stdout.trim().includes(EXPECTED_REMOTE_SUBSTRING);
+    return isExpectedRemote(res.stdout);
   }
 
   /**
@@ -671,6 +685,8 @@ export function renderUpdaterScript(opts: RenderUpdaterScriptOptions): string {
     `STATUS=${q(statusPath)}`,
     `LOG=${q(logPath)}`,
     `EXPECTED=${q(expectedRemote)}`,
+    // scp form (git@github.com:owner/repo): the first "/" of the https path becomes ":".
+    `EXPECTED_SCP="git@$(printf '%s' "$EXPECTED" | sed 's#/#:#')"`,
     `RESTART_CMD=${q(restartCommand)}`,
     `PARENT_PID=${q(String(parentPid))}`,
     `NODE_BIN_DIR=${q(nodeBinDir)}`,
@@ -741,8 +757,10 @@ export function renderUpdaterScript(opts: RenderUpdaterScriptOptions): string {
     "",
     "# Guard: the configured remote must be the official repo (RCE-by-design only on OUR repo).",
     'ORIGIN_URL="$(git config --get remote.origin.url 2>/dev/null || true)"',
+    'ORIGIN_URL="${ORIGIN_URL%.git}"', // strip a trailing .git so the exact patterns below match
     'case "$ORIGIN_URL" in',
-    '  *"$EXPECTED"*) : ;;',
+    // EXACT match (not a substring) so `…/remote-coder-attacker` or `evil.com/github.com/…/remote-coder` are refused.
+    '  "https://$EXPECTED"|"http://$EXPECTED"|"$EXPECTED_SCP"|"ssh://git@$EXPECTED") : ;;',
     '  *) fail "remote origin ($ORIGIN_URL) is not the expected repository; refusing to update" "pulling" ;;',
     "esac",
     "",

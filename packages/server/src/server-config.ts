@@ -22,11 +22,12 @@ export interface ServerRuntimeConfig {
   /** Host data dir for the SQLite DB + access token file. */
   dataDir: string;
   /**
-   * Trust X-Forwarded-* (passed to Fastify as `trustProxy`). Default false.
-   * Set true when running behind a reverse proxy (Caddy/Cloudflare) so `request.ip` is the
-   * real client IP — otherwise the per-client auth lockout collapses to the proxy's single IP.
+   * Trust X-Forwarded-* (passed to Fastify as `trustProxy`). Default false. PREFER a specific proxy IP/CIDR
+   * (e.g. "127.0.0.1" for a same-host cloudflared/Caddy) over `true`: `true` trusts EVERY hop and takes the
+   * left-most XFF entry, which a client can prepend to spoof `request.ip` and poison the rate limiter. A
+   * string here is Fastify's trustProxy spec (IP, CIDR, or comma-list); boolean true = trust all hops.
    */
-  trustProxy?: boolean;
+  trustProxy?: boolean | string;
   /**
    * The public-facing origin (REMOTE_CODER_PUBLIC_URL). Used by the Origin/CSWSH guard as an allow-listed
    * origin (the PWA is installed under this when behind a tunnel) AND by start.ts for push deep-links.
@@ -102,7 +103,12 @@ export function loadServerConfig(env: NodeJS.ProcessEnv): ServerRuntimeConfig {
     claude: loadConfig(env),
   };
   if (env.ACCESS_TOKEN) cfg.accessToken = env.ACCESS_TOKEN;
-  if (env.TRUST_PROXY === "1" || env.TRUST_PROXY === "true") cfg.trustProxy = true;
+  // "1"/"true" → trust ALL hops (convenient but spoofable). An IP/CIDR-looking value (has a "." or ":" and
+  // only address chars — e.g. "127.0.0.1", "10.0.0.0/8", "::1") → pass through as Fastify's trustProxy spec
+  // (the recommended form: trust ONLY that proxy hop). Anything else ("0", "false", "no", unset) → off.
+  const tp = (env.TRUST_PROXY ?? "").trim();
+  if (tp === "1" || tp.toLowerCase() === "true") cfg.trustProxy = true;
+  else if (/[.:]/.test(tp) && /^[0-9a-fA-F.:,/\s]+$/.test(tp)) cfg.trustProxy = tp;
   const publicUrl = (env.REMOTE_CODER_PUBLIC_URL ?? "").trim();
   if (publicUrl) cfg.publicUrl = publicUrl;
   return cfg;

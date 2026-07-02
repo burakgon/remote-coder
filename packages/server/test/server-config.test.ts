@@ -31,6 +31,9 @@ test("loadServerConfig defaults trustProxy off and reads TRUST_PROXY", () => {
   expect(loadServerConfig({ TRUST_PROXY: "true" }).trustProxy).toBe(true);
   expect(loadServerConfig({ TRUST_PROXY: "1" }).trustProxy).toBe(true);
   expect(loadServerConfig({ TRUST_PROXY: "no" }).trustProxy).toBeFalsy();
+  // An IP/CIDR-looking value is passed through as Fastify's trustProxy spec (trust ONLY that proxy hop).
+  expect(loadServerConfig({ TRUST_PROXY: "127.0.0.1" }).trustProxy).toBe("127.0.0.1");
+  expect(loadServerConfig({ TRUST_PROXY: "10.0.0.0/8" }).trustProxy).toBe("10.0.0.0/8");
 });
 
 test("loadServerConfig applies safe defaults for the new limit/security controls", () => {
