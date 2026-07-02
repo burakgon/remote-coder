@@ -248,3 +248,26 @@ button {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   iOS SAFARI COMPOSITOR RELIEF (the #1 fix for "select a session → the screen just freezes").
+   A large `backdrop-filter: blur()` is brutally expensive for iOS Safari's compositor — and the sessions
+   SHEET (.rc-rail) is a full-height blurred panel. Selecting a session closes that blurred sheet WHILE the
+   heavy xterm terminal mounts behind it; iOS can't recomposite the changing-backdrop blur + the new DOM in
+   time and STALLS (the frozen frame). An opacity-blip repaint can't rescue a scene that heavy.
+   On touch devices we therefore DROP all backdrop blur and make the glass surfaces solid instead (the frost
+   was a desktop nicety; solid panels read the same and composite for free). This is the single biggest
+   iOS win — it removes the layer that was freezing the compositor, not just re-kicks it. --------------- */
+@media (pointer: coarse) {
+  :root {
+    --glass: rgba(20, 20, 22, 0.97);
+    --glass-strong: rgba(17, 17, 19, 0.99);
+    --glass-blur: none;
+  }
+  *,
+  *::before,
+  *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
