@@ -33,7 +33,7 @@
   /* --- Text — neutral on near-black (spec verbatim) ---------------------- */
   --text: #ededee;
   --text-muted: #94939b;
-  --text-faint: #5d5c65;
+  --text-faint: #87868f; /* lightened from #5d5c65 (~3:1, WCAG-AA fail) to ~5:1 on --bg; still < --text-muted */
 
   /* --- Brand / signal accent — coral (the ONE accent) -------------------- */
   --accent: #f77a44;

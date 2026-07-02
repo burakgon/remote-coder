@@ -48,15 +48,15 @@ interface ClientState {
  * Task 8 wires it as a single global Fastify `preHandler` that also gates the
  * WebSocket upgrade.
  *
- * Proxy lockout caveat: the lockout is keyed by `clientKey`, which Task 8 sets
- * to `request.ip`. Behind a reverse proxy (Caddy / Cloudflare), `request.ip`
- * is the proxy's IP for every client, so the per-client lockout collapses to
- * one shared key (a self-DoS: one attacker locks out everyone). `AuthGate`
- * stays IP-agnostic — it hashes whatever `clientKey` it is given; the
- * deployment must supply a real per-client key. Per-client lockout therefore
- * requires Fastify's `trustProxy` (so `request.ip` derives from
- * `X-Forwarded-For`) or an equivalent forwarded-IP source when running behind
- * a proxy.
+ * Proxy lockout caveat: the lockout is keyed by `clientKey` (`request.ip`).
+ * Behind a reverse proxy (Caddy / Cloudflare) `request.ip` is the proxy's IP
+ * for EVERY client, collapsing the per-client lockout to one shared key. To
+ * stop that from self-DoS-ing the sole legitimate user, {@link check} validates
+ * the token FIRST: a CORRECT token is ALWAYS accepted, even while its key is
+ * locked out — the lockout only ever throttles WRONG guesses. Supplying a real
+ * per-client key (Fastify `trustProxy` scoped to the proxy) still makes the
+ * throttle per-client, but is no longer required to keep the user from being
+ * locked out by someone else's bad traffic.
  */
 export class AuthGate {
   // NOT readonly: rotateToken() atomically swaps in a fresh secret (POST /token/rotate). Every subsequent
@@ -90,11 +90,12 @@ export class AuthGate {
 
     const state = this.clients.get(clientKey) ?? { failures: 0, lockedUntil: 0 };
     const t = this.now();
-    if (state.lockedUntil > t) return { ok: false, reason: "locked" };
 
-    // Accept the CURRENT token, OR — within the post-rotation grace window — the PREVIOUS one. Both go
-    // through the same length-mismatch-safe constant-time compare (no early return leaks length). After
-    // `previousValidUntil` the old token is dead. SECURITY: the grace is a marginal exposure — the old
+    // Validate the token FIRST — BEFORE consulting the lockout. Accept the CURRENT token, OR — within the
+    // post-rotation grace window — the PREVIOUS one. Both go through the same length-mismatch-safe
+    // constant-time compare (no early return leaks length). A correct token is accepted even while this key
+    // is locked out, so bad guesses (from an attacker, or from ANY client when they all share the proxy's IP
+    // as clientKey) can never lock out the real user. SECURITY: the grace is a marginal exposure — the old
     // token was already valid up to the instant of rotation; 60s more only lets in-flight MCP callbacks
     // (send_image/send_file/ask_user) complete, the deliberate tradeoff vs breaking attachments mid-turn.
     const matchesCurrent = presentedToken !== undefined && constantTimeEqual(presentedToken, this.token);
@@ -103,11 +104,14 @@ export class AuthGate {
       this.previousToken !== undefined &&
       t <= this.previousValidUntil &&
       constantTimeEqual(presentedToken, this.previousToken);
-    const valid = matchesCurrent || matchesPrevious;
-    if (valid) {
+    if (matchesCurrent || matchesPrevious) {
       this.clients.delete(clientKey); // reset on success
       return { ok: true };
     }
+
+    // Wrong token. Only now does the lockout apply — a locked key keeps rejecting WRONG guesses without
+    // counting further (the lock governs); the correct token above is unaffected.
+    if (state.lockedUntil > t) return { ok: false, reason: "locked" };
 
     state.failures += 1;
     if (state.failures >= this.maxFailures) {

@@ -37,17 +37,21 @@ test("a gate with no configured token never accepts", () => {
   expect(gate.check("anything", "ip-a")).toEqual({ ok: false, reason: "missing-token-config" });
 });
 
-test("repeated failures lock the client out, and the lock expires", () => {
+test("repeated wrong guesses lock the client out (but a correct token is always accepted)", () => {
   let t = 1000;
   const gate = new AuthGate({ token: "s3cret", maxFailures: 3, lockoutMs: 5000, now: () => t });
   expect(gate.check("bad", "ip-x")).toEqual({ ok: false, reason: "invalid" });
   expect(gate.check("bad", "ip-x")).toEqual({ ok: false, reason: "invalid" });
   expect(gate.check("bad", "ip-x")).toEqual({ ok: false, reason: "invalid" }); // 3rd failure trips the lock
-  // Now locked: even the CORRECT token is refused while locked.
-  expect(gate.check("s3cret", "ip-x")).toEqual({ ok: false, reason: "locked" });
-  // Advance past the lockout window -> allowed again.
-  t += 5001;
+  // A WRONG token is now throttled as "locked"…
+  expect(gate.check("bad", "ip-x")).toEqual({ ok: false, reason: "locked" });
+  // …but the CORRECT token is ALWAYS accepted, even while locked — the DoS fix so a flood of bad guesses
+  // (or, behind a proxy, ANY client's bad traffic on the shared key) can never lock out the real user. A
+  // success also resets the client's state.
   expect(gate.check("s3cret", "ip-x")).toEqual({ ok: true });
+  // Past the lockout window a fresh wrong guess is "invalid" again, not "locked".
+  t += 5001;
+  expect(gate.check("bad", "ip-x")).toEqual({ ok: false, reason: "invalid" });
 });
 
 test("expired lockout entries are evicted opportunistically (map does not grow unbounded)", () => {
@@ -124,9 +128,10 @@ test("rotateToken clears lockout state (an administrative reset)", () => {
   const t = 0;
   const gate = new AuthGate({ token: "old", maxFailures: 1, lockoutMs: 10_000, now: () => t });
   gate.check("wrong", "ip-x"); // trips the lock
-  expect(gate.check("old", "ip-x")).toEqual({ ok: false, reason: "locked" });
+  expect(gate.check("wrong", "ip-x")).toEqual({ ok: false, reason: "locked" }); // a WRONG guess is throttled
   gate.rotateToken("new");
-  // Rotation cleared the lockout, so the new token is accepted immediately (no wait).
+  // Rotation cleared the lockout, so even a wrong guess is "invalid" (fresh slate) and the new token works.
+  expect(gate.check("bad", "ip-x")).toEqual({ ok: false, reason: "invalid" });
   expect(gate.check("new", "ip-x")).toEqual({ ok: true });
 });
 

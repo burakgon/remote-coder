@@ -1,6 +1,9 @@
 export interface TerminalSocket {
   sendInput(d: string): void;
   sendResize(cols: number, rows: number): void;
+  /** Force an immediate reconnect and reset the backoff — for a manual "Reconnect now" tap or a back-online
+   *  event, so the user isn't stuck waiting out the (up to 15s) backoff after the phone wakes. */
+  reconnect(): void;
   close(): void;
 }
 
@@ -19,7 +22,9 @@ const FATAL_CLOSE_CODES = new Set([4404, 4410]);
  * close code (ended / not-found) so it never hammer-retries an unrecoverable session.
  */
 export function createTerminalSocket(opts: {
-  url: string;
+  /** The WS URL, or a THUNK re-evaluated on every (re)connect so a rotated token / resized viewport is picked
+   *  up — a fixed string would reconnect forever with the stale token captured at first connect. */
+  url: string | (() => string);
   onData: (bytes: Uint8Array) => void;
   onStatus?: (s: TerminalStatus) => void;
   /** Out-of-band control messages (JSON text frames) — file/image attachments claude sent. The server
@@ -33,7 +38,8 @@ export function createTerminalSocket(opts: {
 
   const connect = () => {
     if (closedByCaller) return;
-    const sock = new WebSocket(opts.url);
+    const url = typeof opts.url === "function" ? opts.url() : opts.url; // fresh token per attempt
+    const sock = new WebSocket(url);
     sock.binaryType = "arraybuffer";
     ws = sock;
     sock.onopen = () => {
@@ -71,6 +77,22 @@ export function createTerminalSocket(opts: {
   return {
     sendInput: (d) => openSend({ t: "i", d }),
     sendResize: (cols, rows) => openSend({ t: "r", c: cols, r: rows }),
+    reconnect: () => {
+      if (closedByCaller) return;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = undefined;
+      }
+      attempt = 0; // reset backoff so the retry is immediate
+      const stale = ws;
+      ws = undefined; // supersede: the stale socket's onclose (ws !== sock) becomes a no-op
+      try {
+        stale?.close();
+      } catch {
+        /* already gone */
+      }
+      connect();
+    },
     close: () => {
       closedByCaller = true;
       if (retryTimer) clearTimeout(retryTimer);

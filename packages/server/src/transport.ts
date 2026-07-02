@@ -120,6 +120,8 @@ export interface CreateServerResult {
   /** Exposed so startServer can late-bind the MCP attach config (after listen() resolves the port) —
    *  this is what gives the terminal's claude send_image/send_file. */
   terminalManager: TerminalManager;
+  /** False when tmux/node-pty is unavailable → terminal sessions are disabled (startServer warns loudly). */
+  terminalAvailable: boolean;
 }
 
 interface CreateSessionBody {
@@ -133,6 +135,31 @@ interface CreateSessionBody {
   permissionMode?: string;
   /** Session mode: terminal is the only mode (a pty-backed tmux terminal session). */
   mode?: "terminal";
+}
+
+/** Permission modes the claude CLI actually accepts (POST /sessions validates against this). */
+const VALID_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "bypassPermissions"]);
+/** A model id must be a short, sane token. Defense-in-depth: it becomes claude argv (no shell, so not an
+ *  injection vector), but an operator-supplied value shouldn't be unbounded/arbitrary. */
+const isValidModel = (m: string): boolean => m.length > 0 && m.length <= 64 && /^[\w./:@-]+$/.test(m);
+
+/**
+ * SSRF guard for a Web-Push endpoint the server will later POST to: reject loopback / private / link-local
+ * hosts (incl. the cloud metadata address 169.254.169.254) so an authed client can't point delivery at an
+ * internal service. Real push services (FCM / Apple / Mozilla) are public HTTPS hosts, so this never blocks a
+ * legitimate subscription.
+ */
+function isDisallowedPushHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!v4) return false;
+  const a = Number(v4[1]);
+  const b = Number(v4[2]);
+  return (
+    a === 127 || a === 10 || a === 0 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) // prettier-ignore
+  );
 }
 
 export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps = {}): CreateServerResult {
@@ -153,7 +180,10 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     // Only rehydrate (which prunes store rows for dead sessions) when we have a DEFINITIVE live-session
     // list. `undefined` = the tmux probe failed transiently → skip, so a flaky probe never wipes the
     // user's resumable terminal sessions.
-    const liveTmuxNames = listTmuxSessions();
+    // Retry a transiently-failed probe a couple of times before giving up: skipping rehydrate leaves the
+    // user's previously-running sessions unadopted (invisible + leaked) until a later restart.
+    let liveTmuxNames = listTmuxSessions();
+    for (let i = 0; liveTmuxNames === undefined && i < 2; i += 1) liveTmuxNames = listTmuxSessions();
     if (liveTmuxNames) terminalManager.rehydrate({ liveTmuxNames });
   }
   const authGate = deps.authGate ?? new AuthGate({ token: config.accessToken });
@@ -180,6 +210,18 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
   sweepSharedFiles();
   const sharedSweepTimer = setInterval(sweepSharedFiles, TERMINAL_SWEEP_INTERVAL_MS);
   if (typeof sharedSweepTimer.unref === "function") sharedSweepTimer.unref();
+  // OPT-IN idle-session reaper (SESSION_IDLE_TTL_MS; 0 = off, the default so detached sessions survive for
+  // later reattach). When enabled, periodically kill running terminals with no attached client idle past the
+  // TTL, bounding detached claude+tmux accumulation. unref() so it never keeps the process alive.
+  const idleTtlMs = config.sessionIdleTtlMs ?? 0;
+  if (idleTtlMs > 0) {
+    const reapEvery = Math.max(30_000, Math.min(idleTtlMs, 5 * 60_000));
+    const idleTimer = setInterval(() => {
+      const n = terminalManager.reapIdle(idleTtlMs);
+      if (n > 0) console.log(`reaped ${n} idle terminal session(s) (SESSION_IDLE_TTL_MS=${idleTtlMs})`);
+    }, reapEvery);
+    if (typeof idleTimer.unref === "function") idleTimer.unref();
+  }
   // CONCURRENCY CAP: refuse a new spawn once `config.maxSessions` live terminal sessions exist (0 disables
   // it). Only running sessions count, so dormant/errored records don't and reopening within the cap is
   // unaffected. The message names the env var so an operator can lift it.
@@ -413,13 +455,32 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     }
     const id = randomUUID();
     const claudeArgs: string[] = [];
-    if (typeof body.model === "string") claudeArgs.push("--model", body.model);
+    if (typeof body.model === "string") {
+      if (!isValidModel(body.model)) {
+        reply.code(400).send({ error: "invalid model" });
+        return;
+      }
+      claudeArgs.push("--model", body.model);
+    }
     // --dangerously-skip-permissions and --permission-mode are mutually exclusive (the CLI rejects both
     // together); the danger flag wins and suppresses the permission mode.
     if (body.dangerouslySkip) {
       claudeArgs.push("--dangerously-skip-permissions");
     } else if (typeof body.permissionMode === "string") {
+      if (!VALID_PERMISSION_MODES.has(body.permissionMode)) {
+        reply.code(400).send({ error: "invalid permissionMode" });
+        return;
+      }
       claudeArgs.push("--permission-mode", body.permissionMode);
+    }
+    // TOCTOU: the cap was checked before the `await stat` above, which yields — re-check right before the
+    // (synchronous) create so two concurrent POSTs can't both pass the cap and exceed maxSessions.
+    if (
+      config.maxSessions > 0 &&
+      terminalManager.list().filter((t) => t.status === "running").length >= config.maxSessions
+    ) {
+      reply.code(429).send({ error: sessionCapMessage });
+      return;
     }
     const meta = terminalManager.create({ id, cwd: body.cwd, claudeArgs });
     // Return `{ session }` (not a flat body). The web client does `return (await res.json()).session`.
@@ -560,6 +621,10 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
       }
       if (endpointUrl.protocol !== "https:") {
         reply.code(400).send({ error: "endpoint must be an https: URL" });
+        return;
+      }
+      if (isDisallowedPushHost(endpointUrl.hostname)) {
+        reply.code(400).send({ error: "endpoint host is not allowed" });
         return;
       }
       deps.pushStore.upsert({
@@ -901,7 +966,7 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     deps.pushStore?.close();
   });
 
-  return { app, authGate, terminalManager };
+  return { app, authGate, terminalManager, terminalAvailable };
 }
 
 /**

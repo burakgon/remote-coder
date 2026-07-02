@@ -10,9 +10,27 @@ import {
   computeBuildDrift,
   RUNNING_BUILD,
   EXPECTED_REMOTE_SUBSTRING,
+  isExpectedRemote,
   CHECK_CACHE_MS,
 } from "../src/updater.js";
 import type { RunGit, RunGitResult, UpdaterFs } from "../src/updater.js";
+
+test("isExpectedRemote matches ONLY the official repo, exactly (not a substring)", () => {
+  for (const ok of [
+    "https://github.com/burakgon/remote-coder",
+    "https://github.com/burakgon/remote-coder.git",
+    "git@github.com:burakgon/remote-coder.git",
+    "ssh://git@github.com/burakgon/remote-coder",
+  ])
+    expect(isExpectedRemote(ok)).toBe(true);
+  for (const bad of [
+    "https://github.com/burakgon/remote-coder-attacker.git", // suffix — the old substring guard accepted this
+    "https://evil.com/github.com/burakgon/remote-coder", // prefix
+    "https://github.com/someoneelse/remote-coder",
+    "https://gitlab.com/burakgon/remote-coder",
+  ])
+    expect(isExpectedRemote(bad)).toBe(false);
+});
 
 // The ASCII unit separator the updater's git --format uses (must match updater.ts's LOG_SEP).
 const US = "\x1f";

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoginScreen } from "./auth/LoginScreen";
 import { loadToken, saveToken, clearToken, consumeTokenFromUrl } from "./auth/token-store";
 import { createApiClient, ApiError } from "./api/client";
@@ -166,6 +166,22 @@ export function App() {
     [token],
   );
 
+  // Any authenticated request that returns 401 AFTER load means the token was revoked/expired (rotated on the
+  // server, or the rotation grace window elapsed). Clear it and return to the login screen instead of
+  // retrying forever behind a stale "couldn't reach the server" toast or an endless terminal "Reconnecting…".
+  // Returns true when it handled an auth failure so the caller can stop. Stable (useState setters + a module
+  // import), so it's safe to list in effect deps.
+  const handleAuthExpiry = useCallback((err: unknown): boolean => {
+    if (err instanceof ApiError && err.status === 401) {
+      clearToken();
+      setTokenState(undefined);
+      setLoginError("Session expired — please sign in again.");
+      setPhase("login");
+      return true;
+    }
+    return false;
+  }, []);
+
   useEffect(() => {
     if (token === undefined) return;
     setToken(token);
@@ -228,11 +244,12 @@ export function App() {
           mergeSessionMeta(s);
           setLoadError(undefined); // a successful poll clears any earlier "couldn't reach the server"
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          if (handleAuthExpiry(err)) return; // token revoked/expired after load → back to login, stop polling
           // Keep the current list (a single blip is transient), but after a couple of CONSECUTIVE poll
           // failures the server is genuinely unreachable — surface it so the user knows the list is stale
           // (the cold-start banner only covered the first load). Cleared on the next success.
-          if (cancelled) return;
           if (++pollFailures.current >= 2) setLoadError("Couldn't reach the server — the list may be stale.");
         });
     };
@@ -246,7 +263,7 @@ export function App() {
       window.removeEventListener("focus", onFocusOrOnline);
       window.removeEventListener("online", onFocusOrOnline);
     };
-  }, [phase, api, mergeSessionMeta]);
+  }, [phase, api, mergeSessionMeta, handleAuthExpiry]);
 
   // OTA self-update: poll GET /version on open and every ~15min. The server caches the underlying git
   // check (≤10min), so this is cheap. A failed poll is ignored (transient / offline / non-updatable);
@@ -285,8 +302,8 @@ export function App() {
             setClientStale(false);
           }
         })
-        .catch(() => {
-          // transient/offline/non-updatable — keep the last known info.
+        .catch((err: unknown) => {
+          if (!cancelled) handleAuthExpiry(err); // token expired → login; otherwise transient, keep last info
         });
     };
     poll();
@@ -300,7 +317,7 @@ export function App() {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [phase, api, setUpdateInfo, setUpdateState, setClientStale]);
+  }, [phase, api, setUpdateInfo, setUpdateState, setClientStale, handleAuthExpiry]);
 
   // Claude usage bars: poll GET /usage on open and every ~60s (plus on window focus). The server
   // TTL-caches the underlying `claude /usage` spawn, so this poll is cheap. A failed poll is ignored
@@ -319,8 +336,8 @@ export function App() {
           // good value instead; a later good poll refreshes it (and they refresh every ~60s anyway).
           if (!cancelled && u) setUsage(u);
         })
-        .catch(() => {
-          // transient — keep the last value.
+        .catch((err: unknown) => {
+          if (!cancelled) handleAuthExpiry(err); // token expired → login; otherwise transient, keep last value
         });
     };
     poll();
@@ -363,13 +380,13 @@ export function App() {
       .then((m) => {
         if (alive) setModels(m);
       })
-      .catch(() => {
-        /* leave models [] → ModelSelect falls back to free-text */
+      .catch((err: unknown) => {
+        if (alive) handleAuthExpiry(err); // token expired → login; otherwise leave models [] → free-text
       });
     return () => {
       alive = false;
     };
-  }, [phase, api]);
+  }, [phase, api, handleAuthExpiry]);
 
   // While an update is in flight, poll GET /update/status (~every 2s) so the panel shows the live phase
   // (pulling → building → restarting). On a `failed` status, flip to the failed UX. Each tick ALSO

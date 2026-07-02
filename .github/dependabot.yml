@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # npm/pnpm dependencies (root workspace). Grouped so related bumps land in one PR instead of many.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+  # Keep the GitHub Actions in ci.yml current (they're a supply-chain surface too).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

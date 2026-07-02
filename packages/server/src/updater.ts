@@ -39,6 +39,20 @@ export const RUNNING_BUILD: string = typeof __SERVER_BUILD_SHA__ === "string" ? 
 /** The official repo this updater will pull from — the detached script refuses any other origin. */
 export const EXPECTED_REMOTE_SUBSTRING = "github.com/burakgon/remote-coder";
 
+/**
+ * EXACT-match a git remote URL against the official repo. A substring match (the old guard) also passed
+ * `…/remote-coder-attacker.git` and `https://evil.com/github.com/burakgon/remote-coder`, weakening a check
+ * that gates an RCE-by-design update. Parse instead: strip a trailing `.git`, then require github.com +
+ * the exact owner/repo path across the https, scp (`git@host:owner/repo`), and ssh URL forms.
+ */
+export function isExpectedRemote(remoteUrl: string): boolean {
+  const url = remoteUrl.trim().replace(/\.git$/i, "");
+  return (
+    /^https?:\/\/(?:[^@/]+@)?github\.com\/burakgon\/remote-coder$/i.test(url) || // https (optional creds)
+    /^(?:ssh:\/\/)?[^@\s]+@github\.com[:/]burakgon\/remote-coder$/i.test(url) // scp-like or ssh://
+  );
+}
+
 /** Cache TTL for the `git fetch` + behind-count check. The app polls /version on open + ~every 3m;
  * this guards against hammering the network — a check inside this window reuses the last result. Kept
  * short (2m) so a freshly pushed update is detected promptly instead of lingering behind a stale cache. */
@@ -374,7 +388,7 @@ export class Updater {
   private async hasExpectedRemote(root: string): Promise<boolean> {
     const res = await this.deps.runGit(["config", "--get", "remote.origin.url"], { cwd: root });
     if (res.code !== 0) return false;
-    return res.stdout.trim().includes(EXPECTED_REMOTE_SUBSTRING);
+    return isExpectedRemote(res.stdout);
   }
 
   /**
@@ -671,6 +685,8 @@ export function renderUpdaterScript(opts: RenderUpdaterScriptOptions): string {
     `STATUS=${q(statusPath)}`,
     `LOG=${q(logPath)}`,
     `EXPECTED=${q(expectedRemote)}`,
+    // scp form (git@github.com:owner/repo): the first "/" of the https path becomes ":".
+    `EXPECTED_SCP="git@$(printf '%s' "$EXPECTED" | sed 's#/#:#')"`,
     `RESTART_CMD=${q(restartCommand)}`,
     `PARENT_PID=${q(String(parentPid))}`,
     `NODE_BIN_DIR=${q(nodeBinDir)}`,
@@ -684,6 +700,12 @@ export function renderUpdaterScript(opts: RenderUpdaterScriptOptions): string {
     "# pnpm shim: prefer a real `pnpm` on PATH; else fall back to `corepack pnpm` (corepack ships with node,",
     "# so it's available whenever node is). Everything below calls `$PNPM` instead of a bare `pnpm`.",
     'if command -v pnpm >/dev/null 2>&1; then PNPM="pnpm"; else PNPM="corepack pnpm"; fi',
+    "# Run the heavy install/build at LOW priority so a self-hosted box — especially the same Mac that is also",
+    "# serving live terminal sessions — stays responsive during an OTA. An unthrottled CPU/IO spike here has",
+    "# destabilised the host and dropped the live tmux daemon. `nice` is POSIX (mac+linux); `ionice` is",
+    "# Linux-only (best-effort). Both are optional — NICE stays empty when neither exists.",
+    'NICE=""; command -v nice >/dev/null 2>&1 && NICE="nice -n 19"',
+    'command -v ionice >/dev/null 2>&1 && NICE="ionice -c3 $NICE"',
     "",
   ];
 
@@ -735,8 +757,10 @@ export function renderUpdaterScript(opts: RenderUpdaterScriptOptions): string {
     "",
     "# Guard: the configured remote must be the official repo (RCE-by-design only on OUR repo).",
     'ORIGIN_URL="$(git config --get remote.origin.url 2>/dev/null || true)"',
+    'ORIGIN_URL="${ORIGIN_URL%.git}"', // strip a trailing .git so the exact patterns below match
     'case "$ORIGIN_URL" in',
-    '  *"$EXPECTED"*) : ;;',
+    // EXACT match (not a substring) so `…/remote-coder-attacker` or `evil.com/github.com/…/remote-coder` are refused.
+    '  "https://$EXPECTED"|"http://$EXPECTED"|"$EXPECTED_SCP"|"ssh://git@$EXPECTED") : ;;',
     '  *) fail "remote origin ($ORIGIN_URL) is not the expected repository; refusing to update" "pulling" ;;',
     "esac",
     "",
@@ -770,12 +794,12 @@ export function renderUpdaterScript(opts: RenderUpdaterScriptOptions): string {
     "# 2. installing",
     'log "installing: $PNPM install --frozen-lockfile"',
     'write_status "installing" "installing"',
-    'if ! $PNPM install --frozen-lockfile >> "$LOG" 2>&1; then fail "pnpm install failed" "installing"; fi',
+    'if ! $NICE $PNPM install --frozen-lockfile >> "$LOG" 2>&1; then fail "pnpm install failed" "installing"; fi',
     "",
     "# 3. building",
     'log "building: $PNPM -r build"',
     'write_status "building" "building"',
-    'if ! $PNPM -r build >> "$LOG" 2>&1; then fail "pnpm -r build failed" "building"; fi',
+    'if ! $NICE $PNPM -r build >> "$LOG" 2>&1; then fail "pnpm -r build failed" "building"; fi',
     "",
     "# 4. BOOT-SMOKE the freshly-built server BEFORE restarting the live one. We boot a THROWAWAY copy on",
     "# loopback with a temp data dir + a throwaway token and poll its /health (unauthenticated). If it never",
