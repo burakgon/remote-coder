@@ -398,7 +398,9 @@ export function TerminalView({
   // Inject the paste-box contents into the terminal (raw bytes → claude's input line), then close + refocus.
   const sendPaste = () => {
     const text = pasteRef.current?.value ?? "";
-    if (text) sockRef.current?.sendInput(text);
+    // Bracketed paste (\x1b[200~ … \x1b[201~) so claude treats a multi-line prompt as ONE paste instead of
+    // submitting on the first embedded newline — a raw send makes every \n an Enter, breaking long prompts.
+    if (text) sockRef.current?.sendInput(`\x1b[200~${text}\x1b[201~`);
     setPasteOpen(false);
     termRef.current?.focus();
   };
@@ -563,6 +565,10 @@ export function TerminalView({
               placeholder="Type or paste text, then Send…"
               autoFocus
               rows={4}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
             />
             <div className="rc-paste__row">
               <button type="button" className="rc-paste__btn" onClick={() => setPasteOpen(false)}>

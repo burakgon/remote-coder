@@ -102,6 +102,7 @@ export function TerminalFiles({
                   {f.source === "sent" ? "↑ " : "↓ "}
                   {f.name}
                 </div>
+                {f.caption ? <div className="rc-tf__caption">{f.caption}</div> : null}
               </div>
             ))}
           </div>
@@ -174,6 +175,8 @@ const css = `
 }
 .rc-tf__thumb img { width: 100%; height: 100%; object-fit: cover; }
 .rc-tf__name { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+/* Caption claude attached when it sent the file (e.g. "here's the chart") — was captured but never shown. */
+.rc-tf__caption { font-size: 11px; color: var(--text); margin-top: 2px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .rc-tf__foot { display: flex; align-items: center; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); }
 .rc-tf__upload { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 9px; background: var(--coral); color: var(--on-accent); border: none; cursor: pointer; font: 600 13px/1 ui-monospace, monospace; }
 .rc-tf__hint { font-size: 11px; color: var(--text-faint); }
