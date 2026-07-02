@@ -165,9 +165,13 @@ function PencilGlyph() {
   );
 }
 
-/** Count of sessions with a pending permission/question (`meta.awaiting`). Drives the global badge. */
-export function awaitingCount(sessions: SessionMeta[]): number {
-  return sessions.reduce((n, s) => (s.awaiting ? n + 1 : n), 0);
+/**
+ * Count of sessions with a pending permission/question (`meta.awaiting`). Drives the "needs you" badges.
+ * `excludeId` drops one session from the count — pass the session you're actively viewing so its own header
+ * badge counts only the OTHER conversations waiting on you (you don't need to be nagged about the one on screen).
+ */
+export function awaitingCount(sessions: SessionMeta[], excludeId?: string): number {
+  return sessions.reduce((n, s) => (s.awaiting && s.id !== excludeId ? n + 1 : n), 0);
 }
 
 /**

@@ -50,6 +50,11 @@ interface Record_ {
   attachments: unknown[];
   /** Pending output-idle timer for the awaiting heuristic (unref'd; cleared on input/output/exit/stop). */
   awaitTimer?: NodeJS.Timeout;
+  /**
+   * Rolling tail (~2KB) of the most recent pty output, kept ONLY to tell "claude is waiting for you" apart
+   * from "claude is still working" when output goes quiet — see {@link looksBusy}. Not fanned out / stored.
+   */
+  recentOutput?: string;
 }
 
 export interface TerminalManagerDeps {
@@ -75,11 +80,35 @@ export interface TerminalManagerDeps {
   awaitIdleMs?: number;
 }
 
-/** Default output-idle window before a running session is heuristically marked `awaiting` (see above). */
-export const TERMINAL_AWAIT_IDLE_MS = 4000;
+/**
+ * Default output-idle window before a running session MAY be marked `awaiting` (see above). A little longer
+ * than a reflex so a brief pause mid-turn doesn't flap — the {@link looksBusy} guard does the heavy lifting
+ * against false positives; this just avoids flagging the instant output stutters.
+ */
+export const TERMINAL_AWAIT_IDLE_MS = 6000;
 
 /** Cap the per-session replay buffer of attachment frames so a long-lived session can't grow unbounded. */
 const MAX_ATTACHMENT_BUFFER = 50;
+
+/** Strip CSI escape sequences (colour / cursor moves) so claude's rendered TUI can be text-matched — each
+ *  becomes a space so adjacent tokens can't merge. Marker detection, not a full terminal parser. */
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, " ");
+}
+
+/**
+ * True when claude's RECENT output shows it is still WORKING (a turn in progress), not waiting on the user.
+ * The reliable tell is the "esc to interrupt" hint claude Code prints ONLY while a turn runs — generating, or
+ * a tool (even a long one whose animated spinner has gone quiet, which is exactly when the output-idle timer
+ * would otherwise fire a false "needs you"). We check the TAIL (~last screen) so a stale hint already replaced
+ * by the prompt redraw doesn't count. Absent → claude is at rest: an input prompt or a y/n permission ask,
+ * i.e. genuinely awaiting you. Exported for unit tests.
+ */
+export function looksBusy(recent: string | undefined): boolean {
+  if (!recent) return false;
+  return stripAnsi(recent).slice(-900).toLowerCase().includes("esc to interrupt");
+}
 
 const clampDim = (n: number | undefined, fallback: number): number =>
   Math.max(1, Math.trunc(n ?? fallback) || fallback);
@@ -260,6 +289,14 @@ export class TerminalManager {
     const timer = setTimeout(() => {
       rec.awaitTimer = undefined;
       if (rec.meta.status !== "running" || rec.meta.awaiting) return;
+      // FALSE-POSITIVE GUARD (the "it says needs-you for the WRONG things" fix): output stopped, but if
+      // claude's recent screen still shows the "esc to interrupt" hint, it is BUSY — generating, or running a
+      // long tool whose spinner went quiet — NOT waiting on you. Re-check later instead of flagging. When
+      // claude actually finishes it redraws the prompt (no interrupt hint) → the next quiet window flags it.
+      if (looksBusy(rec.recentOutput)) {
+        this.armAwaitTimer(id, rec);
+        return;
+      }
       rec.meta.awaiting = true;
       // Away-from-desk: only PUSH when nobody is watching. The flag still flips for the SessionList badge.
       if (rec.subs.size === 0) {
@@ -320,6 +357,9 @@ export class TerminalManager {
         // Fresh output → claude is active again: clear any awaiting state and (re)arm the output-idle
         // detector so a subsequent quiet window flips awaiting back on. Best-effort, before fan-out.
         rec.meta.awaiting = false;
+        // Keep a small tail of what claude just rendered so the idle detector can tell "waiting for you" from
+        // "still working" (a long tool whose spinner went quiet) — see looksBusy in armAwaitTimer.
+        rec.recentOutput = ((rec.recentOutput ?? "") + chunk).slice(-2048);
         this.armAwaitTimer(id, rec);
         // Snapshot + per-sub try/catch: one wedged client's throw must not drop the frame for the others.
         for (const s of [...rec.subs]) {

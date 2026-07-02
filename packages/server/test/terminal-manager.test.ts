@@ -1,7 +1,7 @@
 // packages/server/test/terminal-manager.test.ts
 import { EventEmitter } from "node:events";
 import { afterEach, expect, test, vi } from "vitest";
-import { TerminalManager } from "../src/terminal-manager.js";
+import { TerminalManager, looksBusy } from "../src/terminal-manager.js";
 import { openSessionStore } from "../src/session-store.js";
 
 function fakePtyFactory() {
@@ -126,6 +126,29 @@ test("awaiting: pty going output-idle after a burst flips awaiting true; input/o
 
   m.write("a", "x"); // user input → not awaiting
   expect(m.get("a")?.awaiting).toBe(false);
+});
+
+test("awaiting: NOT flagged while claude is busy (recent output shows 'esc to interrupt'); flips once it clears", () => {
+  vi.useFakeTimers();
+  const { m, ptys, awaiting, idleMs } = awaitMgr();
+  m.create({ id: "a", cwd: "/w" });
+  m.attach("a", { onData: () => {} });
+  // A working turn whose spinner then goes quiet: the last screen still shows the interrupt hint → busy.
+  ptys[0]!.emit("data", "\x1b[2m✳ Cerebrating… (esc to interrupt · 12s)\x1b[0m");
+  vi.advanceTimersByTime(idleMs + 1);
+  expect(m.get("a")?.awaiting).toBe(false); // busy, not "needs you"
+  expect(awaiting).toEqual([]); // and no push
+  // Turn finishes: a big prompt repaint pushes the stale hint out of the tail → the next quiet window flags it.
+  ptys[0]!.emit("data", "│ > ".padStart(3000, "."));
+  vi.advanceTimersByTime(idleMs + 1);
+  expect(m.get("a")?.awaiting).toBe(true);
+});
+
+test("looksBusy: detects the interrupt hint in the tail, ANSI- and case-tolerant", () => {
+  expect(looksBusy(undefined)).toBe(false);
+  expect(looksBusy("normal output\n│ > ")).toBe(false);
+  expect(looksBusy("\x1b[2mspinning (esc to interrupt · 3s)\x1b[0m")).toBe(true);
+  expect(looksBusy("ESC TO INTERRUPT")).toBe(true);
 });
 
 test("awaiting: onAwaiting is NOT fired while a client watches, but IS fired when the last one detaches", () => {
