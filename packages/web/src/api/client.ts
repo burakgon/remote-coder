@@ -166,8 +166,18 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
     return new ApiError(res.status, message);
   }
 
+  // Attach a request timeout so a server that accepts the connection but never responds can't strand the
+  // loading UI ("Connecting…" / "Loading…" / "Starting…") forever. Respects a caller-supplied signal, and
+  // degrades to no timeout where AbortSignal.timeout is unavailable (old engines / jsdom in tests).
+  const DEFAULT_TIMEOUT_MS = 15_000;
+  function withTimeout(init: RequestInit | undefined, ms = DEFAULT_TIMEOUT_MS): RequestInit {
+    if (init?.signal) return init;
+    const hasTimeout = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function";
+    return hasTimeout ? { ...init, signal: AbortSignal.timeout(ms) } : (init ?? {});
+  }
+
   async function req<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${baseUrl}${path}`, init);
+    const res = await fetch(`${baseUrl}${path}`, withTimeout(init));
     if (!res.ok) throw await errorFor(res);
     return (await res.json()) as T;
   }
@@ -176,7 +186,7 @@ export function createApiClient(opts: ApiClientOptions): ApiClient {
    * throws ApiError (so a real failure surfaces); a 204 with an empty body resolves WITHOUT trying to
    * parse JSON (parsing an empty 204 body throws and would otherwise look like a failure). */
   async function reqNoBody(path: string, init?: RequestInit): Promise<void> {
-    const res = await fetch(`${baseUrl}${path}`, init);
+    const res = await fetch(`${baseUrl}${path}`, withTimeout(init));
     if (!res.ok) throw await errorFor(res);
   }
 

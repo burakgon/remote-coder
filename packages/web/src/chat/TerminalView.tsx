@@ -10,6 +10,7 @@ import { TerminalFiles, type TermFile } from "./TerminalFiles";
 import { ChatHeader } from "./ChatHeader";
 import { keySequence, ctrlSeq } from "./terminal-keys";
 import { healPaintBurst } from "../pwa/viewport";
+import { useFocusTrap } from "../ui/useFocusTrap";
 import type { SessionMeta } from "../types/server";
 
 /** A full dark theme so xterm never falls back to default ANSI colors / a black viewport seam. */
@@ -80,6 +81,8 @@ export function TerminalView({
   // a real textarea, unlike navigator.clipboard.readText on iOS), then Send injects it into the terminal.
   const [pasteOpen, setPasteOpen] = useState(false);
   const pasteRef = useRef<HTMLTextAreaElement>(null);
+  const pasteBoxRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(pasteBoxRef, pasteOpen); // keep Tab inside the paste modal while it's open (a11y)
   // Connection lifecycle → drives the reconnect/ended overlay. `restartKey` bump remounts the effect (fresh
   // terminal + socket → reattach, which respawns a fresh claude for an ended session).
   const [connState, setConnState] = useState<"connecting" | "open" | "reconnecting" | "ended">("connecting");
@@ -207,7 +210,9 @@ export function TerminalView({
       }
       connected = true;
       const sock = createSocket({
-        url: terminalWsUrl(sessionId, term.cols, term.rows),
+        // A THUNK, not a fixed string, so every reconnect re-reads a rotated token + the current fitted size
+        // (a fixed URL would reconnect forever with the stale token captured here).
+        url: () => terminalWsUrl(sessionId, term.cols, term.rows),
         onData: (bytes) => {
           if (!disposed) term.write(bytes);
         },
@@ -294,6 +299,12 @@ export function TerminalView({
       }
     };
     document.addEventListener("visibilitychange", onVisible);
+    // Back online (e.g. phone woke / Wi-Fi↔cellular) → reconnect immediately instead of waiting out the
+    // (up to 15s) backoff. reconnect() resets the backoff and rebuilds the URL with a fresh token.
+    const onOnline = () => {
+      if (!disposed) sockRef.current?.reconnect();
+    };
+    window.addEventListener("online", onOnline);
     focusAndHealPaint();
 
     // TWO-FINGER vertical drag → scroll claude's transcript (PgUp/PgDn). Two fingers so it NEVER conflicts
@@ -347,6 +358,7 @@ export function TerminalView({
       cancelAnimationFrame(raf);
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
       host.removeEventListener("touchstart", onTouchStart);
       host.removeEventListener("touchmove", onTouchMove);
       host.removeEventListener("touchend", onTouchEnd);
@@ -452,6 +464,14 @@ export function TerminalView({
         {connState === "reconnecting" && (
           <div className="rc-term-toast" role="status">
             <span className="rc-term-toast__dot" aria-hidden="true" /> Reconnecting…
+            <button
+              type="button"
+              className="rc-term-toast__btn"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => sockRef.current?.reconnect()}
+            >
+              Reconnect now
+            </button>
           </div>
         )}
         {connState === "ended" && (
@@ -473,7 +493,14 @@ export function TerminalView({
           </div>
         )}
         {selectText !== null && (
-          <div className="rc-term-select" role="dialog" aria-label="Select text">
+          <div
+            className="rc-term-select"
+            role="dialog"
+            aria-label="Select text"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSelectText(null); // Escape closes (keyboard a11y)
+            }}
+          >
             <div className="rc-term-select__bar">
               <span className="rc-term-select__hint">Long-press to select · then Copy</span>
               <button
@@ -517,10 +544,14 @@ export function TerminalView({
       />
       {pasteOpen && (
         <div
+          ref={pasteBoxRef}
           className="rc-paste"
           role="dialog"
           aria-modal="true"
           aria-label="Type or paste text to send to the terminal"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setPasteOpen(false); // Escape closes (keyboard a11y)
+          }}
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) setPasteOpen(false); // tap the backdrop to cancel
           }}
@@ -610,6 +641,12 @@ const terminalCss = `
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
 .rc-term-toast__dot { width: 7px; height: 7px; border-radius: 999px; background: var(--warn); animation: rc-term-pulse 1s ease-in-out infinite; }
+.rc-term-toast__btn {
+  margin-left: 2px; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--surface-3); color: var(--text);
+  font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.rc-term-toast__btn:active { background: var(--coral); color: var(--on-accent); border-color: var(--coral); }
 @keyframes rc-term-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 /* One-time two-finger-scroll hint — a small coral-accented pill, bottom-center, whose two "fingers" bob to
    demonstrate the motion. Fades in, holds, fades out over ~5s; tap dismisses early. Shown once ever. */
