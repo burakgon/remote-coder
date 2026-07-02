@@ -186,13 +186,23 @@ test("away-from-desk pushes carry badgeCount = the number of sessions awaiting y
   current = makeServer();
   current.terminalManager.create({ id: "s1", cwd: root });
   current.terminalManager.create({ id: "s2", cwd: root });
-  current.terminalManager.setAwaiting("s1", true); // one session already awaiting
+  current.terminalManager.setAwaiting("s1", true); // one session already awaiting (blocked)
 
-  // A Stop hook on s2 (nobody attached) → pushes; the badge counts s1 + s2 = 2.
-  const res = await current.app.inject({ method: "POST", url: "/sessions/s2/hook?event=stop", headers: auth });
-  expect(res.statusCode).toBe(200);
-  const awaiting = pushed.find((e) => e.kind === "awaiting" && e.sessionId === "s2");
-  expect(awaiting?.badgeCount).toBe(2);
+  // An ask on s2 (nobody attached) → pushes; s2 is now awaiting too, so the badge counts s1 + s2 = 2.
+  const askPromise = current.app.inject({
+    method: "POST",
+    url: "/sessions/s2/ask",
+    headers: auth,
+    payload: { questions: QUESTIONS },
+  });
+  await waitFor(() => pushed.some((e) => e.kind === "ask" && e.sessionId === "s2"));
+  const ask = pushed.find((e) => e.kind === "ask" && e.sessionId === "s2");
+  expect(ask?.badgeCount).toBe(2);
+
+  // Clean up the in-flight long-poll so the test doesn't wait for the timeout.
+  const del = await current.app.inject({ method: "DELETE", url: "/sessions/s2", headers: auth });
+  expect(del.statusCode).toBe(204);
+  await askPromise;
 });
 
 test("POST /ask/answer with cancelled resolves the ask as cancelled", async () => {
@@ -303,7 +313,7 @@ test("POST /ask and /ask/answer are token-gated (401 without auth)", async () =>
   expect(answer.statusCode).toBe(401);
 });
 
-test("POST /hook?event=stop marks awaiting + pushes when nobody is watching; 404 for unknown session", async () => {
+test("POST /hook validates the event but NO LONGER drives awaiting (the monitor owns activity); 404 for unknown session", async () => {
   current = makeServer();
   const id = "hk1";
   current.terminalManager.create({ id, cwd: root });
@@ -313,30 +323,34 @@ test("POST /hook?event=stop marks awaiting + pushes when nobody is watching; 404
 
   const stop = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=stop`, headers: auth });
   expect(stop.statusCode).toBe(200);
-  expect(current.terminalManager.get(id)?.awaiting).toBe(true);
-  expect(pushed.map((p) => p.kind)).toContain("awaiting"); // nobody watching → away-from-desk push
+  // A Stop = a finished TURN, which is IDLE now (not "needs you"). The route no longer flips awaiting or pushes;
+  // the capture-pane monitor is the sole authority for working/blocked/idle (so it can tell a done session from
+  // one whose background agents are still developing).
+  expect(current.terminalManager.get(id)?.awaiting).toBe(false);
+  expect(pushed).toEqual([]);
 });
 
-test("POST /hook?event=stop does NOT push while a client is watching (badge only)", async () => {
+test("POST /hook?event=stop is a no-op even with a client attached (never pushes, never flips awaiting)", async () => {
   current = makeServer();
   const id = "hk2";
   current.terminalManager.create({ id, cwd: root });
   const watcher = collectControl(current, id); // a client is attached
   const res = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=stop`, headers: auth });
   expect(res.statusCode).toBe(200);
-  expect(current.terminalManager.get(id)?.awaiting).toBe(true); // flag still flips (for the badge)
-  expect(pushed).toEqual([]); // ...but no push — you're right there watching
+  expect(current.terminalManager.get(id)?.awaiting).toBe(false);
+  expect(pushed).toEqual([]);
   watcher.stop();
 });
 
-test("POST /hook?event=submit clears awaiting; an unknown event is 400", async () => {
+test("POST /hook?event=submit does NOT clear awaiting (the monitor owns it); an unknown event is 400", async () => {
   current = makeServer();
   const id = "hk3";
   current.terminalManager.create({ id, cwd: root });
-  current.terminalManager.setAwaiting(id, true);
+  current.terminalManager.setAwaiting(id, true); // pretend it's blocked on a question
   const submit = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=submit`, headers: auth });
   expect(submit.statusCode).toBe(200);
-  expect(current.terminalManager.get(id)?.awaiting).toBe(false);
+  // The route is a no-op now — the monitor (and the web write path) own clearing awaiting, not this hook.
+  expect(current.terminalManager.get(id)?.awaiting).toBe(true);
 
   const bad = await current.app.inject({ method: "POST", url: `/sessions/${id}/hook?event=whoops`, headers: auth });
   expect(bad.statusCode).toBe(400);
