@@ -152,6 +152,10 @@ export async function startServer(
   };
   // Terminal sessions → the terminal's claude gets send_image/send_file too.
   result.terminalManager.setAttachConfig(attachConfig);
+  // Now that rehydrate (adopt survivors) + setAttachConfig (dataDir) have both run, delete leaked
+  // per-session mcp-config-<id>.json files (they carry the token) whose session no longer exists.
+  const swept = result.terminalManager.sweepStaleMcpConfigs();
+  if (swept > 0) console.log(`swept ${swept} stale mcp-config file(s)`);
 
   return { ...result, url, token, tokenGenerated: generated };
 }

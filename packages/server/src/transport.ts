@@ -153,7 +153,10 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     // Only rehydrate (which prunes store rows for dead sessions) when we have a DEFINITIVE live-session
     // list. `undefined` = the tmux probe failed transiently → skip, so a flaky probe never wipes the
     // user's resumable terminal sessions.
-    const liveTmuxNames = listTmuxSessions();
+    // Retry a transiently-failed probe a couple of times before giving up: skipping rehydrate leaves the
+    // user's previously-running sessions unadopted (invisible + leaked) until a later restart.
+    let liveTmuxNames = listTmuxSessions();
+    for (let i = 0; liveTmuxNames === undefined && i < 2; i += 1) liveTmuxNames = listTmuxSessions();
     if (liveTmuxNames) terminalManager.rehydrate({ liveTmuxNames });
   }
   const authGate = deps.authGate ?? new AuthGate({ token: config.accessToken });
@@ -180,6 +183,18 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
   sweepSharedFiles();
   const sharedSweepTimer = setInterval(sweepSharedFiles, TERMINAL_SWEEP_INTERVAL_MS);
   if (typeof sharedSweepTimer.unref === "function") sharedSweepTimer.unref();
+  // OPT-IN idle-session reaper (SESSION_IDLE_TTL_MS; 0 = off, the default so detached sessions survive for
+  // later reattach). When enabled, periodically kill running terminals with no attached client idle past the
+  // TTL, bounding detached claude+tmux accumulation. unref() so it never keeps the process alive.
+  const idleTtlMs = config.sessionIdleTtlMs ?? 0;
+  if (idleTtlMs > 0) {
+    const reapEvery = Math.max(30_000, Math.min(idleTtlMs, 5 * 60_000));
+    const idleTimer = setInterval(() => {
+      const n = terminalManager.reapIdle(idleTtlMs);
+      if (n > 0) console.log(`reaped ${n} idle terminal session(s) (SESSION_IDLE_TTL_MS=${idleTtlMs})`);
+    }, reapEvery);
+    if (typeof idleTimer.unref === "function") idleTimer.unref();
+  }
   // CONCURRENCY CAP: refuse a new spawn once `config.maxSessions` live terminal sessions exist (0 disables
   // it). Only running sessions count, so dormant/errored records don't and reopening within the cap is
   // unaffected. The message names the env var so an operator can lift it.
@@ -420,6 +435,15 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
       claudeArgs.push("--dangerously-skip-permissions");
     } else if (typeof body.permissionMode === "string") {
       claudeArgs.push("--permission-mode", body.permissionMode);
+    }
+    // TOCTOU: the cap was checked before the `await stat` above, which yields — re-check right before the
+    // (synchronous) create so two concurrent POSTs can't both pass the cap and exceed maxSessions.
+    if (
+      config.maxSessions > 0 &&
+      terminalManager.list().filter((t) => t.status === "running").length >= config.maxSessions
+    ) {
+      reply.code(429).send({ error: sessionCapMessage });
+      return;
     }
     const meta = terminalManager.create({ id, cwd: body.cwd, claudeArgs });
     // Return `{ session }` (not a flat body). The web client does `return (await res.json()).session`.

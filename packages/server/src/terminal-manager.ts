@@ -1,5 +1,6 @@
 // packages/server/src/terminal-manager.ts
-import { writeFileSync, chmodSync, unlinkSync } from "node:fs";
+import { writeFileSync, chmodSync, unlinkSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { TerminalProcess, tmuxSessionName, type PtySpawn } from "./terminal-process.js";
 import { buildMcpConfigDocument, mcpConfigPathFor } from "./config.js";
 import type { AttachSpawnOptions } from "./config.js";
@@ -106,6 +107,54 @@ export class TerminalManager {
     } catch {
       return undefined; // graceful degrade — terminal still works, just without attachment tools
     }
+  }
+
+  /**
+   * Delete stale per-session `mcp-config-<id>.json` files — the 0600 files hold the access token. A file is
+   * stale when no live session owns its id: leaked by a crash, an orphan-reap, a rehydrated record (which
+   * carries no mcpConfigPath, so stop() never unlinks its file), or a token rotation. Call at boot AFTER
+   * rehydrate + setAttachConfig so `records` reflects the surviving sessions. No-op without an attach config.
+   */
+  sweepStaleMcpConfigs(): number {
+    if (!this.attachConfig) return 0;
+    const dir = this.attachConfig.dataDir;
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return 0;
+    }
+    const liveIds = new Set(this.records.keys());
+    let removed = 0;
+    for (const name of names) {
+      const m = /^mcp-config-(.+)\.json$/.exec(name);
+      if (!m || liveIds.has(m[1]!)) continue;
+      try {
+        unlinkSync(join(dir, name));
+        removed += 1;
+      } catch {
+        /* already gone / race — ignore */
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Kill running terminal sessions with NO attached client that have been idle longer than `ttlMs`. OFF by
+   * default (ttlMs <= 0) and opt-in via env (SESSION_IDLE_TTL_MS): sessions intentionally survive a
+   * disconnect for later reattach, so reaping them must never be the default — it's only for hosts that
+   * choose to bound the accumulation of detached claude+tmux processes. Returns the number reaped.
+   */
+  reapIdle(ttlMs: number): number {
+    if (!(ttlMs > 0)) return 0;
+    const cutoff = this.deps.now() - ttlMs;
+    const stale: string[] = [];
+    for (const [id, rec] of this.records) {
+      if (rec.subs.size > 0 || rec.meta.status !== "running") continue; // attached or already ended → keep
+      if (rec.meta.lastActivityAt <= cutoff) stale.push(id);
+    }
+    for (const id of stale) this.stop(id); // stop() kills tmux+claude, unlinks the mcp config, prunes the row
+    return stale.length;
   }
 
   /** Push a JSON control message (file/image attachment) to every attached client of a terminal session. */

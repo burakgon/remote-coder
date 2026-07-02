@@ -48,6 +48,11 @@ export interface ServerRuntimeConfig {
   /** Max concurrent LIVE sessions/processes; POST /sessions is refused (429) at the cap. 0 disables the
    *  cap. (REMOTE_CODER_MAX_SESSIONS.) */
   maxSessions: number;
+  /** Kill running terminal sessions with NO attached client that have been idle longer than this many ms.
+   *  0 (default) DISABLES it — sessions survive a disconnect indefinitely for later reattach. Opt-in
+   *  (SESSION_IDLE_TTL_MS) for hosts that want to bound detached claude+tmux accumulation. Optional in the
+   *  type (older config literals / tests omit it); consumers treat an absent value as 0 (disabled). */
+  sessionIdleTtlMs?: number;
   /** The claude-spawn config (claudeBin). */
   claude: ServerConfig;
 }
@@ -81,6 +86,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv): ServerRuntimeConfig {
   const rateLimitBurst = parseIntOption(env.REMOTE_CODER_RATE_LIMIT_BURST, DEFAULT_RATE_LIMIT_BURST, "REMOTE_CODER_RATE_LIMIT_BURST", { min: 1 }); // prettier-ignore
   // Concurrency cap: 0 DISABLES the cap (unbounded — the prior behavior, opt-out).
   const maxSessions = parseIntOption(env.REMOTE_CODER_MAX_SESSIONS, DEFAULT_MAX_SESSIONS, "REMOTE_CODER_MAX_SESSIONS", { min: 0 }); // prettier-ignore
+  // 0 (default) DISABLES idle reaping — detached sessions survive for later reattach (the core feature).
+  const sessionIdleTtlMs = parseIntOption(env.SESSION_IDLE_TTL_MS, 0, "SESSION_IDLE_TTL_MS", { min: 0 });
   const cfg: ServerRuntimeConfig = {
     port,
     bindAddress: env.BIND_ADDRESS ?? "127.0.0.1",
@@ -91,6 +98,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv): ServerRuntimeConfig {
     rateLimitRpm,
     rateLimitBurst,
     maxSessions,
+    sessionIdleTtlMs,
     claude: loadConfig(env),
   };
   if (env.ACCESS_TOKEN) cfg.accessToken = env.ACCESS_TOKEN;
