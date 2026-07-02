@@ -593,8 +593,10 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
       status: t.status,
       createdAt: t.createdAt,
       lastActivityAt: t.lastActivityAt,
-      // Best-effort "claude has gone quiet / is waiting for you" flag the SessionList badges (see
-      // TerminalManager's output-idle heuristic + the ask flow, which sets it while claude is blocked).
+      // Live activity from the capture-pane monitor (working | blocked | idle) — the rail's per-session status.
+      activity: t.activity,
+      // Loud "needs you" flag = activity==="blocked" (claude waiting on YOUR decision). The SessionList badge +
+      // count + away push key off this; a merely-idle or still-working session is NOT awaiting.
       awaiting: t.awaiting,
       // Whether this session runs with --dangerously-skip-permissions, so the rail can badge the RCE-skip risk.
       dangerouslySkip: t.dangerouslySkip,
@@ -688,19 +690,15 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
         reply.code(404).send({ error: "session not found" });
         return;
       }
-      switch (request.query.event) {
-        case "submit":
-          terminalManager.setAwaiting(sessionId, false);
-          break;
-        case "stop":
-          terminalManager.setAwaiting(sessionId, true);
-          if (!terminalManager.isAttached(sessionId)) {
-            dispatchPush({ kind: "awaiting", sessionId });
-          }
-          break;
-        default:
-          reply.code(400).send({ error: "unknown event" });
-          return;
+      // NOTE: these hooks NO LONGER drive `awaiting`. A `Stop` (a TURN finished) now means the session is
+      // IDLE — a calm "your turn whenever" — NOT the loud "needs you", which is reserved for claude actually
+      // BLOCKING on a decision (ask_user / a permission or plan prompt). The capture-pane activity monitor
+      // (TerminalManager.refreshActivity) is the sole authority for working/blocked/idle, so it can tell those
+      // apart (incl. "main loop done but background agents still developing" = working). The route is kept so
+      // existing sessions' hooks don't 404; it just validates the event.
+      if (request.query.event !== "submit" && request.query.event !== "stop") {
+        reply.code(400).send({ error: "unknown event" });
+        return;
       }
       reply.code(200).send({ ok: true });
     },

@@ -5,76 +5,97 @@ import { classifyPaneStatus } from "./pane-status.js";
 // (2026-07), trimmed to the load-bearing lines. They are the ground truth the classifier was built against.
 
 describe("classifyPaneStatus", () => {
-  test("WORKING: an active spinner with a live parenthesised timer", () => {
-    // rc-fa3f0f72 mid-turn — the parenthesised "(8m 38s" is the tell of the MAIN loop generating.
-    const pane = `
+  describe("working", () => {
+    test("main spinner: gerund + live token-flow counter", () => {
+      // rc-fa3f0f72 mid-turn — "…" gerund + "↓ 2.1k tokens" is the actively-generating tell.
+      const pane = `
      some tool output scrolling by
-✳ Baking… (8m 38s · ↓ 36.0k tokens)
-  ⎿  Tip: Share Claude Code and earn $10 in usage credits · /passes
+✻ Schlepping… (1m 17s · ↓ 2.1k tokens)
 ─────────────────────────────────────────────────────
 ❯
 ─────────────────────────────────────────────────────
   ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt`;
-    expect(classifyPaneStatus(pane)).toBe("working");
+      expect(classifyPaneStatus(pane)).toBe("working");
+    });
+
+    test("different spinner glyph / gerund still classifies working", () => {
+      expect(classifyPaneStatus("✢ Harmonizing… (1m 34s · ↓ 5.1k tokens)")).toBe("working");
+      expect(classifyPaneStatus("✶ Composing… (12s · ↓ 900 tokens)")).toBe("working");
+    });
+
+    test("CRUX: main loop idle at the prompt BUT a background agent is still developing → working", () => {
+      // rc-79cc7fb6 (the user's explicit correction): the MAIN loop sits at an empty prompt, but an ACTIVE
+      // background agent ("⏺ general-purpose  Listing f… 24m 23s · ↓ 216.5k tokens") is still working. The
+      // live gerund + "↓ 216.5k tokens" on that agent line means the SESSION is working — NOT idle/needs-you.
+      const pane = `
+────────────── Wave9 M2: dialog primitive + migrations ──
+❯
+─────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents
+  ◯ main
+  ⏺ general-purpose  Listing f… 24m 23s · ↓ 216.5k tokens`;
+      expect(classifyPaneStatus(pane)).toBe("working");
+    });
+
+    test("blocked on a foreground agent/tool", () => {
+      expect(classifyPaneStatus("✻ Waiting for 1 background agent to finish · ctrl+t to see")).toBe("working");
+    });
+
+    test("the esc-to-interrupt hint alone (spinner scrolled off) still reads working", () => {
+      expect(classifyPaneStatus("  ⏵⏵ bypass permissions on · esc to interrupt")).toBe("working");
+    });
   });
 
-  test("WORKING: a different spinner glyph / gerund still classifies busy", () => {
-    expect(classifyPaneStatus("✢ Harmonizing… (1m 34s · ↓ 5.1k tokens)")).toBe("working");
-    expect(classifyPaneStatus("✶ Composing… (12s · ↓ 900 tokens)")).toBe("working");
+  describe("blocked (→ the loud 'needs you')", () => {
+    test("a permission prompt: 'Do you want to proceed?'", () => {
+      const pane = `
+⏺ Bash(rm -rf build)
+  Do you want to proceed?
+❯ 1. Yes
+  2. No, and tell Claude what to do differently (esc)`;
+      expect(classifyPaneStatus(pane)).toBe("blocked");
+    });
+
+    test("a plan-mode approval: 'Would you like to proceed?'", () => {
+      const pane = `
+  Ready to code?
+  Would you like to proceed?
+❯ 1. Yes, and auto-accept edits
+  2. Yes, and manually approve edits
+  3. No, keep planning`;
+      expect(classifyPaneStatus(pane)).toBe("blocked");
+    });
   });
 
-  test("WORKING: blocked on a foreground agent/tool", () => {
-    expect(classifyPaneStatus("✻ Waiting for 1 background agent to finish · ctrl+t to see")).toBe("working");
-  });
-
-  test("WORKING: the esc-to-interrupt hint alone (spinner scrolled off) still reads busy", () => {
-    expect(classifyPaneStatus("  ⏵⏵ bypass permissions on · esc to interrupt")).toBe("working");
-  });
-
-  test("AWAITING: a finished turn (past-tense 'Baked/Worked for', no live timer)", () => {
-    // rc-7be03764 — done. "Baked for 23m 15s" has NO parenthesis, so it must NOT read as a live timer.
-    const pane = `
+  describe("idle (calm — NOT 'needs you')", () => {
+    test("a finished turn: past-tense 'Baked for …', no live token-flow", () => {
+      // rc-7be03764 — done. "Baked for 23m 15s" has no gerund + no "↓ tokens", so it is NOT working.
+      const pane = `
 ✻ Baked for 23m 15s · 2 shells still running
 ※ recap: the redesign is complete; next step is your approval.
 ─────────────────────────────────────────────────────
 ❯
 ─────────────────────────────────────────────────────
   ⏵⏵ bypass permissions on · 2 shells · ← for agents`;
-    expect(classifyPaneStatus(pane)).toBe("awaiting");
-  });
+      expect(classifyPaneStatus(pane)).toBe("idle");
+    });
 
-  test("CRUX: a BACKGROUNDED agent's bare timer must NOT read as working", () => {
-    // rc-79cc7fb6 — the MAIN loop is at an empty prompt (your turn); two agents run in the background, listed
-    // UNDER the status line with BARE timers ("24m 23s", no parenthesis). The parenthesis is exactly what
-    // separates the main spinner from these fire-and-forget workers — so this must classify AWAITING.
-    const pane = `
-  2 tasks (1 done, 1 in progress, 0 open)
-  ✔ Wave 9: mobile audit (2 Explore agents)
-  ◼ Wave 9: execute M2 (dialog primitive)
+    test("a FINISHED agent's summary ('Done · ↓ 12k tokens') must NOT read as working", () => {
+      // The token count lingers in a past-tense summary — but there's no gerund "…", so it stays idle.
+      const pane = `
+  ⎿  general-purpose  Done (45s · ↓ 12k tokens)
 ─────────────────────────────────────────────────────
 ❯
-─────────────────────────────────────────────────────
-  ⏵⏵ bypass permissions on (shift+tab to cycle) · ctrl+t to hide tasks
-  ◯ main
-❯ ⏺ general-purpose  Listing files…   24m 23s · ↓ 216.5k tokens
-  ◯ general-purpose  Reading…          1m 10s · ↓ 34.6k tokens`;
-    expect(classifyPaneStatus(pane)).toBe("awaiting");
-  });
+  ⏵⏵ bypass permissions on`;
+      expect(classifyPaneStatus(pane)).toBe("idle");
+    });
 
-  test("AWAITING: an empty idle prompt", () => {
-    expect(classifyPaneStatus("❯\n─────\n  ⏵⏵ bypass permissions on")).toBe("awaiting");
-  });
+    test("an empty idle prompt", () => {
+      expect(classifyPaneStatus("❯\n─────\n  ⏵⏵ bypass permissions on")).toBe("idle");
+    });
 
-  test("AWAITING: a permission prompt (blocked on your y/n) is your turn", () => {
-    const pane = `
-⏺ Bash(rm -rf build)
-  Do you want to proceed?
-❯ 1. Yes
-  2. No, tell Claude what to do differently`;
-    expect(classifyPaneStatus(pane)).toBe("awaiting");
-  });
-
-  test("empty pane → awaiting (never a false 'working')", () => {
-    expect(classifyPaneStatus("")).toBe("awaiting");
+    test("empty pane → idle (never a false 'working' or 'blocked')", () => {
+      expect(classifyPaneStatus("")).toBe("idle");
+    });
   });
 });

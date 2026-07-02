@@ -80,9 +80,8 @@ function saveSessionName(id: string, name: string): void {
  * exited one — every status carries a distinct word (never a blank glyph). `ended` is the real dead-session
  * state the server emits when a terminal exits/crashes; dormant/errored/stopped are legacy/back-compat. */
 const STATUS_LABEL: Record<SessionMeta["status"], string> = {
-  // A RUNNING session that isn't `awaiting` you is, by the pane-status monitor's definition, actively
-  // WORKING (a spinner / esc-to-interrupt / blocked-on-agent is on screen) — the `awaiting` case is rendered
-  // separately as the loud "needs you" chip, so this branch only ever shows for a genuinely busy session.
+  // `running` is handled INLINE by TerminalState (it splits into "working"/"idle" by live activity), so this
+  // entry is a type-required fallback only; the map's real job is the non-running (dead/legacy) words below.
   running: "working",
   ended: "ended",
   dormant: "dormant",
@@ -136,17 +135,29 @@ function CheckUpdateButton({ onCheck }: { onCheck: () => Promise<boolean> }) {
 }
 
 /**
- * The per-row status for a TERMINAL session — a terminal glyph + a DISTINCT text label per `status`
- * (live / ended / dormant / errored / stopped) so a dead session reads a clear word, never a blank glyph.
- * Always text-labelled so it never relies on color alone; "live" gets a quiet accent + a pulsing dot,
- * "ended" reads faint (a dead PTY), "errored" reads in the error tint, and dormant/stopped read muted.
+ * The per-row status for a TERMINAL session — a terminal glyph + a DISTINCT text label, never a blank glyph,
+ * never color-only. A RUNNING session splits by its live `activity`: "working" (busy — a quiet accent + a
+ * pulsing dot) vs "idle" (a finished turn at rest — calm, no dot). ("blocked" never reaches here — it's the
+ * loud "needs you" chip rendered by the caller.) A dead/legacy status reads its own faint word ("ended" faint,
+ * "errored" in the error tint, dormant/stopped muted).
  */
-function TerminalState({ status }: { status: SessionMeta["status"] }) {
-  const live = status === "running";
+function TerminalState({ status, activity }: { status: SessionMeta["status"]; activity?: SessionMeta["activity"] }) {
+  if (status === "running") {
+    const working = activity === "working";
+    return (
+      <span
+        className={`rc-sl__term rc-sl__term--running ${working ? "rc-sl__term--live" : "rc-sl__term--idle"}`}
+        role="status"
+      >
+        <Icon name="terminal" size={13} />
+        {working && <span className="rc-sl__term-dot" aria-hidden="true" />}
+        {working ? "working" : "idle"}
+      </span>
+    );
+  }
   return (
-    <span className={`rc-sl__term rc-sl__term--${status}${live ? " rc-sl__term--live" : ""}`} role="status">
+    <span className={`rc-sl__term rc-sl__term--${status}`} role="status">
       <Icon name="terminal" size={13} />
-      {live && <span className="rc-sl__term-dot" aria-hidden="true" />}
       {STATUS_LABEL[status]}
     </span>
   );
@@ -434,9 +445,10 @@ export function SessionList({
                             needs you
                           </span>
                         ) : (
-                          // A terminal glyph + a DISTINCT text label per status (live / ended / dormant /
-                          // errored / stopped) — never a blank glyph, never color-only.
-                          <TerminalState status={s.status} />
+                          // Not blocked → a terminal glyph + a DISTINCT text label: a RUNNING session reads
+                          // "working" (busy — pulsing dot) or "idle" (finished, calm) from its live activity;
+                          // ended/dormant/errored/stopped read their own faint word. Never blank, never color-only.
+                          <TerminalState status={s.status} activity={s.activity} />
                         )}
                       </span>
                       {/* Keep the full path as one text node (muted, ellipsised) so it stays scannable
@@ -700,7 +712,11 @@ const sessionListCss = `
   font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.4;
   color: var(--text-faint); white-space: nowrap;
 }
+/* "working" (busy) — brighter than idle + a pulsing accent dot so an actively-generating session stands out. */
 .rc-sl__term--live { color: var(--text-muted); }
+/* "idle" (a finished turn at rest) — reads faint + has NO dot, so it's visibly calmer than "working" and
+   never competes with the loud "needs you" chip. */
+.rc-sl__term--idle { color: var(--text-faint); }
 /* "ended" = a dead PTY — reads faint (paired with the "ended" word so it's never color-only). */
 .rc-sl__term--ended { color: var(--text-faint); }
 .rc-sl__term--dormant { color: var(--text-faint); }

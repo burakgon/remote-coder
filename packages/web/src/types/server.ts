@@ -39,6 +39,13 @@ export interface SessionMeta {
    */
   awaiting?: boolean;
   /**
+   * Server truth: the session's LIVE activity from the capture-pane monitor. Drives the rail's per-running-row
+   * status word: "working" (generating — main spinner OR background agents still developing), "blocked" (claude
+   * is waiting on YOUR decision → the loud "needs you", mirrors `awaiting`), "idle" (a finished turn at an empty
+   * prompt — calm). Optional so older payloads / fixtures degrade gracefully (treated as "idle").
+   */
+  activity?: "working" | "blocked" | "idle";
+  /**
    * Server truth (ms): bumped on user-send AND on assistant/result, monotonic. The rail orders by
    * this (most-recent-first); a missing value falls back to `createdAt`. Optional so older payloads /
    * fixtures degrade gracefully.
