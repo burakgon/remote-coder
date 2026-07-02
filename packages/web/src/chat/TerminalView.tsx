@@ -941,6 +941,9 @@ const terminalCss = `
 .rc-terminal__host {
   position: absolute; inset: 0;
   overflow: hidden;
+  /* Isolate xterm's (heavy, many-node) rendering into its own layout/paint scope so a recomposite of the
+     terminal doesn't cascade across the whole app — helps iOS Safari repaint the session-select transition. */
+  contain: layout paint;
 }
 /* Reconnecting toast — a small pill, top-center, non-blocking. */
 .rc-term-toast {
