@@ -187,6 +187,26 @@ export async function startServer(
   const swept = result.terminalManager.sweepStaleMcpConfigs();
   if (swept > 0) console.log(`swept ${swept} stale mcp-config file(s)`);
 
+  // LIVE STATUS MONITOR — re-derive every running session's working-vs-awaiting flag from its rendered tmux
+  // pane every ~2.5s (universal + hook-free; see TerminalManager.refreshActivity). This is what makes the
+  // session rail's statuses actually track reality, for OLD sessions too. capture-pane is READ-ONLY so it can
+  // never disturb a live session; a re-entrancy guard stops a slow sweep from stacking tmux spawns; unref'd so
+  // it never holds the process open.
+  let activityBusy = false;
+  const activityTimer = setInterval(() => {
+    if (activityBusy) return;
+    activityBusy = true;
+    void result.terminalManager
+      .refreshActivity()
+      .catch(() => {
+        /* the monitor is best-effort — a sweep failure must never crash the server */
+      })
+      .finally(() => {
+        activityBusy = false;
+      });
+  }, 2500);
+  if (typeof activityTimer.unref === "function") activityTimer.unref();
+
   return { ...result, url, token, tokenGenerated: generated };
 }
 

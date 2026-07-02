@@ -58,8 +58,9 @@ describe("SessionList", () => {
     // The card shows the session's model + effort so it's scannable at a glance.
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-    // The terminal status reads its label out (color is never the sole signal): s1 is running → "live".
-    expect(screen.getByText("live")).toBeInTheDocument();
+    // The terminal status reads its label out (color is never the sole signal): s1 is running and not
+    // awaiting → "working" (the pane-status monitor's word for a genuinely busy session).
+    expect(screen.getByText("working")).toBeInTheDocument();
   });
 
   it("shows the session count in the header (Sessions · N)", () => {

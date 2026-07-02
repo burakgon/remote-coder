@@ -80,7 +80,10 @@ function saveSessionName(id: string, name: string): void {
  * exited one — every status carries a distinct word (never a blank glyph). `ended` is the real dead-session
  * state the server emits when a terminal exits/crashes; dormant/errored/stopped are legacy/back-compat. */
 const STATUS_LABEL: Record<SessionMeta["status"], string> = {
-  running: "live",
+  // A RUNNING session that isn't `awaiting` you is, by the pane-status monitor's definition, actively
+  // WORKING (a spinner / esc-to-interrupt / blocked-on-agent is on screen) — the `awaiting` case is rendered
+  // separately as the loud "needs you" chip, so this branch only ever shows for a genuinely busy session.
+  running: "working",
   ended: "ended",
   dormant: "dormant",
   errored: "errored",
