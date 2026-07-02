@@ -2,7 +2,7 @@
 import { writeFileSync, chmodSync, unlinkSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { TerminalProcess, tmuxSessionName, TMUX_SOCKET, type PtySpawn } from "./terminal-process.js";
-import { classifyPaneStatus, capturePane } from "./pane-status.js";
+import { classifyPaneStatus, capturePane, type PaneStatus } from "./pane-status.js";
 import {
   buildMcpConfigDocument,
   mcpConfigPathFor,
@@ -22,11 +22,19 @@ export interface TerminalMeta {
   createdAt: number;
   lastActivityAt: number;
   /**
-   * "claude finished its turn and is waiting on YOU." Set DETERMINISTICALLY by claude's own `Stop` hook (and
-   * the ask_user flow), cleared by its `UserPromptSubmit` hook + any fresh pty output — see
-   * config.buildHooksSettingsDocument. Replaces the old terminal-output-idle scraping, which couldn't tell
-   * "generating / waiting on a background agent" from "waiting for you" and fired false positives. Surfaced in
-   * GET /sessions so the web can badge it.
+   * The session's LIVE activity, derived every ~2.5s from its rendered tmux pane by the capture-pane monitor
+   * (TerminalManager.refreshActivity → pane-status.classifyPaneStatus), plus the ask_user pin. UNIVERSAL (no
+   * hooks) + works while detached. Surfaced in GET /sessions to drive the rail's per-session status:
+   *   - "working" — actively generating (main spinner OR background agents still developing);
+   *   - "blocked" — claude is WAITING ON YOUR DECISION (ask_user / a permission or plan prompt) → the loud
+   *     "needs you". This is the ONLY state that alerts;
+   *   - "idle"    — a finished turn sitting at an empty prompt, nothing running, nothing to decide (calm).
+   */
+  activity: PaneStatus;
+  /**
+   * Back-compat boolean = `activity === "blocked"`. Drives the loud "needs you" badge/chip, the away push, and
+   * the badge count. Kept as a distinct field so existing consumers (awaitingCount, the push gate, the ask
+   * flow) don't all have to learn the 3-state enum. Set together with `activity` by the monitor + ask flow.
    */
   awaiting: boolean;
   /**
@@ -131,6 +139,7 @@ export class TerminalManager {
       status: "running",
       createdAt: now,
       lastActivityAt: now,
+      activity: "idle", // the ~2.5s monitor flips it to "working" as soon as claude starts generating
       awaiting: false,
       dangerouslySkip,
     };
@@ -281,7 +290,12 @@ export class TerminalManager {
    */
   setAwaiting(id: string, value: boolean): void {
     const rec = this.records.get(id);
-    if (rec) rec.meta.awaiting = value;
+    if (!rec) return;
+    rec.meta.awaiting = value;
+    // Keep `activity` consistent for the instant case (the ask flow calls this the moment claude blocks on a
+    // question, before the monitor's next sweep): true → "blocked" so the rail shows "needs you" immediately.
+    // On false we don't know the real state, so leave `activity` for the monitor to re-derive from the pane.
+    if (value) rec.meta.activity = "blocked";
   }
 
   /** Clear the awaiting flag (user is active / session ended). */
@@ -313,18 +327,19 @@ export class TerminalManager {
 
   /**
    * Re-derive every RUNNING session's `awaiting` flag from its LIVE rendered tmux pane (`capture-pane`) — the
-   * single, UNIVERSAL source of truth for "is claude busy, or is it my turn?". Works for EVERY session (no
-   * per-session hooks needed → correct for sessions created before hooks existed) and works while the browser is
-   * DETACHED (it reads tmux directly). Called on a ~2.5s timer from start.ts. Read-only: it can never disturb a
-   * live session.
+   * single, UNIVERSAL source of truth for working / blocked / idle. Works for EVERY session (no per-session
+   * hooks needed → correct for sessions created before hooks existed) and works while the browser is DETACHED
+   * (it reads tmux directly). Called on a ~2.5s timer from start.ts. Read-only: it can never disturb a live
+   * session.
    *
-   * Precedence: an OPEN ask_user question ({@link askPending}) pins the session to `awaiting` regardless of the
+   * Precedence: an OPEN ask_user question ({@link askPending}) pins the session to "blocked" regardless of the
    * pane. Otherwise {@link classifyPaneStatus} decides. A capture that returns "" (tmux hiccup) leaves the last
-   * flag untouched so the status never flaps to a wrong value on a transient miss.
+   * value untouched so the status never flaps on a transient miss.
    *
-   * Fires {@link TerminalManagerDeps.onAwaiting} (the away-from-desk push) on a false→true transition when no
-   * client is attached — so the "needs you" nudge is universal too, not just for hook-capable sessions. When a
-   * hook already set `awaiting=true`, the pane agrees and there's no transition here → no double push.
+   * `awaiting` (the loud "needs you" flag) tracks activity==="blocked" ONLY — a finished-but-idle session, or
+   * one whose background agents are still developing, is NOT "needs you". Fires
+   * {@link TerminalManagerDeps.onAwaiting} (the away push) on a not-blocked→blocked transition when no client is
+   * attached, so the nudge is universal + fires only for a genuine block.
    */
   async refreshActivity(): Promise<void> {
     const capture =
@@ -332,18 +347,19 @@ export class TerminalManager {
     await Promise.all(
       [...this.records.entries()].map(async ([id, rec]) => {
         if (rec.meta.status !== "running") return;
-        let target: "working" | "awaiting";
+        let activity: PaneStatus;
         if (this.askPending.has(id)) {
-          target = "awaiting"; // an open question is your turn — never let the pane downgrade it
+          activity = "blocked"; // an open question needs you — never let the pane downgrade it
         } else {
           const pane = await capture(tmuxSessionName(id));
-          if (!pane) return; // capture failed/empty → keep the last known flag (don't flap on a transient miss)
-          target = classifyPaneStatus(pane);
+          if (!pane) return; // capture failed/empty → keep the last known value (don't flap on a transient miss)
+          activity = classifyPaneStatus(pane);
         }
-        const nowAwaiting = target === "awaiting";
-        const wasAwaiting = rec.meta.awaiting;
-        rec.meta.awaiting = nowAwaiting;
-        if (nowAwaiting && !wasAwaiting && rec.subs.size === 0) {
+        const nowBlocked = activity === "blocked";
+        const wasBlocked = rec.meta.awaiting;
+        rec.meta.activity = activity;
+        rec.meta.awaiting = nowBlocked;
+        if (nowBlocked && !wasBlocked && rec.subs.size === 0) {
           try {
             this.deps.onAwaiting?.(id);
           } catch {
@@ -572,6 +588,7 @@ export class TerminalManager {
           status: "running",
           createdAt: s.createdAt,
           lastActivityAt: s.lastActivityAt,
+          activity: "idle", // the monitor re-derives real activity from the pane on its next ~2.5s sweep
           awaiting: false,
           // Preserve the persisted RCE-skip flag so a rehydrated session is still badged correctly (the
           // spawn args aren't known here — this is the only source of truth after a restart).

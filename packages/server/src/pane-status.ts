@@ -1,33 +1,57 @@
 import { spawn } from "node:child_process";
 
+export type PaneStatus = "working" | "blocked" | "idle";
+
 /**
  * Classify a session's live ACTIVITY from its RENDERED tmux pane (`capture-pane -p` — the CURRENT screen, not
  * scrollback). UNIVERSAL: works for any running session regardless of how claude was spawned (no per-session
  * hooks needed), and works while the browser is DETACHED (it reads the tmux session directly). Grounded in
  * Claude Code's real output — see pane-status.test.ts for captured samples.
  *
- *   working  → claude's MAIN loop is busy. Tells:
- *              • an active spinner with a LIVE, PARENTHESISED elapsed timer: "Baking… (1m 34s · ↓ 5.3k tokens)"
- *                — the parenthesis is what separates the main spinner from a backgrounded agent's bare
- *                "24m 23s" (those are fire-and-forget workers listed under the status line, NOT the main state);
- *              • "Waiting for … to finish" (the main loop is blocked on a foreground agent/tool);
- *              • "esc to interrupt" (the interruptible-generation hint) is on screen.
- *   awaiting → none of those: claude is at rest → YOUR turn. A finished turn ("Baked for 23m 15s", past tense),
- *              an empty input prompt, or a permission/ask prompt.
+ *   working → something is actively generating. The strongest tell is a LIVE token-flow counter "↓ 216.5k
+ *             tokens" — it appears on the MAIN spinner ("Schlepping… (1m 17s · ↓ 2.1k tokens)") AND on an
+ *             ACTIVE background agent ("⏺ general-purpose  Listing f… 24m 23s · ↓ 216.5k tokens"), and is GONE
+ *             the moment a turn finishes ("Baked for 23m 15s"). So a session whose MAIN loop is at the prompt
+ *             but has agents still developing in the background reads "working" — NOT idle (the user's
+ *             explicit correction). Also: a spinner's parenthesised timer, "Waiting for … to finish", or
+ *             "esc to interrupt".
+ *   blocked → claude is WAITING ON A DECISION FROM YOU: a permission prompt ("Do you want to proceed?"), a
+ *             plan-mode approval ("Would you like to proceed?"). (ask_user questions are pinned to blocked by
+ *             the manager via setAskPending, not detected here.) This is the ONLY state that earns the loud
+ *             "needs you" — so it must stay RARE + real; that's why it's just the explicit-prompt phrasings.
+ *   idle    → none of the above: claude finished a turn and is sitting at an empty prompt with nothing running
+ *             and nothing to decide. A calm "your turn whenever" — NOT a loud alert.
  *
- * Conservative by DESIGN toward "awaiting": a missed "working" (mislabelling a busy session as waiting) is a
- * mildly early nudge; the reverse (a genuinely waiting session read as busy) would SILENCE a real "needs you",
- * which is the failure the user hit — so absence of a working tell resolves to awaiting.
+ * Order matters: blocked is checked first (a decision prompt overrides any stale spinner text), then working,
+ * else idle.
  */
-export function classifyPaneStatus(pane: string): "working" | "awaiting" {
-  // A spinner's live parenthesised elapsed timer — "… (1m 34s" / "… (12s". The "(" distinguishes the MAIN
-  // spinner from a backgrounded agent's bare "24m 23s" (no parenthesis).
-  if (/…\s*\(\s*\d+\s*[ms]\b/.test(pane)) return "working";
+export function classifyPaneStatus(pane: string): PaneStatus {
+  // Only look at the BOTTOM of the pane. Claude Code pins its live chrome — the spinner, the input box, the
+  // status line, and the background-agent block — to the last ~dozen rows; everything above is CONVERSATION
+  // SCROLLBACK. Restricting to the tail means a session whose scrollback happens to show these very marker
+  // strings (e.g. one editing remote-coder's own source, or a diff mentioning "↓ … tokens" / "proceed") can't
+  // be misread — only claude's actual status chrome is classified.
+  const tail = pane.split("\n").slice(-22).join("\n");
+
+  // BLOCKED — an explicit decision prompt. Kept to Claude Code's exact permission/plan phrasings so the loud
+  // "needs you" it drives stays rare + trustworthy (ask_user is pinned separately by the manager).
+  if (/\bDo you want to proceed\b/i.test(tail)) return "blocked";
+  if (/\bWould you like to proceed\b/i.test(tail)) return "blocked";
+
+  // WORKING — a LIVE token-flow counter "↓ <n>k tokens" is the reliable "actively generating" signal, present
+  // for BOTH the main spinner ("Schlepping… (1m 17s · ↓ 2.1k tokens)") and an active background agent
+  // ("⏺ general-purpose  Listing f… 24m 23s · ↓ 216.5k tokens"). We require a GERUND ellipsis "…" on the SAME
+  // line so a FINISHED thing's past-tense summary ("Done · ↓ 12k tokens") can't read as working — an active
+  // worker always shows "<Gerund>… <timer> · ↓ tokens".
+  if (/…[^\n]*↓\s*[\d.]+\s*[kKmM]?\s*tokens?\b/.test(tail)) return "working";
+  // A spinner's parenthesised elapsed timer (covers the brief window at a turn's start before tokens flow).
+  if (/…\s*\(\s*\d+\s*[ms]\b/.test(tail)) return "working";
   // Main loop blocked on a foreground agent/tool.
-  if (/\bWaiting for\b[\s\S]{0,80}?\bto finish\b/i.test(pane)) return "working";
+  if (/\bWaiting for\b[\s\S]{0,80}?\bto finish\b/i.test(tail)) return "working";
   // Interruptible generation (may be truncated to "e…" on a narrow phone pane, so it's a bonus, not the only tell).
-  if (/\besc to interrupt\b/i.test(pane)) return "working";
-  return "awaiting";
+  if (/\besc to interrupt\b/i.test(tail)) return "working";
+
+  return "idle";
 }
 
 /** How capturePane locates a session's tmux pane. */

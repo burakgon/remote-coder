@@ -203,6 +203,44 @@ test("awaitingCount counts only the sessions currently awaiting you (drives the 
   expect(m.awaitingCount()).toBe(1);
 });
 
+test("refreshActivity derives working/blocked/idle from the pane; awaiting = blocked only + fires the away push", async () => {
+  const store = openSessionStore({ dbPath: ":memory:" });
+  const { spawn } = fakePtyFactory();
+  const pushed: string[] = [];
+  let t = 0;
+  // A fake pane per session (keyed by the tmux name rc-<id>), covering all three states.
+  const panes: Record<string, string> = {
+    "rc-work": "✻ Schlepping… (1m 17s · ↓ 2.1k tokens)\n❯\n  ⏵⏵ bypass permissions on · esc to interrupt",
+    // main loop idle at the prompt, but a background agent is still developing → WORKING, not idle/needs-you
+    "rc-agent": "❯\n  ⏵⏵ bypass permissions on\n  ⏺ general-purpose  Listing f… 24m 23s · ↓ 216.5k tokens",
+    "rc-block": "  Do you want to proceed?\n❯ 1. Yes\n  2. No",
+    "rc-idle": "✻ Baked for 3m 10s\n❯\n  ⏵⏵ bypass permissions on",
+  };
+  const m = new TerminalManager({
+    store,
+    claudeBin: "claude",
+    now: () => ++t,
+    ptySpawn: spawn as never,
+    runTmux: () => {},
+    onAwaiting: (id) => pushed.push(id),
+    capturePane: (name) => Promise.resolve(panes[name] ?? ""),
+  });
+  for (const id of ["work", "agent", "block", "idle"]) m.create({ id, cwd: "/w" });
+
+  await m.refreshActivity();
+
+  expect(m.get("work")?.activity).toBe("working");
+  expect(m.get("agent")?.activity).toBe("working");
+  expect(m.get("block")?.activity).toBe("blocked");
+  expect(m.get("idle")?.activity).toBe("idle");
+  // The loud "needs you" flag tracks BLOCKED only — a working or idle session is never awaiting.
+  expect(m.get("work")?.awaiting).toBe(false);
+  expect(m.get("block")?.awaiting).toBe(true);
+  expect(m.get("idle")?.awaiting).toBe(false);
+  // Nobody attached → the newly-blocked session fired the away push exactly once (working/idle don't).
+  expect(pushed).toEqual(["block"]);
+});
+
 test("create derives dangerouslySkip from the spawn args and persists it", () => {
   const { m, store } = mgr();
   const skip = m.create({ id: "sk", cwd: "/w", claudeArgs: ["--dangerously-skip-permissions"] });

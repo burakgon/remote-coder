@@ -13,6 +13,7 @@ const sessions: SessionMeta[] = [
     effort: "high",
     dangerouslySkip: false,
     status: "running",
+    activity: "working",
     createdAt: 1,
   },
   { id: "s2", cwd: "/home/u/notes", dangerouslySkip: false, status: "stopped", createdAt: 2 },
@@ -58,8 +59,8 @@ describe("SessionList", () => {
     // The card shows the session's model + effort so it's scannable at a glance.
     expect(screen.getByText("opus")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-    // The terminal status reads its label out (color is never the sole signal): s1 is running and not
-    // awaiting → "working" (the pane-status monitor's word for a genuinely busy session).
+    // The terminal status reads its label out (color is never the sole signal): s1 is running with
+    // activity="working" → the "working" word (an idle session would read "idle"; blocked → "needs you").
     expect(screen.getByText("working")).toBeInTheDocument();
   });
 
