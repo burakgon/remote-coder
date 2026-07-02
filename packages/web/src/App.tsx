@@ -114,6 +114,11 @@ export function App() {
   // When the wizard is opened via "＋ here" (a per-row / same-folder shortcut), this prefills the folder so
   // the wizard skips the directory picker. Undefined → the normal pick-a-directory flow.
   const [wizardCwd, setWizardCwd] = useState<string | undefined>(undefined);
+  // Initial model/effort/permission/danger when the wizard is opened from a session's settings ("New session
+  // in this folder with these settings") — threaded into NewSessionWizard's initial* props.
+  const [wizardOpts, setWizardOpts] = useState<
+    { model?: string; effort?: string; permissionMode?: string; dangerouslySkip?: boolean } | undefined
+  >(undefined);
   // A small, dismissible error surfaced when a close actually FAILS (so we don't silently pretend a
   // session is gone). Cleared on the next close attempt or when the user dismisses it.
   const [closeError, setCloseError] = useState<string | undefined>();
@@ -174,8 +179,12 @@ export function App() {
 
   // Open the new-session wizard (directory picker → settings). Terminal is the only session mode. An
   // optional `cwd` prefills the folder (the "＋ here" / same-folder shortcut) so the picker step is skipped.
-  const openWizard = (cwd?: string) => {
+  const openWizard = (
+    cwd?: string,
+    opts?: { model?: string; effort?: string; permissionMode?: string; dangerouslySkip?: boolean },
+  ) => {
     setWizardCwd(cwd);
+    setWizardOpts(opts);
     setWizardOpen(true);
   };
   const online = useOnline();
@@ -1062,9 +1071,14 @@ export function App() {
           models={models}
           // Prefill the folder when opened via "＋ here" (skips the picker); undefined → normal picker flow.
           initialCwd={wizardCwd}
+          initialModel={wizardOpts?.model}
+          initialEffort={wizardOpts?.effort}
+          initialPermissionMode={wizardOpts?.permissionMode}
+          initialDangerouslySkip={wizardOpts?.dangerouslySkip}
           onClose={() => {
             setWizardOpen(false);
             setWizardCwd(undefined);
+            setWizardOpts(undefined);
           }}
           onCreated={(session) => {
             // addSession is idempotent (no-op if the id already exists) and an immutable store update, so
@@ -1073,6 +1087,7 @@ export function App() {
             setActive(session.id);
             setWizardOpen(false);
             setWizardCwd(undefined);
+            setWizardOpts(undefined);
             setSessionsOpen(false);
           }}
         />
@@ -1114,6 +1129,10 @@ export function App() {
           onSaveDefaults={saveDefaults}
           api={api}
           models={models}
+          onNewSessionHere={(o) => {
+            setSessionSettingsOpen(false);
+            openWizard(o.cwd, o);
+          }}
           onStopSession={(id) => {
             setSessionSettingsOpen(false);
             closeSession(id);

@@ -351,6 +351,9 @@ export function TerminalView({
               setFiles((prev) => (prev.some((f) => f.id === item.id) ? prev : [item, ...prev]));
             } else if (msg.t === "ask" && typeof msg.askId === "string" && Array.isArray(msg.questions)) {
               setAsk({ askId: msg.askId, questions: msg.questions });
+            } else if (msg.t === "ask-cancel" && typeof msg.askId === "string") {
+              // The server-side ask_user timed out → dismiss the overlay if it's still that same question.
+              setAsk((cur) => (cur && cur.askId === msg.askId ? null : cur));
             }
           } catch {
             /* ignore a malformed control frame */
