@@ -10,12 +10,14 @@ function fakePtyFactory() {
     const ee = new EventEmitter() as EventEmitter & {
       write(d: string): void;
       resize(c: number, r: number): void;
+      resizes: Array<[number, number]>;
       kill(): void;
       onData(cb: (d: string) => void): void;
       onExit(cb: (e: { exitCode: number }) => void): void;
     };
     ee.write = () => {};
-    ee.resize = () => {};
+    ee.resizes = [];
+    ee.resize = (c, r) => void ee.resizes.push([c, r]);
     ee.kill = () => {};
     ee.onData = (cb) => void ee.on("data", cb);
     ee.onExit = (cb) => void ee.on("exit", cb);
@@ -149,6 +151,21 @@ test("looksBusy: detects the interrupt hint in the tail, ANSI- and case-tolerant
   expect(looksBusy("normal output\n│ > ")).toBe(false);
   expect(looksBusy("\x1b[2mspinning (esc to interrupt · 3s)\x1b[0m")).toBe(true);
   expect(looksBusy("ESC TO INTERRUPT")).toBe(true);
+});
+
+test("reattach to a still-running session forces a tmux redraw (size wiggle) so a fresh xterm isn't blank", () => {
+  vi.useFakeTimers();
+  const { m, ptys } = mgr();
+  m.create({ id: "a", cwd: "/w" });
+  m.attach("a", { onData: () => {} }, { cols: 80, rows: 24 }); // first client → spawns the pty (tmux draws naturally)
+  const pty = ptys[0]! as EventEmitter & { resizes: Array<[number, number]> };
+  const before = pty.resizes.length;
+  m.attach("a", { onData: () => {} }, { cols: 80, rows: 24 }); // SECOND client reattaches to the LIVE pty (the bug case)
+  vi.advanceTimersByTime(300); // let the deferred wiggle fire
+  const wiggle = pty.resizes.slice(before);
+  expect(wiggle[0]).toEqual([80, 25]); // +1 row → SIGWINCH → tmux redraws the whole screen
+  expect(wiggle[wiggle.length - 1]).toEqual([80, 24]); // ...then restored to the real viewport size
+  vi.useRealTimers();
 });
 
 test("awaiting: onAwaiting is NOT fired while a client watches, but IS fired when the last one detaches", () => {

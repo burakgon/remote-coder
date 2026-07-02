@@ -312,6 +312,28 @@ export class TerminalManager {
   }
 
   /**
+   * Nudge tmux to repaint the WHOLE screen for a session whose pty is already running — used when a client
+   * REATTACHES (a fresh xterm) to a still-live tmux client that drew its screen earlier and won't redraw on
+   * its own, so the new client would otherwise show only a blinking cursor until something changes. A brief
+   * pty size wiggle (+1 row, then back) sends SIGWINCH, which makes tmux redraw — exactly what the manual
+   * window-resize the user found does, minus the manual part. Deferred so the new client's own initial resize
+   * lands first (rec.cols/rec.rows are then the final size we wiggle around). Best-effort + unref'd timers.
+   */
+  private forceRedraw(rec: Record_): void {
+    const proc = rec.proc;
+    if (!proc) return;
+    const t = setTimeout(() => {
+      if (rec.proc !== proc) return; // detached / respawned in the meantime
+      proc.resize(rec.cols, Math.max(1, rec.rows + 1)); // wiggle up → SIGWINCH → tmux redraws
+      const back = setTimeout(() => {
+        if (rec.proc === proc) proc.resize(rec.cols, rec.rows); // ...then restore the real viewport size
+      }, 60);
+      if (typeof back.unref === "function") back.unref();
+    }, 180);
+    if (typeof t.unref === "function") t.unref();
+  }
+
+  /**
    * Subscribe to a terminal's output. The pty/tmux is spawned lazily on the FIRST subscriber — and, when
    * `size` is given, born at exactly the client's fitted viewport so the claude TUI's first frame matches
    * (no spawn-at-80×24-then-reflow jump). Returns undefined for an unknown id.
@@ -404,6 +426,13 @@ export class TerminalManager {
         rec.subs.delete(sub);
         return undefined;
       }
+    } else {
+      // Reattaching to a STILL-RUNNING session: its pty/tmux client is alive from an earlier connection whose
+      // WS never cleanly closed (e.g. the app was backgrounded a long time, so the old sub lingered and the pty
+      // wasn't torn down + respawned). tmux drew its screen to that pty long ago, so THIS fresh xterm receives
+      // no redraw and shows only a blinking cursor until something changes — the reported "open an old chat →
+      // blank until I resize the window" bug. Nudge tmux to repaint the whole screen. See forceRedraw.
+      this.forceRedraw(rec);
     }
     return {
       unsubscribe: () => {
