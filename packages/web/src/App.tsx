@@ -17,6 +17,7 @@ import { ClaudeAuthDialog } from "./settings/ClaudeAuthDialog";
 import { loadDefaults, saveDefaults } from "./settings/defaults";
 import { enablePush, disablePush, currentPushState } from "./pwa/push";
 import { applyAppBadge, badgeCount } from "./pwa/badge";
+import { playNeedsYouChime, needsYouHaptic, unlockAudio } from "./pwa/alert-sound";
 import { healPaintBurst } from "./pwa/viewport";
 import { InstallPrompt } from "./pwa/InstallPrompt";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
@@ -36,6 +37,19 @@ type Phase = "login" | "validating" | "ready";
 function basename(p: string): string {
   const parts = p.replace(/\/+$/, "").split("/");
   return parts[parts.length - 1] || p;
+}
+
+/** Display name for a session in the "needs you" alert: the user's custom label (localStorage, shared with the
+ *  rail) if any, else the cwd basename. Best-effort — a storage read failure just falls back to the basename. */
+function sessionLabel(s: { id: string; cwd: string }): string {
+  try {
+    const names = JSON.parse(localStorage.getItem("rc-session-names") || "{}") as Record<string, string>;
+    const custom = names[s.id]?.trim();
+    if (custom) return custom;
+  } catch {
+    /* ignore malformed / blocked storage */
+  }
+  return basename(s.cwd);
 }
 
 /**
@@ -168,6 +182,12 @@ export function App() {
   // Starts true so initial load / a restored session / tests mount immediately (no sheet transition there);
   // onSelect drops it to false for the switch, then a double-rAF flips it back once the swap has painted.
   const [terminalMountReady, setTerminalMountReady] = useState(true);
+  // "A session needs you" foreground alert: the most recent OTHER session that flipped to awaiting while you
+  // weren't looking at it. Drives a prominent tappable banner + a chime/haptic (see the poll effect below).
+  const [needsYouAlert, setNeedsYouAlert] = useState<{ id: string; label: string } | undefined>(undefined);
+  // Awaiting ids from the PREVIOUS poll, to detect false→true transitions. undefined until the first poll
+  // seeds it, so already-waiting sessions on load never fire a burst of chimes.
+  const prevAwaitingRef = useRef<Set<string> | undefined>(undefined);
   // Read the saved defaults once PER OPEN of EITHER settings surface (not on every render while a panel is
   // up) — the panel only seeds its draft from the first value anyway.
   const settingsDefaults = useMemo(() => loadDefaults(), [globalSettingsOpen, sessionSettingsOpen]);
@@ -299,6 +319,22 @@ export function App() {
     }
   }, [phase, sessions, activeSessionId, setActive]);
 
+  // Prime the AudioContext on the first user gesture so a later "needs you" chime (fired from a background
+  // poll, not a gesture) is allowed to sound on iOS/Safari (autoplay policy). One-shot; self-removes.
+  useEffect(() => {
+    const unlock = () => {
+      unlockAudio();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   // Keep the rail honest across ALL sessions — not just the one we're connected to. A lightweight poll
   // of GET /sessions every ~15s (and on window focus + when the connection comes back online, e.g. a WS
   // reconnect after sleep) refreshes status, `awaiting` and `lastActivityAt` for every session, and
@@ -315,6 +351,24 @@ export function App() {
           pollFailures.current = 0;
           mergeSessionMeta(s);
           setLoadError(undefined); // a successful poll clears any earlier "couldn't reach the server"
+          // "Needs you" foreground nudge: a session that FLIPPED to awaiting since the last poll gets a chime +
+          // haptic + a tappable banner — but NEVER the one you're actively viewing (active + app visible), and
+          // the first poll only seeds the baseline (no chime storm on load).
+          const nextAwaiting = new Set(s.filter((x) => x.awaiting).map((x) => x.id));
+          const prev = prevAwaitingRef.current;
+          if (prev) {
+            const activeId = useStore.getState().activeSessionId;
+            const viewing = typeof document !== "undefined" && document.visibilityState === "visible";
+            const fresh = s.find((x) => x.awaiting && !prev.has(x.id) && !(x.id === activeId && viewing));
+            if (fresh) {
+              playNeedsYouChime();
+              needsYouHaptic();
+              setNeedsYouAlert({ id: fresh.id, label: sessionLabel(fresh) });
+            }
+          }
+          // Drop a standing alert once its session is no longer waiting (you answered it, or it ended).
+          setNeedsYouAlert((cur) => (cur && !nextAwaiting.has(cur.id) ? undefined : cur));
+          prevAwaitingRef.current = nextAwaiting;
         })
         .catch((err: unknown) => {
           if (cancelled) return;
@@ -325,7 +379,8 @@ export function App() {
           if (++pollFailures.current >= 2) setLoadError("Couldn't reach the server — the list may be stale.");
         });
     };
-    const interval = setInterval(refresh, 15_000);
+    // Poll a bit faster than before so a "needs you" is timely (the old 15s made it feel laggy). Cheap JSON.
+    const interval = setInterval(refresh, 6_000);
     const onFocusOrOnline = () => refresh();
     window.addEventListener("focus", onFocusOrOnline);
     window.addEventListener("online", onFocusOrOnline);
@@ -965,7 +1020,7 @@ export function App() {
                   <TerminalView
                     session={active}
                     onShowSessions={() => setSessionsOpen(true)}
-                    needsYou={awaitingCount(sessions)}
+                    needsYou={awaitingCount(sessions, activeSessionId)}
                     onClose={() => closeSession(active.id)}
                     // The chat header's gear opens the SESSION-SCOPED settings panel (rendered below with
                     // the active session). ChatHeader/TerminalView surface the gear when this is provided.
@@ -986,7 +1041,10 @@ export function App() {
                     flex: "none",
                   }}
                 >
-                  <MobileMenuButton onShowSessions={() => setSessionsOpen(true)} needsYou={awaitingCount(sessions)} />
+                  <MobileMenuButton
+                    onShowSessions={() => setSessionsOpen(true)}
+                    needsYou={awaitingCount(sessions, activeSessionId)}
+                  />
                 </div>
                 <div
                   style={{
@@ -1052,7 +1110,10 @@ export function App() {
                 flex: "none",
               }}
             >
-              <MobileMenuButton onShowSessions={() => setSessionsOpen(true)} needsYou={awaitingCount(sessions)} />
+              <MobileMenuButton
+                onShowSessions={() => setSessionsOpen(true)}
+                needsYou={awaitingCount(sessions, activeSessionId)}
+              />
             </div>
             <div
               style={{
@@ -1225,6 +1286,57 @@ export function App() {
       {/* PWA install nudge — captured beforeinstallprompt (Android) or an iOS Add-to-Home-Screen tip.
           Gated to AFTER the first session so it never lands on the cold login/landing screen; dismissible
           once (localStorage). Installing is what unlocks Web Push + the home-screen badge on iOS. */}
+      {/* Prominent "a session needs you" alert (fires with a chime + haptic from the poll). Tappable → opens
+          that session; dismissible; auto-clears once the session is no longer waiting. */}
+      {needsYouAlert && (
+        <div role="alert" className="rc-needsyou">
+          <button
+            type="button"
+            className="rc-needsyou__open"
+            onClick={() => {
+              const id = needsYouAlert.id;
+              setNeedsYouAlert(undefined);
+              unlockAudio();
+              setActive(id);
+              setSessionsOpen(false);
+            }}
+          >
+            <Icon name="bell" size={16} />
+            <span className="rc-needsyou__txt">
+              <strong>{needsYouAlert.label}</strong> needs you — tap to open
+            </span>
+          </button>
+          <button
+            type="button"
+            className="rc-needsyou__x"
+            aria-label="Dismiss"
+            onClick={() => setNeedsYouAlert(undefined)}
+          >
+            <Icon name="x" size={16} />
+          </button>
+          <style>{`
+            .rc-needsyou {
+              position: fixed; left: 0; right: 0; top: env(safe-area-inset-top, 0px); z-index: 58;
+              display: flex; align-items: stretch;
+              margin: var(--sp-2) var(--sp-3); border-radius: var(--radius);
+              background: var(--accent-grad, var(--coral)); color: var(--on-accent, #fff);
+              box-shadow: var(--shadow); overflow: hidden;
+              animation: rc-needsyou-in 200ms ease;
+            }
+            @keyframes rc-needsyou-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+            .rc-needsyou__open {
+              flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2);
+              padding: var(--sp-3); background: transparent; border: none; cursor: pointer;
+              color: inherit; font: inherit; font-weight: 600; text-align: left;
+            }
+            .rc-needsyou__txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .rc-needsyou__x {
+              flex: none; display: grid; place-items: center; width: 44px;
+              background: rgba(0, 0, 0, 0.14); border: none; color: inherit; cursor: pointer;
+            }
+          `}</style>
+        </div>
+      )}
       <InstallPrompt show={sessions.length > 0} />
     </>
   );
