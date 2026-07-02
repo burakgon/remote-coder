@@ -40,6 +40,14 @@ self.addEventListener("activate", (event: ExtendableEvent) =>
   event.waitUntil(
     (async () => {
       await self.clients.claim();
+      // iOS/WebKit: a forced navigate() FREEZES a standalone PWA's compositor on the first post-OTA open
+      // (the reported "OTA sonrası ilk açılışta kilitleniyor" — the screen stops repainting until the app is
+      // force-closed + reopened). iOS PWAs update reliably ONLY on a full close+reopen, and the app surfaces a
+      // "close & reopen to update" banner — so DON'T force-navigate iOS clients here. Elsewhere this still
+      // rescues a stale/white shell without a freeze. (The client-side controllerchange reload in main.tsx is
+      // likewise iOS-gated, so no reload path fires on iOS.)
+      const ua = self.navigator?.userAgent ?? "";
+      if (/iP(hone|od|ad)/.test(ua)) return;
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of windows) {
         await (client as WindowClient).navigate((client as WindowClient).url).catch(() => undefined);

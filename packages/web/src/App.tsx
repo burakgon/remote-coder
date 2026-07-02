@@ -18,6 +18,7 @@ import { loadDefaults, saveDefaults } from "./settings/defaults";
 import { enablePush, disablePush, currentPushState } from "./pwa/push";
 import { applyAppBadge, badgeCount } from "./pwa/badge";
 import { playNeedsYouChime, needsYouHaptic, unlockAudio } from "./pwa/alert-sound";
+import { isIosWebKit } from "./pwa/platform";
 import { healPaintBurst } from "./pwa/viewport";
 import { InstallPrompt } from "./pwa/InstallPrompt";
 import { ConnectionBanner } from "./pwa/ConnectionBanner";
@@ -74,25 +75,15 @@ function requestReloadForNewVersion(): void {
     // under the user — losing unsent composer text / an in-flight answer — for no gain. Re-arm if skipped
     // so a later genuine version bump can still schedule one.
     const serverLabel = useStore.getState().updateInfo?.current;
-    // replace(href), not reload(): see main.tsx — an in-place reload() can freeze iOS standalone's compositor.
-    if (isClientStale(BUILD_SHA, serverLabel)) window.location.replace(window.location.href);
+    // replace(href), not reload(): see main.tsx. On iOS BOTH freeze the standalone compositor post-OTA, so we
+    // never auto-reload there — the "close & reopen to update" banner covers it. Elsewhere, swap to the new bundle.
+    if (!IOS_WEBKIT && isClientStale(BUILD_SHA, serverLabel)) window.location.replace(window.location.href);
     else reloadScheduled = false;
   }, 10_000);
 }
 
-/**
- * iOS / iPadOS WebKit: a JS-driven hard refresh (unregister SW + delete caches + location.replace) does NOT
- * reliably swap a precached PWA there, AND the reload FREEZES the (standalone) compositor — so the app "locks"
- * on the old-version banner. The stale-bundle self-heal must therefore NEVER auto-reload on iOS; the only
- * reliable update is the user fully closing + reopening the app. Detect iPhone/iPod/iPad — including iPadOS
- * 13+, which spoofs a Macintosh UA but has touch. (Android + desktop reload cleanly, so they self-heal.)
- */
-function isIosWebKit(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  const iPadOS = /Macintosh/.test(ua) && typeof document !== "undefined" && "ontouchend" in document;
-  return /iP(hone|od|ad)/.test(ua) || iPadOS;
-}
+// iOS/WebKit: every automatic in-page reload freezes the standalone compositor (see ./pwa/platform). Computed
+// once; gates the stale-bundle self-heal + the post-update reload so neither ever auto-reloads on iOS.
 const IOS_WEBKIT = isIosWebKit();
 
 export function App() {

@@ -6,27 +6,30 @@ import "./styles/global.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { installViewportSync } from "./pwa/viewport";
+import { isIosWebKit } from "./pwa/platform";
 
 // Mirror the visual viewport into --app-height so the shell shrinks to the area above the on-screen keyboard
 // (instead of the composer / terminal cursor hiding behind it). Started before render so the first paint is
 // already keyboard-aware. Lives for the app's lifetime — no disposer needed.
 installViewportSync();
 
-// Auto-update the service worker (precached shell loads offline). With `registerType: "autoUpdate"`
-// the new SW activates in the background (skipWaiting), but the OPEN page keeps running the stale JS
-// until something reloads it — that's how a returning user can sit on an old bundle (e.g. missing the
-// Stop button) even after "reopening". So: when a freshly-installed SW takes control, reload ONCE to
-// pick up the new assets. Guarded against the very first install (no prior controller) so it never
-// reload-loops on a fresh device.
-if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+// Auto-update the service worker (precached shell loads offline). With `registerType: "autoUpdate"` the new
+// SW activates in the background (skipWaiting), but the OPEN page keeps running the stale JS until something
+// reloads it. On NON-iOS we reload ONCE when a freshly-installed SW takes control, to pick up the new assets
+// (guarded against the very first install so it never reload-loops on a fresh device).
+//
+// iOS/WebKit is EXCLUDED: an in-page reload — reload() OR replace() — FREEZES an iOS standalone PWA's
+// compositor on the first post-OTA open (the screen stops repainting until the app is force-closed +
+// reopened). That is exactly the reported "OTA sonrası ilk açılışta kilitleniyor" bug — the replace() the
+// old comment claimed was safe is NOT. iOS PWAs pick up a new bundle reliably only on a full close+reopen
+// anyway, and App.tsx surfaces a "close & reopen to update" banner — so on iOS we suppress the auto-reload
+// entirely and let that close+reopen do it.
+if (typeof navigator !== "undefined" && navigator.serviceWorker && !isIosWebKit()) {
   const hadController = Boolean(navigator.serviceWorker.controller);
   let reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (reloading || !hadController) return;
     reloading = true;
-    // replace(href), NOT reload(): an in-place reload() in an iOS standalone PWA can leave the compositor
-    // frozen — the DOM updates + input keeps working, but the screen stops repainting until the app is
-    // reopened. A replace() navigation swaps onto the new bundle without triggering that freeze.
     window.location.replace(window.location.href);
   });
 }
