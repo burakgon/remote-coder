@@ -39,15 +39,16 @@ self.addEventListener("install", () => void self.skipWaiting());
 self.addEventListener("activate", (event: ExtendableEvent) =>
   event.waitUntil(
     (async () => {
-      await self.clients.claim();
-      // iOS/WebKit: a forced navigate() FREEZES a standalone PWA's compositor on the first post-OTA open
-      // (the reported "OTA sonrası ilk açılışta kilitleniyor" — the screen stops repainting until the app is
-      // force-closed + reopened). iOS PWAs update reliably ONLY on a full close+reopen, and the app surfaces a
-      // "close & reopen to update" banner — so DON'T force-navigate iOS clients here. Elsewhere this still
-      // rescues a stale/white shell without a freeze. (The client-side controllerchange reload in main.tsx is
-      // likewise iOS-gated, so no reload path fires on iOS.)
+      // iOS/WebKit: do the activate-time takeover ONLY off iOS. On iOS this whole block is skipped BEFORE
+      // clients.claim(), because claim() itself makes the open page's `controllerchange` fire → the old
+      // bundle's own location.replace runs → and an in-page reload FREEZES a standalone PWA's compositor on
+      // the first post-OTA open (the reported "OTA sonrası ilk açılışta kilitleniyor"). By not claiming and
+      // not navigating, the currently-open page keeps running cleanly; the app shows a "close & reopen to
+      // update" banner, and the next full close+reopen loads the new SW + bundle (the only reliable iOS PWA
+      // update). Elsewhere, claim + navigate still rescues a stale/white shell without a freeze.
       const ua = self.navigator?.userAgent ?? "";
       if (/iP(hone|od|ad)/.test(ua)) return;
+      await self.clients.claim();
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of windows) {
         await (client as WindowClient).navigate((client as WindowClient).url).catch(() => undefined);
