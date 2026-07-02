@@ -227,6 +227,19 @@ export function App() {
     }
   }, [phase, setActive]);
 
+  // Validate a RESTORED active session (persisted across reload/relaunch — see store) once the list has
+  // loaded: if it no longer exists (closed while away), clear it so we land on the picker instead of a
+  // dead "Session not found" screen. One-shot (ref) so it never fights a fresh selection or a deep link.
+  const activeValidatedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "ready" || activeValidatedRef.current) return;
+    activeValidatedRef.current = true;
+    const deepLink = sessionIdFromLocation(window.location.search);
+    if (activeSessionId && !deepLink && !sessions.some((s) => s.id === activeSessionId)) {
+      setActive(undefined);
+    }
+  }, [phase, sessions, activeSessionId, setActive]);
+
   // Keep the rail honest across ALL sessions — not just the one we're connected to. A lightweight poll
   // of GET /sessions every ~15s (and on window focus + when the connection comes back online, e.g. a WS
   // reconnect after sleep) refreshes status, `awaiting` and `lastActivityAt` for every session, and
