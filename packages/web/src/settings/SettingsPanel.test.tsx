@@ -240,7 +240,13 @@ describe("SettingsPanel", () => {
       fetchedAt: 0,
     };
     render(
-      <SettingsPanel session={undefined} defaults={defaults} usage={usage} onSaveDefaults={vi.fn()} onClose={vi.fn()} />,
+      <SettingsPanel
+        session={undefined}
+        defaults={defaults}
+        usage={usage}
+        onSaveDefaults={vi.fn()}
+        onClose={vi.fn()}
+      />,
     );
     expect(screen.getByRole("status")).toHaveTextContent(/near a claude usage limit/i);
     expect(screen.getByText(/weekly · sonnet/i)).toBeInTheDocument();

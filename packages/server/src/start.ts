@@ -120,7 +120,9 @@ export async function startServer(
       log: (m) => console.warn(`[remote-coder] ${m}`),
     });
   } catch (err) {
-    console.warn(`[remote-coder] ⚠ web push disabled (${(err as Error).message}) — set a valid REMOTE_CODER_VAPID_SUBJECT`);
+    console.warn(
+      `[remote-coder] ⚠ web push disabled (${(err as Error).message}) — set a valid REMOTE_CODER_VAPID_SUBJECT`,
+    );
   }
 
   // The PWA is served from packages/web/dist when it exists (one-origin deploy). Guard the path:

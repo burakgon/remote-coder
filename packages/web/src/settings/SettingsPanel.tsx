@@ -517,7 +517,10 @@ function UsageSummary({ usage }: { usage: UsageInfo }) {
                 aria-valuemax={100}
                 aria-label={`${label} limit ${pct}% used`}
               >
-                <span className="rc-settings__usage-fill" style={{ width: `${pct}%`, background: usageFillColor(pct) }} />
+                <span
+                  className="rc-settings__usage-fill"
+                  style={{ width: `${pct}%`, background: usageFillColor(pct) }}
+                />
               </div>
               <span className="rc-settings__usage-reset">resets {shortenReset(bar.resets)}</span>
             </div>

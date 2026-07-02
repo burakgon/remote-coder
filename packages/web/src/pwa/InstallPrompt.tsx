@@ -127,9 +127,7 @@ export function InstallPrompt({ show }: { show: boolean }) {
       </span>
       {canInstall ? (
         <>
-          <span className="rc-install__text">
-            Install Remote Coder for notifications and a home-screen icon.
-          </span>
+          <span className="rc-install__text">Install Remote Coder for notifications and a home-screen icon.</span>
           <button type="button" className="rc-install__cta" onClick={install}>
             Install
           </button>

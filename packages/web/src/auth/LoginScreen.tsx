@@ -29,9 +29,8 @@ export function LoginScreen({ onAuthenticated, initialError }: LoginScreenProps)
         </header>
 
         <p className="rc-login__lede">
-          Enter the access token your server printed — it&apos;s in the connect link (re-open that link on
-          this device), or copy it from the server console. If a link stopped working, it may have rotated —
-          open the latest one.
+          Enter the access token your server printed — it&apos;s in the connect link (re-open that link on this device),
+          or copy it from the server console. If a link stopped working, it may have rotated — open the latest one.
         </p>
 
         <form

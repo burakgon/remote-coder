@@ -136,10 +136,7 @@ function CheckUpdateButton({ onCheck }: { onCheck: () => Promise<boolean> }) {
 function TerminalState({ status }: { status: SessionMeta["status"] }) {
   const live = status === "running";
   return (
-    <span
-      className={`rc-sl__term rc-sl__term--${status}${live ? " rc-sl__term--live" : ""}`}
-      role="status"
-    >
+    <span className={`rc-sl__term rc-sl__term--${status}${live ? " rc-sl__term--live" : ""}`} role="status">
       <Icon name="terminal" size={13} />
       {live && <span className="rc-sl__term-dot" aria-hidden="true" />}
       {STATUS_LABEL[status]}

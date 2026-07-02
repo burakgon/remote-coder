@@ -662,70 +662,67 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
   // the user answers via POST /sessions/:id/ask/answer, or ~5min elapses (a graceful "no answer" so claude
   // proceeds rather than hanging). Token-gated by the global preHandler. The body's answer shape mirrors
   // what mcp-send's askDeliver expects: { answers?: {...}, cancelled?: boolean }.
-  app.post<{ Params: { id: string }; Body: { questions?: unknown } }>(
-    "/sessions/:id/ask",
-    async (request, reply) => {
-      const sessionId = request.params.id;
-      if (!terminalManager.get(sessionId)) {
-        reply.code(404).send({ error: "session not found" });
-        return;
+  app.post<{ Params: { id: string }; Body: { questions?: unknown } }>("/sessions/:id/ask", async (request, reply) => {
+    const sessionId = request.params.id;
+    if (!terminalManager.get(sessionId)) {
+      reply.code(404).send({ error: "session not found" });
+      return;
+    }
+    const questions = request.body?.questions;
+    if (!Array.isArray(questions) || questions.length === 0) {
+      reply.code(400).send({ error: "questions must be a non-empty array" });
+      return;
+    }
+    const askId = randomUUID();
+    const result = await new Promise<AskResult>((resolve) => {
+      // Timeout → drop the pending ask, tell any attached client to dismiss the overlay, and resolve
+      // gracefully as cancelled (mcp-send maps this to "the user did not answer"). unref'd so it never
+      // keeps the process alive.
+      const timer = setTimeout(() => {
+        takePendingAsk(sessionId, askId);
+        terminalManager.pushControl(sessionId, { t: "ask-cancel", askId });
+        terminalManager.setAwaiting(sessionId, false);
+        resolve({ cancelled: true });
+      }, ASK_TIMEOUT_MS);
+      if (typeof timer.unref === "function") timer.unref();
+      let forSession = pendingAsksBySession.get(sessionId);
+      if (!forSession) {
+        forSession = new Map();
+        pendingAsksBySession.set(sessionId, forSession);
       }
-      const questions = request.body?.questions;
-      if (!Array.isArray(questions) || questions.length === 0) {
-        reply.code(400).send({ error: "questions must be a non-empty array" });
-        return;
-      }
-      const askId = randomUUID();
-      const result = await new Promise<AskResult>((resolve) => {
-        // Timeout → drop the pending ask, tell any attached client to dismiss the overlay, and resolve
-        // gracefully as cancelled (mcp-send maps this to "the user did not answer"). unref'd so it never
-        // keeps the process alive.
-        const timer = setTimeout(() => {
-          takePendingAsk(sessionId, askId);
-          terminalManager.pushControl(sessionId, { t: "ask-cancel", askId });
-          terminalManager.setAwaiting(sessionId, false);
-          resolve({ cancelled: true });
-        }, ASK_TIMEOUT_MS);
-        if (typeof timer.unref === "function") timer.unref();
-        let forSession = pendingAsksBySession.get(sessionId);
-        if (!forSession) {
-          forSession = new Map();
-          pendingAsksBySession.set(sessionId, forSession);
-        }
-        forSession.set(askId, { askId, questions, resolve, timer });
-        // Deliver to clients attached right now (a reconnecting client gets it via the WS attach-replay).
-        terminalManager.pushControl(sessionId, { t: "ask", askId, questions });
-        // claude is BLOCKED on the user → definitely awaiting. Set the flag + push (needs-you).
-        terminalManager.setAwaiting(sessionId, true);
-        void deps.pushDispatcher?.dispatch({ kind: "ask", sessionId, detail: firstQuestionText(questions) });
-      });
-      reply.code(200).send(result);
-    },
-  );
+      forSession.set(askId, { askId, questions, resolve, timer });
+      // Deliver to clients attached right now (a reconnecting client gets it via the WS attach-replay).
+      terminalManager.pushControl(sessionId, { t: "ask", askId, questions });
+      // claude is BLOCKED on the user → definitely awaiting. Set the flag + push (needs-you).
+      terminalManager.setAwaiting(sessionId, true);
+      void deps.pushDispatcher?.dispatch({ kind: "ask", sessionId, detail: firstQuestionText(questions) });
+    });
+    reply.code(200).send(result);
+  });
 
   // The user's answer to a pending ask: resolve the held /ask long-poll with the selection(s) (or a
   // cancellation) and clear awaiting. 404 if there's no such pending question (already answered / timed
   // out / session closed) so a stale client learns it. Token-gated by the global preHandler.
-  app.post<{ Params: { id: string }; Body: { askId?: string; answers?: Record<string, string | string[]>; cancelled?: boolean } }>(
-    "/sessions/:id/ask/answer",
-    async (request, reply) => {
-      const sessionId = request.params.id;
-      const { askId, answers, cancelled } = request.body ?? {};
-      if (typeof askId !== "string") {
-        reply.code(400).send({ error: "askId is required" });
-        return;
-      }
-      const pending = takePendingAsk(sessionId, askId);
-      if (!pending) {
-        reply.code(404).send({ error: "no such pending question (already answered, timed out, or dismissed)" });
-        return;
-      }
-      clearTimeout(pending.timer);
-      terminalManager.setAwaiting(sessionId, false);
-      pending.resolve(cancelled ? { cancelled: true } : { answers: answers ?? {} });
-      reply.code(200).send({ ok: true });
-    },
-  );
+  app.post<{
+    Params: { id: string };
+    Body: { askId?: string; answers?: Record<string, string | string[]>; cancelled?: boolean };
+  }>("/sessions/:id/ask/answer", async (request, reply) => {
+    const sessionId = request.params.id;
+    const { askId, answers, cancelled } = request.body ?? {};
+    if (typeof askId !== "string") {
+      reply.code(400).send({ error: "askId is required" });
+      return;
+    }
+    const pending = takePendingAsk(sessionId, askId);
+    if (!pending) {
+      reply.code(404).send({ error: "no such pending question (already answered, timed out, or dismissed)" });
+      return;
+    }
+    clearTimeout(pending.timer);
+    terminalManager.setAwaiting(sessionId, false);
+    pending.resolve(cancelled ? { cancelled: true } : { answers: answers ?? {} });
+    reply.code(200).send({ ok: true });
+  });
 
   // Web Push opt-in routes (spec §1). The whole `/push/*` namespace is token-gated by the global
   // preHandler (it is in API_PATH_DENYLIST), including GET /push/vapid — the PWA already holds the

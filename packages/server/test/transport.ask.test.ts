@@ -85,7 +85,10 @@ async function waitFor(pred: () => boolean, tries = 100): Promise<void> {
 }
 
 /** Attach a control-frame collector to a session (mirrors the WS onControl sink). */
-function collectControl(result: CreateServerResult, id: string): { frames: { t?: string; askId?: string }[]; stop: () => void } {
+function collectControl(
+  result: CreateServerResult,
+  id: string,
+): { frames: { t?: string; askId?: string }[]; stop: () => void } {
   const frames: { t?: string; askId?: string }[] = [];
   const sub = result.terminalManager.attach(id, {
     onData: () => {},
@@ -98,10 +101,20 @@ test("POST /ask 404s for an unknown session and 400s for empty questions", async
   current = makeServer();
   current.terminalManager.create({ id: "s1", cwd: root });
 
-  const unknown = await current.app.inject({ method: "POST", url: "/sessions/nope/ask", headers: auth, payload: { questions: QUESTIONS } });
+  const unknown = await current.app.inject({
+    method: "POST",
+    url: "/sessions/nope/ask",
+    headers: auth,
+    payload: { questions: QUESTIONS },
+  });
   expect(unknown.statusCode).toBe(404);
 
-  const empty = await current.app.inject({ method: "POST", url: "/sessions/s1/ask", headers: auth, payload: { questions: [] } });
+  const empty = await current.app.inject({
+    method: "POST",
+    url: "/sessions/s1/ask",
+    headers: auth,
+    payload: { questions: [] },
+  });
   expect(empty.statusCode).toBe(400);
 });
 
@@ -112,7 +125,12 @@ test("POST /ask delivers an `ask` control frame, sets awaiting + pushes, then re
   const { frames, stop } = collectControl(current, id);
 
   // Fire the long-poll (don't await yet) and let the handler register + deliver the ask frame.
-  const askPromise = current.app.inject({ method: "POST", url: `/sessions/${id}/ask`, headers: auth, payload: { questions: QUESTIONS } });
+  const askPromise = current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/ask`,
+    headers: auth,
+    payload: { questions: QUESTIONS },
+  });
   await waitFor(() => frames.some((f) => f.t === "ask"));
 
   const askFrame = frames.find((f) => f.t === "ask");
@@ -146,7 +164,12 @@ test("POST /ask/answer with cancelled resolves the ask as cancelled", async () =
   current.terminalManager.create({ id, cwd: root });
   const { frames, stop } = collectControl(current, id);
 
-  const askPromise = current.app.inject({ method: "POST", url: `/sessions/${id}/ask`, headers: auth, payload: { questions: QUESTIONS } });
+  const askPromise = current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/ask`,
+    headers: auth,
+    payload: { questions: QUESTIONS },
+  });
   await waitFor(() => frames.some((f) => f.t === "ask"));
   const askId = frames.find((f) => f.t === "ask")!.askId!;
 
@@ -167,10 +190,20 @@ test("POST /ask/answer 400s without an askId and 404s for an unknown/expired ask
   const id = "s1";
   current.terminalManager.create({ id, cwd: root });
 
-  const noId = await current.app.inject({ method: "POST", url: `/sessions/${id}/ask/answer`, headers: auth, payload: { answers: {} } });
+  const noId = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/ask/answer`,
+    headers: auth,
+    payload: { answers: {} },
+  });
   expect(noId.statusCode).toBe(400);
 
-  const unknown = await current.app.inject({ method: "POST", url: `/sessions/${id}/ask/answer`, headers: auth, payload: { askId: "nope", answers: {} } });
+  const unknown = await current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/ask/answer`,
+    headers: auth,
+    payload: { askId: "nope", answers: {} },
+  });
   expect(unknown.statusCode).toBe(404);
 });
 
@@ -179,7 +212,12 @@ test("closing a session resolves an in-flight ask as cancelled (no hang)", async
   const id = "s1";
   current.terminalManager.create({ id, cwd: root });
 
-  const askPromise = current.app.inject({ method: "POST", url: `/sessions/${id}/ask`, headers: auth, payload: { questions: QUESTIONS } });
+  const askPromise = current.app.inject({
+    method: "POST",
+    url: `/sessions/${id}/ask`,
+    headers: auth,
+    payload: { questions: QUESTIONS },
+  });
   await waitFor(() => current!.terminalManager.get(id)?.awaiting === true); // ask registered
 
   const del = await current.app.inject({ method: "DELETE", url: `/sessions/${id}`, headers: auth });

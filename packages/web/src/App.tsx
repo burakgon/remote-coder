@@ -955,7 +955,11 @@ export function App() {
                   </div>
                   {/* Recovery actions so the stale deep-link isn't a dead end. */}
                   <div style={{ display: "flex", gap: "var(--sp-3)", flexWrap: "wrap", justifyContent: "center" }}>
-                    <button type="button" className="rc-recover rc-recover--ghost" onClick={() => setSessionsOpen(true)}>
+                    <button
+                      type="button"
+                      className="rc-recover rc-recover--ghost"
+                      onClick={() => setSessionsOpen(true)}
+                    >
                       <Icon name="menu" size={16} />
                       Open a session
                     </button>

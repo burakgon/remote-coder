@@ -59,8 +59,8 @@ export function HelpSheet({ open, onClose }: { open: boolean; onClose: () => voi
             scrollback (a git diff, stack trace, logs). Tap <b>Latest</b> to snap back to the newest output.
           </Row>
           <Row glyph="A±">
-            <b>A− / A+</b> (top-right) shrink or grow the text; the keyboard icon there hides the on-screen
-            keyboard so you can read.
+            <b>A− / A+</b> (top-right) shrink or grow the text; the keyboard icon there hides the on-screen keyboard so
+            you can read.
           </Row>
 
           <div className="rc-help__section">Key bar</div>
@@ -71,8 +71,8 @@ export function HelpSheet({ open, onClose }: { open: boolean; onClose: () => voi
             <b>Paste</b> (keyboard icon) opens a box to type or paste text, then Send it to the terminal.
           </Row>
           <Row glyph="Ctrl">
-            <b>Ctrl / Alt</b> are sticky: tap once to arm, then the next key (bar or keyboard) becomes the
-            combo (Ctrl-R, Alt-B, …). Tap again to cancel.
+            <b>Ctrl / Alt</b> are sticky: tap once to arm, then the next key (bar or keyboard) becomes the combo
+            (Ctrl-R, Alt-B, …). Tap again to cancel.
           </Row>
           <Row glyph="↑↓">
             <b>Arrows / PgUp / PgDn</b> auto-repeat when held — press and hold to keep moving.

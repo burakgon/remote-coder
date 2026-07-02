@@ -56,7 +56,9 @@ export function TerminalFiles({
   // from the token-bearing download URL) — never the URL itself, so the access token never leaks into a share
   // sheet. Hidden entirely where the API is absent (e.g. desktop Chrome/Firefox).
   const canShare =
-    typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof navigator.canShare === "function";
+    typeof navigator !== "undefined" &&
+    typeof navigator.share === "function" &&
+    typeof navigator.canShare === "function";
   const shareFile = async (f: TermFile) => {
     try {
       const res = await fetch(downloadUrl(f.path));
@@ -137,10 +139,7 @@ export function TerminalFiles({
                     <div className="rc-tf__thumb rc-tf__uploading" aria-label={`Uploading ${f.name}`}>
                       <Icon name={f.isImage ? "image" : "file"} size={22} />
                       <div className="rc-tf__bar">
-                        <span
-                          className="rc-tf__barfill"
-                          style={{ width: `${Math.round((f.progress ?? 0) * 100)}%` }}
-                        />
+                        <span className="rc-tf__barfill" style={{ width: `${Math.round((f.progress ?? 0) * 100)}%` }} />
                       </div>
                     </div>
                   ) : f.isImage ? (
