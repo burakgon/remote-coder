@@ -1,6 +1,14 @@
 export const SERVER_PACKAGE = "@remote-coder/server";
-export { loadConfig, buildMcpConfigDocument, mcpConfigPathFor } from "./config.js";
-export type { ServerConfig, AttachSpawnOptions, McpConfigDocument } from "./config.js";
+export {
+  loadConfig,
+  buildMcpConfigDocument,
+  mcpConfigPathFor,
+  buildHooksSettingsDocument,
+  hooksSettingsPathFor,
+  hookAuthPathFor,
+  hookAuthFileContent,
+} from "./config.js";
+export type { ServerConfig, AttachSpawnOptions, McpConfigDocument, HooksSettingsDocument } from "./config.js";
 export { loadServerConfig, isLoopbackAddress, assertConfigAllowsStart } from "./server-config.js";
 export type { ServerRuntimeConfig } from "./server-config.js";
 export { AuthGate, extractBearerToken } from "./auth.js";

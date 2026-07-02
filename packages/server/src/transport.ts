@@ -656,6 +656,39 @@ export function createServer(config: ServerRuntimeConfig, deps: CreateServerDeps
     },
   );
 
+  // Deterministic "needs you" via claude's OWN hooks (per-session settings written by the spawn layer — see
+  // config.buildHooksSettingsDocument). claude's `Stop` hook POSTs ?event=stop when it finishes a turn and is
+  // now waiting on the user; `UserPromptSubmit` POSTs ?event=submit when you send a prompt. This REPLACES the
+  // old terminal-output scraping, which couldn't tell "still working / waiting on a background agent" from
+  // "waiting for you" and fired false positives. Token-gated by the global preHandler. The away-from-desk PUSH
+  // fires only when nobody is watching (you're right there otherwise), and works even with the app CLOSED —
+  // the hook runs inside claude regardless of any browser attachment.
+  app.post<{ Params: { id: string }; Querystring: { event?: string } }>(
+    "/sessions/:id/hook",
+    async (request, reply) => {
+      const sessionId = request.params.id;
+      if (!terminalManager.get(sessionId)) {
+        reply.code(404).send({ error: "session not found" });
+        return;
+      }
+      switch (request.query.event) {
+        case "submit":
+          terminalManager.setAwaiting(sessionId, false);
+          break;
+        case "stop":
+          terminalManager.setAwaiting(sessionId, true);
+          if (!terminalManager.isAttached(sessionId)) {
+            void deps.pushDispatcher?.dispatch({ kind: "awaiting", sessionId });
+          }
+          break;
+        default:
+          reply.code(400).send({ error: "unknown event" });
+          return;
+      }
+      reply.code(200).send({ ok: true });
+    },
+  );
+
   // ask_user (the /ask half of the loop): claude's ask_user MCP tool POSTs the multiple-choice questions
   // here and BLOCKS on the response. We deliver them to any attached clients via an `ask` control frame,
   // mark the session awaiting + push (claude needs you), then LONG-POLL — holding this request open until
